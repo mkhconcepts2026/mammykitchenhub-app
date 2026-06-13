@@ -104,7 +104,7 @@ export default function CartPage() {
                     <div className="relative w-24 h-24 flex-shrink-0">
 
                       <Image
-                        src={item.image}
+                        src={item.image || "/placeholder-food.jpg"}
                         alt={item.name}
                         fill
                         sizes="96px"
