@@ -11,17 +11,19 @@ import {
 
 export type CartItem = {
 
-  id:string;
+  id: string;
 
-  vendor_id:string;
+  vendor_id: string;
 
-  name:string;
+  name: string;
 
-  price:number;
+  description?: string;
 
-  quantity:number;
+  price: number;
 
-  image?:string;
+  quantity: number;
+
+  image?: string;
 
 };
 
