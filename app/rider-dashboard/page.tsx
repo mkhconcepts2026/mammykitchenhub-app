@@ -442,12 +442,13 @@ console.log(
 
   async function updateStatus(
 
-    orderId:string,
+  orderId:string,
 
-    status:string
+  status:string
 
-  ){
+){
 
+  const { error } =
     await supabase
       .from("orders")
       .update({
@@ -458,9 +459,135 @@ console.log(
         orderId
       );
 
-    loadDashboard();
+  if(error){
+
+    console.error(error);
+    return;
 
   }
+
+  if(status === "delivered"){
+
+    const {
+      data: order
+    } =
+    await supabase
+      .from("orders")
+      .select("*")
+      .eq(
+        "id",
+        orderId
+      )
+      .single();
+
+    if(order){
+
+      const {
+        data: existingTransaction
+      } =
+      await supabase
+        .from(
+          "wallet_transactions"
+        )
+        .select("id")
+        .eq(
+          "order_id",
+          orderId
+        )
+        .maybeSingle();
+
+      if(!existingTransaction){
+
+        const vendorShare =
+          Number(order.total) * 0.9;
+
+        const {
+          error: transactionError
+        } =
+        await supabase
+          .from(
+            "wallet_transactions"
+          )
+          .insert({
+
+            vendor_id:
+              order.vendor_id,
+
+            order_id:
+              orderId,
+
+            amount:
+              vendorShare,
+
+            transaction_type:
+              "order_earning"
+
+          });
+
+        console.log(
+          "TRANSACTION ERROR:",
+          transactionError
+        );
+
+        const {
+          data: wallet
+        } =
+        await supabase
+          .from(
+            "vendor_wallets"
+          )
+          .select("*")
+          .eq(
+            "vendor_id",
+            order.vendor_id
+          )
+          .single();
+
+        if(wallet){
+
+          const {
+            error: walletError
+          } =
+          await supabase
+            .from(
+              "vendor_wallets"
+            )
+            .update({
+
+              accrued_balance:
+                Number(
+                  wallet.accrued_balance || 0
+                ) +
+                vendorShare,
+
+              lifetime_earnings:
+                Number(
+                  wallet.lifetime_earnings || 0
+                ) +
+                vendorShare
+
+            })
+            .eq(
+              "vendor_id",
+              order.vendor_id
+            );
+
+          console.log(
+            "WALLET ERROR:",
+            walletError
+          );
+
+        }
+
+      }
+
+    }
+
+  }
+
+  loadDashboard();
+
+}
 async function verifyOtp(
 
   orderId:string,

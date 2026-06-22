@@ -209,11 +209,11 @@ if (wallet) {
     )
   );
 
-  setPendingBalance(
-    Number(
-      wallet.pending_balance || 0
-    )
-  );
+ setPendingBalance(
+  Number(
+    wallet.accrued_balance || 0
+  )
+);
 
   setTotalEarned(
     Number(
@@ -1966,7 +1966,7 @@ useEffect(() => {
     font-bold
     mt-2
   ">
-    ₦{availableBalance.toLocaleString()}
+    ₦{pendingBalance.toLocaleString()}
   </h2>
 
   <p
