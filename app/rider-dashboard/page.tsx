@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
 
   Bike,
-  DollarSign,
+  Wallet,
   Clock,
   LogOut
 
@@ -96,6 +96,10 @@ export default function RiderDashboardPage(){
   const [myOrders,
     setMyOrders] =
     useState<Order[]>([]);
+
+    const [completedOrders,
+  setCompletedOrders] =
+  useState<Order[]>([]);
 
     const [otpInputs, setOtpInputs] =
   useState<Record<string,string>>({});
@@ -243,13 +247,38 @@ profiles!orders_user_id_fkey(
 
       }
 
-      setAvailableOrders(
-        queue || []
-      );
+    setAvailableOrders(
+  queue || []
+);
 
-      setMyOrders(
-        active || []
-      );
+setMyOrders(
+  active || []
+);
+
+const {
+  data: completed
+} =
+await supabase
+  .from("orders")
+  .select(`
+    *,
+    vendors(
+      name,
+      location
+    )
+  `)
+  .eq(
+    "rider_id",
+    user.id
+  )
+  .eq(
+    "status",
+    "delivered"
+  );
+
+setCompletedOrders(
+  completed || []
+);
 
     }
 
@@ -498,41 +527,34 @@ async function verifyOtp(
 
   }
 
-  const deliveredCount =
-    useMemo(()=>{
+ const deliveredCount =
+  useMemo(()=>{
 
-      return myOrders.filter(
+    return completedOrders.length;
 
-        (o)=>
-
-          o.status ===
-          "delivered"
-
-      ).length;
-
-    },[
-      myOrders
-    ]);
+  },[
+    completedOrders
+  ]);
 
   const earnings =
-    useMemo(()=>{
+  useMemo(()=>{
 
-      return myOrders.reduce(
+    return completedOrders.reduce(
 
-        (sum,order)=>
+      (sum,order)=>
 
-          sum +
-          Math.round(
-            order.total * 0.1
-          ),
+        sum +
+        Math.round(
+          order.total * 0.1
+        ),
 
-        0
+      0
 
-      );
+    );
 
-    },[
-      myOrders
-    ]);
+  },[
+    completedOrders
+  ]);
 
   if(loading){
 
@@ -729,13 +751,13 @@ async function verifyOtp(
                   mb-5
                 ">
 
-                  <DollarSign
-                    className="
-                      w-10
-                      h-10
-                      text-green-500
-                    "
-                  />
+                  <Wallet
+                         className="
+                             w-10
+                              h-10
+                           text-green-500
+                              "
+                              />
 
                   <h2 className="
                     text-3xl
@@ -1336,40 +1358,44 @@ async function verifyOtp(
 
   )
 }
-                          {
+                {
 
-                            order.status ===
-                            "accepted"
+  (
+    order.status === "accepted" ||
+    order.status === "assigned"
+  )
 
-                            &&
+  &&
 
-                            <button
+  <button
 
-                              onClick={()=>
+    onClick={()=>
 
-                                updateStatus(
-                                  order.id,
-                                  "picked_up"
-                                )
+      updateStatus(
+        order.id,
+        "picked_up"
+      )
 
-                              }
+    }
 
-                              className="
-                                bg-blue-500
-                                text-white
-                                px-6
-                                py-3
-                                rounded-xl
-                                font-bold
-                              "
+    className="
+      bg-blue-500
+      text-white
+      px-6
+      py-3
+      rounded-xl
+      font-bold
+    "
 
-                            >
+  >
 
-                              Confirm Pickup
+    Confirm Pickup
 
-                            </button>
+  </button>
 
-                          }
+}
+
+                          
 
   {
   order.status === "picked_up" &&

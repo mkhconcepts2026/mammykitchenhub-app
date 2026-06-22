@@ -38,6 +38,12 @@ const [riders, setRiders] =
   const [selectedOrder, setSelectedOrder] =
   useState<any>(null);
 
+  const [showAssignRider, setShowAssignRider] =
+  useState(false);
+
+const [selectedRiderId, setSelectedRiderId] =
+  useState("");
+
 const [stats, setStats] = useState({
   applications: 0,
   pending: 0,
@@ -113,6 +119,7 @@ const [stats, setStats] = useState({
   const rejectVendor = async (
   applicationId: string
 ) => {
+ 
   const { error } = await supabase
     .from("vendor_applications")
     .update({
@@ -127,7 +134,53 @@ const [stats, setStats] = useState({
 
   loadDashboardStats();
 };
-  
+  const assignRider = async () => {
+
+  if (!selectedRiderId) {
+    alert("Select a rider first");
+    return;
+  }
+
+  console.log(
+    "SELECTED RIDER ID:",
+    selectedRiderId
+  );
+
+  console.log(
+    "SELECTED ORDER:",
+    selectedOrder
+  );
+
+  const { error } = await supabase
+    .from("orders")
+    .update({
+      rider_id: selectedRiderId,
+      status: "assigned"
+    })
+    .eq(
+      "id",
+      selectedOrder.id
+    );
+
+  console.log(
+    "UPDATE ERROR:",
+    error
+  );
+
+  if (error) {
+    console.error(error);
+    alert("Assignment failed");
+    return;
+  }
+
+  alert("Rider assigned");
+
+  setShowAssignRider(false);
+  setSelectedOrder(null);
+
+  loadDashboardStats();
+
+};
 useEffect(() => {
 
   loadDashboardStats();
@@ -209,6 +262,11 @@ const {
   .eq("role", "rider");
 
 setRiders(ridersData || []);
+
+console.log(
+  "RIDERS LOADED:",
+  ridersData
+);
 
 const {
   data: ordersData,
@@ -2233,7 +2291,7 @@ setSelectedOrder(order);
             font-semibold
           "
         >
-          Assign Order
+          Coming Soon
         </button>
 
         <button
@@ -2604,17 +2662,20 @@ setSelectedOrder(order);
         "
       >
 
-        <button
-          className="
-            bg-blue-500
-            text-white
-            py-3
-            rounded-xl
-            font-semibold
-          "
-        >
-          Assign Rider
-        </button>
+       <button
+  onClick={() =>
+    setShowAssignRider(true)
+  }
+  className="
+    bg-blue-500
+    text-white
+    py-3
+    rounded-xl
+    font-semibold
+  "
+>
+  Assign Rider
+</button>
 
         <button
           className="
@@ -2641,6 +2702,106 @@ setSelectedOrder(order);
           "
         >
           Close
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+)}
+{showAssignRider && (
+
+  <div
+    className="
+      fixed
+      inset-0
+      bg-black/50
+      flex
+      items-center
+      justify-center
+      z-50
+    "
+  >
+
+    <div
+      className="
+        bg-white
+        p-8
+        rounded-3xl
+        w-full
+        max-w-md
+      "
+    >
+
+      <h2 className="text-2xl font-bold mb-6">
+        Assign Rider
+      </h2>
+
+      <select
+        value={selectedRiderId}
+        onChange={(e) =>
+          setSelectedRiderId(
+            e.target.value
+          )
+        }
+        className="
+          w-full
+          border
+          p-3
+          rounded-xl
+          mb-6
+        "
+      >
+
+        <option value="">
+          Select Rider
+        </option>
+
+        {riders.map(
+          (rider: any) => (
+
+            <option
+              key={rider.id}
+              value={rider.id}
+            >
+              {rider.full_name}
+            </option>
+
+          )
+        )}
+
+      </select>
+
+      <div className="flex gap-3">
+
+        <button
+          onClick={assignRider}
+          className="
+            flex-1
+            bg-blue-500
+            text-white
+            py-3
+            rounded-xl
+          "
+        >
+          Assign
+        </button>
+
+        <button
+          onClick={() =>
+            setShowAssignRider(false)
+          }
+          className="
+            flex-1
+            bg-gray-500
+            text-white
+            py-3
+            rounded-xl
+          "
+        >
+          Cancel
         </button>
 
       </div>

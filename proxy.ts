@@ -40,7 +40,7 @@ export function proxy(request: NextRequest) {
       new URL("/login", request.url)
     );
   }
-
+/*
   if (
     path.startsWith("/manager") &&
     role !== "manager"
@@ -49,6 +49,7 @@ export function proxy(request: NextRequest) {
       new URL("/login", request.url)
     );
   }
+*/
 
   if (
     path.startsWith("/rider") &&

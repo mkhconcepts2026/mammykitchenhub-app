@@ -54,8 +54,29 @@ const [imageFile,setImageFile] =
 const [pendingBalance, setPendingBalance] =
   useState(0);
 
+const nextFriday = new Date();
+
+while (nextFriday.getDay() !== 5) {
+  nextFriday.setDate(
+    nextFriday.getDate() + 1
+  );
+}
+
+const nextFridayText =
+  nextFriday.toLocaleDateString(
+    "en-NG",
+    {
+      weekday: "long",
+      month: "short",
+      day: "numeric"
+    }
+  );
+
 const [totalEarned, setTotalEarned] =
   useState(0);
+
+const [vendorWallet, setVendorWallet] =
+  useState<any>(null);
 
   const [cacFile, setCacFile] =
   useState<File | null>(null);
@@ -83,6 +104,10 @@ const [verifiedAccountName,
   setVerifiedAccountName] =
   useState("");
 
+
+const [nextPayoutText, setNextPayoutText] =
+  useState("");
+
 const [verifyingAccount,
   setVerifyingAccount] =
   useState(false);
@@ -91,6 +116,13 @@ const [kycStatus, setKycStatus] =
   useState("Not Submitted");
 
   const [submittingKyc, setSubmittingKyc] =
+  useState(false);
+
+  const [isSubmittingPayout, setIsSubmittingPayout] =
+  useState(false);
+const [isPayoutWindowOpen, setIsPayoutWindowOpen] =
+  useState(false);
+  const [hasPendingPayout, setHasPendingPayout] =
   useState(false);
 
   async function loadVendor() {
@@ -127,6 +159,69 @@ const [kycStatus, setKycStatus] =
         return;
 
       }
+
+   const {
+  data: wallet
+} =
+await supabase
+  .from("vendor_wallets")
+  .select("*")
+  .eq(
+    "vendor_id",
+    profile.vendor_id
+  )
+  .single();
+
+setVendorWallet(
+  wallet
+);
+
+console.log(
+  "VENDOR WALLET:",
+  wallet
+);
+
+const {
+  data: pendingRequest
+} =
+await supabase
+  .from("payout_requests")
+  .select("id")
+  .eq(
+    "requester_id",
+    profile.vendor_id
+  )
+  .eq(
+    "status",
+    "pending"
+  )
+  .maybeSingle();
+
+setHasPendingPayout(
+  !!pendingRequest
+);
+
+if (wallet) {
+
+  setAvailableBalance(
+    Number(
+      wallet.available_balance || 0
+    )
+  );
+
+  setPendingBalance(
+    Number(
+      wallet.pending_balance || 0
+    )
+  );
+
+  setTotalEarned(
+    Number(
+      wallet.lifetime_earnings || 0
+    )
+  );
+
+}
 
       const {
         data:vendor
@@ -189,46 +284,78 @@ async function loadMenuItems(){
 
 }
 
-async function loadOrders() {
+function checkPayoutWindow() {
 
-  function calculateVendorWallet() {
+  const now = new Date();
 
-  let available = 0;
-  let pending = 0;
+  console.log(
+  "CURRENT TIME:",
+  now.toString()
+);
 
-  orders.forEach((order) => {
+console.log(
+  "DAY:",
+  now.getDay()
+);
 
-    if (
-      order.status === "delivered"
-    ) {
+console.log(
+  "HOUR:",
+  now.getHours()
+);
 
-      available += Number(
-        order.total || 0
-      );
+  const day = now.getDay();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
 
-    } else {
+  const fridayOpen =
+    day === 5 &&
+    hour >= 16;
 
-      pending += Number(
-        order.total || 0
-      );
+  const saturdayOpen =
+    day === 6;
 
-    }
+  const sundayOpen =
+    day === 0 &&
+    (
+      hour < 23 ||
+      (
+        hour === 23 &&
+        minute <= 59
+      )
+    );
 
-  });
+  const payoutWindowOpen =
+    fridayOpen ||
+    saturdayOpen ||
+    sundayOpen;
 
-  setAvailableBalance(
-    available
+    console.log(
+  "PAYOUT WINDOW:",
+  payoutWindowOpen
+);
+
+  setIsPayoutWindowOpen(
+    payoutWindowOpen
   );
 
-  setPendingBalance(
-    pending
-  );
+  if (payoutWindowOpen) {
 
-  setTotalEarned(
-    available + pending
-  );
+    setNextPayoutText(
+      "Withdrawals close Sunday at 11:59 PM"
+    );
+
+  } else {
+
+    setNextPayoutText(
+      "Next withdrawal window opens Friday at 4:00 PM"
+    );
+
+  }
 
 }
+
+async function loadOrders() {
+
 
   try {
 
@@ -333,6 +460,109 @@ async function updateOrderStatus(
 
     console.error(error);
     return;
+
+  }
+
+  if(status === "delivered"){
+
+    const {
+      data: order
+    } =
+    await supabase
+      .from("orders")
+      .select("*")
+      .eq(
+        "id",
+        orderId
+      )
+      .single();
+
+    if(order){
+
+      const {
+        data: existingTransaction
+      } =
+      await supabase
+        .from(
+          "wallet_transactions"
+        )
+        .select("id")
+        .eq(
+          "order_id",
+          orderId
+        )
+        .maybeSingle();
+
+      if(!existingTransaction){
+
+        const vendorShare =
+          Number(order.total) * 0.9;
+
+        await supabase
+          .from(
+            "wallet_transactions"
+          )
+          .insert({
+
+            vendor_id:
+              order.vendor_id,
+
+            order_id:
+              orderId,
+
+            amount:
+              vendorShare,
+
+            transaction_type:
+              "order_earning"
+
+          });
+
+        const {
+          data: wallet
+        } =
+        await supabase
+          .from(
+            "vendor_wallets"
+          )
+          .select("*")
+          .eq(
+            "vendor_id",
+            order.vendor_id
+          )
+          .single();
+
+        if(wallet){
+
+          await supabase
+            .from(
+              "vendor_wallets"
+            )
+            .update({
+
+              accrued_balance:
+                Number(
+                  wallet.accrued_balance || 0
+                ) +
+                vendorShare,
+
+              lifetime_earnings:
+                Number(
+                  wallet.lifetime_earnings || 0
+                ) +
+                vendorShare
+
+            })
+            .eq(
+              "vendor_id",
+              order.vendor_id
+            );
+
+        }
+
+      }
+
+    }
 
   }
 
@@ -768,6 +998,141 @@ async function toggleAvailability(item:any){
   );
 
 }
+
+async function requestPayout() {
+
+  try {
+
+    setIsSubmittingPayout(true);
+
+    const {
+      data:{ user }
+    } =
+    await supabase
+      .auth
+      .getUser();
+
+    if(!user){
+
+      return;
+
+    }
+
+    const {
+      data: profile
+    } =
+    await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq(
+        "id",
+        user.id
+      )
+      .single();
+
+    if(
+      !profile?.vendor_id
+    ){
+
+      alert(
+        "Vendor not found"
+      );
+
+      return;
+
+    }
+
+    const {
+      data: existingRequest
+    } =
+    await supabase
+      .from(
+        "payout_requests"
+      )
+      .select("id")
+      .eq(
+        "requester_id",
+        profile.vendor_id
+      )
+      .eq(
+        "status",
+        "pending"
+      )
+      .maybeSingle();
+
+    if(existingRequest){
+
+      alert(
+        "You already have a pending payout request awaiting approval."
+      );
+
+      return;
+
+    }
+
+    const {
+      error
+    } =
+    await supabase
+      .from(
+        "payout_requests"
+      )
+      .insert({
+
+        requester_id:
+          profile.vendor_id,
+
+        requester_type:
+          "vendor",
+
+        amount:
+          availableBalance,
+
+        status:
+          "pending"
+
+      });
+
+    if(error){
+
+      console.error(
+        "PAYOUT ERROR:",
+        error
+      );
+
+      alert(
+        JSON.stringify(error)
+      );
+
+      return;
+
+    }
+
+    alert(
+      "Payout request submitted"
+    );
+
+   
+
+  }
+
+  catch(error){
+
+    console.error(
+      error
+    );
+
+  }
+
+  finally{
+
+    setIsSubmittingPayout(
+      false
+    );
+
+  }
+
+}
 useEffect(() => {
 
   loadVendor();
@@ -776,15 +1141,11 @@ useEffect(() => {
 
   loadOrders();
 
+  checkPayoutWindow();
+
   loadVendorKyc();
 
 }, []);
-
-useEffect(() => {
-
-  calculateVendorWallet();
-
-}, [orders]);
 
 
   if(loading){
@@ -1498,95 +1859,130 @@ useEffect(() => {
     ">
 
       <div className="
-        bg-orange-500
-        text-white
-        rounded-3xl
-        p-6
-      ">
+  bg-orange-500
+  text-white
+  rounded-3xl
+  p-6
+">
 
-        <p className="text-orange-100">
-          Available Balance
-        </p>
+  <p className="text-orange-100">
+    Available Balance
+  </p>
 
-        <h2 className="
-          text-4xl
-          font-bold
-          mt-2
-        ">
-          ₦{availableBalance.toLocaleString()}
-        </h2>
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{availableBalance.toLocaleString()}
+  </h2>
 
-        <button
-          className="
-            mt-6
-            bg-white
-            text-orange-500
-            px-5
-            py-3
-            rounded-xl
-            font-semibold
-          "
-        >
-          Withdraw Funds
-        </button>
+  <p className="
+    text-orange-100
+    mt-2
+  ">
+     Ready for withdrawal
+  </p>
 
-      </div>
+ <button
+  onClick={requestPayout}
+  disabled={
+    !isPayoutWindowOpen ||
+    isSubmittingPayout ||
+    availableBalance <= 0 ||
+    hasPendingPayout
+  }
+  className={`
+    mt-6
+    px-5
+    py-3
+    rounded-xl
+    font-semibold
+    w-full
 
-      <div className="
-        bg-white
-        rounded-3xl
-        p-6
-        shadow-sm
-      ">
+    ${
+      hasPendingPayout
+        ? "bg-blue-100 text-blue-600 cursor-not-allowed"
+        : isPayoutWindowOpen
+        ? "bg-white text-orange-500"
+        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+    }
+  `}
+>
+  {
+    isSubmittingPayout
+      ? "Submitting..."
+      : hasPendingPayout
+      ? "Payout Request Submitted"
+      : isPayoutWindowOpen
+      ? "Withdraw Funds"
+      : "Available Friday 4PM - Sunday 11:59PM"
+  }
+</button>
 
-        <p className="text-gray-500">
-          Total Earned
-        </p>
+</div>
 
-        <h2 className="
-          text-4xl
-          font-bold
-          mt-2
-        ">
-          ₦{totalEarned.toLocaleString()}
-        </h2>
+<div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
 
-        <p className="
-          text-green-600
-          mt-2
-        ">
-          Lifetime Revenue
-        </p>
+  <p className="text-gray-500">
+   Lifetime Earnings
+  </p>
 
-      </div>
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{totalEarned.toLocaleString()}
+  </h2>
 
-      <div className="
-        bg-white
-        rounded-3xl
-        p-6
-        shadow-sm
-      ">
+  <p className="
+    text-blue-600
+    mt-2
+  ">
+    Total revenue earned on MKH
+  </p>
 
-        <p className="text-gray-500">
-          Pending Payout
-        </p>
+</div>
 
-        <h2 className="
-          text-4xl
-          font-bold
-          mt-2
-        ">
-          ₦{pendingBalance.toLocaleString()}
-        </h2>
+<div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
 
-        <p className="
-          text-orange-500
-          mt-2
-        ">
-          Awaiting Delivery
-        </p>
+  <p className="text-gray-500">
+     Pending Payout
+  </p>
 
-      </div>
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{availableBalance.toLocaleString()}
+  </h2>
+
+  <p
+    className={`
+      mt-2
+      ${
+        isPayoutWindowOpen
+          ? "text-green-600"
+          : "text-orange-500"
+      }
+    `}
+  >
+    Available on {nextFridayText}
+  </p>
+
+</div>
 
     </div>
 

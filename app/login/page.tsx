@@ -132,7 +132,7 @@ export default function LoginPage() {
         case "manager":
 
           router.push(
-            "/manager-dashboard"
+            "/manager"
           );
 
           break;
