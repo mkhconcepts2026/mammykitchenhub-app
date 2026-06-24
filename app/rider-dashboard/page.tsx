@@ -25,6 +25,18 @@ type Order = {
 
   total:number;
 
+  food_amount:number;
+
+  delivery_fee:number;
+
+  platform_fee:number;
+
+  vendor_amount:number;
+
+  rider_amount:number;
+
+  mkh_amount:number;
+
   created_at:string;
 
   vendor_id:string;
@@ -37,7 +49,7 @@ type Order = {
 
   delivery_otp?: string | null;
 
-otp_verified?: boolean;
+  otp_verified?: boolean;
 
   vendors?:{
 
@@ -499,7 +511,30 @@ console.log(
       if(!existingTransaction){
 
         const vendorShare =
-          Number(order.total) * 0.9;
+  Number(
+    order.vendor_amount || 0
+  );
+
+const riderShare =
+  Number(
+    order.rider_amount || 0
+  );
+
+const mkhShare =
+  Number(
+    order.mkh_amount || 0
+  );
+
+console.log(
+  "ORDER FINANCE:",
+  {
+    total: order.total,
+    vendor_amount: order.vendor_amount,
+    rider_amount: order.rider_amount,
+    mkh_amount: order.mkh_amount,
+    vendorShare
+  }
+);
 
         const {
           error: transactionError
@@ -663,7 +698,7 @@ async function verifyOtp(
     completedOrders
   ]);
 
-  const earnings =
+ const earnings =
   useMemo(()=>{
 
     return completedOrders.reduce(
@@ -671,8 +706,8 @@ async function verifyOtp(
       (sum,order)=>
 
         sum +
-        Math.round(
-          order.total * 0.1
+        Number(
+          order.rider_amount || 0
         ),
 
       0
@@ -1116,8 +1151,11 @@ async function verifyOtp(
   text-gray-500
   mt-1
 ">
-  Rider earns approximately ₦
-  {Math.round(order.total * 0.1).toLocaleString()}
+  Rider earns approximately₦{
+  Number(
+    order.rider_amount || 0
+  ).toLocaleString()
+}
 </p>
 
 <p className="
@@ -1326,10 +1364,10 @@ async function verifyOtp(
   Rider Earnings:
   {" "}
   ₦{
-    Math.round(
-      order.total * 0.1
-    ).toLocaleString()
-  }
+  Number(
+    order.rider_amount || 0
+  ).toLocaleString()
+}
 </p>
 
 <p className="
@@ -1353,15 +1391,15 @@ async function verifyOtp(
                               text-green-600
                             ">
 
-                              ₦
+                             ₦
 
-                              {
+{
 
-                                Math.round(
-                                  order.total * 0.1
-                                )
+  Number(
+    order.rider_amount || 0
+  )
 
-                              }
+}
 
                             </p>
 

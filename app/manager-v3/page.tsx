@@ -207,9 +207,174 @@ const operationsQueueRef =
 
     }
 
+   if(
+  Number(
+    wallet.available_balance
+  ) <
+  Number(
+    request.amount
+  )
+){
+
+  alert(
+    "Insufficient balance"
+  );
+
+  return;
+
+}
+   const {
+  data: payoutUpdate,
+  error: payoutError
+} =
+await supabase
+  .from("payout_requests")
+  .update({
+
+    status:
+      "approved"
+
+  })
+  .eq(
+    "id",
+    request.id
+  )
+  .select();
+
+console.log(
+  "PAYOUT UPDATE:",
+  payoutUpdate
+);
+
+console.log(
+  "PAYOUT ERROR:",
+  payoutError
+);
+    alert(
+      "Payout approved"
+    );
+
+    loadDashboard();
+
+  }
+
+  catch(error){
+
+    console.error(
+      error
+    );
+
+  }
+
+}
+
+async function markProcessing(
+  request:any
+){
+
+  try{
+
+    const confirmed =
+      confirm(
+        `Move ₦${Number(
+          request.amount
+        ).toLocaleString()} to processing?`
+      );
+
+    if(!confirmed){
+      return;
+    }
+
+    const {
+      error
+    } =
+    await supabase
+      .from(
+        "payout_requests"
+      )
+      .update({
+
+        status:
+          "processing"
+
+      })
+      .eq(
+        "id",
+        request.id
+      );
+
+    if(error){
+
+      alert(
+        error.message
+      );
+
+      return;
+
+    }
+
+    alert(
+      "Payment moved to processing"
+    );
+
+    loadDashboard();
+
+  }
+
+  catch(error){
+
+    console.error(
+      error
+    );
+
+  }
+
+}
+
+async function markPaid(
+  request:any
+){
+
+  try{
+
+    const confirmed =
+      confirm(
+        `Mark ₦${Number(
+          request.amount
+        ).toLocaleString()} as paid?`
+      );
+
+    if(!confirmed){
+      return;
+    }
+
+    const {
+      data: wallet
+    } =
+    await supabase
+      .from(
+        "vendor_wallets"
+      )
+      .select("*")
+      .eq(
+        "vendor_id",
+        request.requester_id
+      )
+      .single();
+
+    if(!wallet){
+
+      alert(
+        "Vendor wallet not found"
+      );
+
+      return;
+
+    }
+
     const newBalance =
       Number(
-        wallet.available_balance
+        wallet.available_balance || 0
       ) -
       Number(
         request.amount
@@ -226,41 +391,44 @@ const operationsQueueRef =
     }
 
     const {
-      data: walletUpdate,
       error: walletError
     } =
     await supabase
-      .from("vendor_wallets")
+      .from(
+        "vendor_wallets"
+      )
       .update({
+
         available_balance:
           newBalance
+
       })
       .eq(
         "vendor_id",
         request.requester_id
-      )
-      .select();
+      );
 
-    console.log(
-      "WALLET UPDATE:",
-      walletUpdate
-    );
+    if(walletError){
 
-    console.log(
-      "WALLET ERROR:",
-      walletError
-    );
+      alert(
+        walletError.message
+      );
+
+      return;
+
+    }
 
     const {
-      data: payoutUpdate,
       error: payoutError
     } =
     await supabase
-      .from("payout_requests")
+      .from(
+        "payout_requests"
+      )
       .update({
 
         status:
-          "approved",
+          "paid",
 
         processed_at:
           new Date()
@@ -270,21 +438,20 @@ const operationsQueueRef =
       .eq(
         "id",
         request.id
-      )
-      .select();
+      );
 
-    console.log(
-      "PAYOUT UPDATE:",
-      payoutUpdate
-    );
+    if(payoutError){
 
-    console.log(
-      "PAYOUT ERROR:",
-      payoutError
-    );
+      alert(
+        payoutError.message
+      );
+
+      return;
+
+    }
 
     alert(
-      "Payout approved"
+      "Payment settled successfully"
     );
 
     loadDashboard();
@@ -362,15 +529,21 @@ await supabase
   .from("rider_wallets")
   .select("*");
 
- const {
+const {
   data: payoutRequests
 } =
 await supabase
   .from("payout_requests")
   .select("*")
-  .eq(
+  .in(
     "status",
-    "pending"
+    [
+      "pending",
+      "approved",
+      "processing",
+      "paid",
+      "rejected"
+    ]
   );
   
 
@@ -2143,26 +2316,134 @@ return (
 }
               </p>
 
+              <p
+  className={`
+    text-xs
+    font-semibold
+    mt-1
+
+    ${
+      request.status === "pending"
+        ? "text-orange-600"
+        : request.status === "approved"
+        ? "text-blue-600"
+        : request.status === "processing"
+        ? "text-purple-600"
+        : request.status === "paid"
+        ? "text-green-600"
+        : "text-red-600"
+    }
+  `}
+>
+  {request.status.toUpperCase()}
+</p>
+
             </div>
 
-            <div className="flex gap-2">
+           <div className="flex gap-2">
 
-              <button
-                onClick={() =>
-                  approvePayout(
-                    request
-                  )
-                }
-                className="
-                  bg-green-600
-                  text-white
-                  px-4
-                  py-2
-                  rounded-lg
-                "
-              >
-                Approve
-              </button>
+  {request.status === "pending" && (
+
+    <button
+      onClick={() =>
+        approvePayout(
+          request
+        )
+      }
+      className="
+        bg-green-600
+        text-white
+        px-4
+        py-2
+        rounded-lg
+      "
+    >
+      Approve
+    </button>
+
+  )}
+
+  {request.status === "approved" && (
+
+  <button
+    onClick={() =>
+      markProcessing(
+        request
+      )
+    }
+    className="
+      bg-blue-600
+      text-white
+      px-4
+      py-2
+      rounded-lg
+      text-sm
+      font-medium
+    "
+  >
+    Start Processing
+  </button>
+
+)}
+
+ {request.status === "processing" && (
+
+  <button
+    onClick={() =>
+      markPaid(
+        request
+      )
+    }
+    className="
+      bg-purple-600
+      text-white
+      px-4
+      py-2
+      rounded-lg
+      text-sm
+      font-medium
+    "
+  >
+    Mark Paid
+  </button>
+
+)}
+
+  {request.status === "paid" && (
+
+    <span
+      className="
+        bg-green-100
+        text-green-700
+        px-4
+        py-2
+        rounded-lg
+        text-sm
+        font-medium
+      "
+    >
+      Paid
+    </span>
+
+  )}
+
+  {request.status === "rejected" && (
+
+    <span
+      className="
+        bg-red-100
+        text-red-700
+        px-4
+        py-2
+        rounded-lg
+        text-sm
+        font-medium
+      "
+    >
+      Rejected
+    </span>
+
+  )}
 
               <button
                 onClick={() =>

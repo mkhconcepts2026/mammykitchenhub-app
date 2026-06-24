@@ -5,6 +5,8 @@ import {
   useEffect
 } from "react";
 
+import Image from "next/image";
+
 import { createClient }
 from "@/lib/supabase/client";
 
@@ -277,14 +279,17 @@ export default function ManagerPage() {
 
           <div className="flex justify-center mb-6">
 
-            <img
-              src="/logo.png"
-              alt="MKH Logo"
-              className="
-                h-28
-                w-auto
-              "
-            />
+         <Image
+  src="/logo.png"
+  alt="MKH Logo"
+  width={180}
+  height={52}
+  priority
+  style={{
+    width: "180px",
+    height: "auto"
+  }}
+/>
 
           </div>
 

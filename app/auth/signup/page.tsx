@@ -122,13 +122,17 @@ const [
 
         <div className="flex justify-center mb-6">
 
-  <Image
-    src="/logo.png"
-    alt="Mammy Kitchen Hub"
-    width={120}
-    height={120}
-    priority
-  />
+   <Image
+  src="/logo.png"
+  alt="MKH Logo"
+  width={180}
+  height={52}
+  priority
+  style={{
+    width: "180px",
+    height: "auto"
+  }}
+/>
 
 </div>
 

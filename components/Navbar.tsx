@@ -21,14 +21,17 @@ export function Navbar({ cartCount = 0 }: NavbarProps) {
               <Menu className="w-6 h-6" />
             </button>
 
-            <Image
-              src="/logo.png"
-              alt="MKH Logo"
-              width={140}
-              height={50}
-              className="h-10 w-auto"
-              priority
-            />
+             <Image
+  src="/logo.png"
+  alt="MKH Logo"
+  width={180}
+  height={52}
+  priority
+  style={{
+    width: "180px",
+    height: "auto"
+  }}
+/>
 
           </div>
 

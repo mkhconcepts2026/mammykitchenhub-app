@@ -41,12 +41,30 @@ const [
 ] =
   useState("");
 
-  const deliveryFee =
-    1500;
+const deliveryFee =
+  1500;
 
-  const total =
-    subtotal +
-    deliveryFee;
+const platformFee =
+  300;
+
+const vendorAmount =
+  subtotal;
+
+const riderAmount =
+  Math.round(
+    deliveryFee * 0.7
+  );
+
+const mkhAmount =
+  Math.round(
+    deliveryFee * 0.3
+  ) +
+  platformFee;
+
+const total =
+  subtotal +
+  deliveryFee +
+  platformFee;
 
   async function placeOrder() {
 
@@ -113,13 +131,31 @@ if (
       } =
       await supabase
         .from("orders")
-        .insert({
+       .insert({
 
   user_id:
     user.id,
 
   vendor_id:
     vendorId,
+
+  food_amount:
+    subtotal,
+
+  delivery_fee:
+    deliveryFee,
+
+  platform_fee:
+    platformFee,
+
+  vendor_amount:
+    vendorAmount,
+
+  rider_amount:
+    riderAmount,
+
+  mkh_amount:
+    mkhAmount,
 
   total,
 
@@ -128,7 +164,10 @@ if (
 
   customer_notes:
     customerNotes,
-customer_phone: phoneNumber,
+
+  customer_phone:
+    phoneNumber,
+
   status:
     "pending"
 
@@ -474,47 +513,67 @@ customer_phone: phoneNumber,
 
             </div>
 
-            <div className="
-              flex
-              justify-between
-            ">
+         <div className="
+  flex
+  justify-between
+">
 
-              <span>
+  <span>
 
-                Delivery
+    Delivery Fee
 
-              </span>
+  </span>
 
-              <span>
+  <span>
 
-                ₦
-                {deliveryFee.toLocaleString()}
+    ₦
+    {deliveryFee.toLocaleString()}
 
-              </span>
+  </span>
 
-            </div>
+</div>
 
-            <div className="
-              flex
-              justify-between
-              text-xl
-              font-bold
-            ">
+<div className="
+  flex
+  justify-between
+">
 
-              <span>
+  <span>
 
-                Total
+    Service Fee
 
-              </span>
+  </span>
 
-              <span>
+  <span>
 
-                ₦
-                {total.toLocaleString()}
+    ₦
+    {platformFee.toLocaleString()}
 
-              </span>
+  </span>
 
-            </div>
+</div>
+
+<div className="
+  flex
+  justify-between
+  text-xl
+  font-bold
+">
+
+  <span>
+
+    Total
+
+  </span>
+
+  <span>
+
+    ₦
+    {total.toLocaleString()}
+
+  </span>
+
+</div>
 
           </div>
 

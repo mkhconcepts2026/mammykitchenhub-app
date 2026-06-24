@@ -49,7 +49,10 @@ const [stats, setStats] = useState({
   pending: 0,
   vendors: 0,
   riders: 0,
-  orders: 0
+  orders: 0,
+  mkhRevenue: 0,
+  platformRevenue: 0,
+  deliveryRevenue: 0
 });
   
   
@@ -227,17 +230,66 @@ const loadDashboardStats = async () => {
       .from("orders")
       .select("*", {
         count: "exact",
-        head: true
-
-        
+        head: true      
       });
 
-  setStats({
+      const {
+  data: revenueOrders
+} =
+await supabase
+  .from("orders")
+  .select(`
+    mkh_amount,
+    platform_fee
+  `)
+  .eq(
+    "status",
+    "delivered"
+  );
+
+const mkhRevenue =
+  (revenueOrders || [])
+    .reduce(
+
+      (sum, order) =>
+
+        sum +
+        Number(
+          order.mkh_amount || 0
+        ),
+
+      0
+
+    );
+
+const platformRevenue =
+  (revenueOrders || [])
+    .reduce(
+
+      (sum, order) =>
+
+        sum +
+        Number(
+          order.platform_fee || 0
+        ),
+
+      0
+
+    );
+
+const deliveryRevenue =
+  mkhRevenue -
+  platformRevenue;
+
+ setStats({
   applications: applications || 0,
   pending: pendingApplications || 0,
   vendors: vendors || 0,
   riders: riders || 0,
-  orders: orders || 0
+  orders: orders || 0,
+  mkhRevenue: mkhRevenue || 0,
+  platformRevenue: platformRevenue || 0,
+  deliveryRevenue: deliveryRevenue || 0
 });
 
 const {
@@ -378,13 +430,17 @@ console.log(
   "
 >
 
-  <Image
-    src="/logo.png"
-    alt="Mammy Kitchen Hub"
-    width={130}
-    height={130}
-    priority
-  />
+ <Image
+  src="/logo.png"
+  alt="MKH Logo"
+  width={180}
+  height={52}
+  priority
+  style={{
+    width: "180px",
+    height: "auto"
+  }}
+/>
 
   <h2
     className="
@@ -716,6 +772,9 @@ console.log(
     <h3 className="text-5xl font-bold mt-2">
       {stats.orders}
     </h3>
+
+
+    
   </div>
 
        </div>
@@ -1666,11 +1725,117 @@ setSelectedOrder(order);
 
 )}
 
-                   {activeTab === "revenue" && (
-            <h2 className="text-3xl font-bold">
-              Revenue
-            </h2>
-          )}
+      {activeTab === "revenue" && (
+
+  <div>
+
+    <h2
+      className="
+        text-3xl
+        font-bold
+        mb-8
+      "
+    >
+      MKH Finance Center
+    </h2>
+
+    <div
+      className="
+        grid
+        md:grid-cols-3
+        gap-6
+      "
+    >
+
+      <div
+        className="
+          bg-white
+          rounded-3xl
+          p-6
+          shadow-sm
+          border-l-4
+          border-yellow-500
+        "
+      >
+
+        <p className="text-gray-500">
+          Total MKH Revenue
+        </p>
+
+        <h3
+          className="
+            text-4xl
+            font-bold
+            mt-2
+            text-yellow-600
+          "
+        >
+          ₦{stats.mkhRevenue.toLocaleString()}
+        </h3>
+
+      </div>
+
+      <div
+        className="
+          bg-white
+          rounded-3xl
+          p-6
+          shadow-sm
+          border-l-4
+          border-orange-500
+        "
+      >
+
+        <p className="text-gray-500">
+          Platform Fee Revenue
+        </p>
+
+       <h3
+  className="
+    text-4xl
+    font-bold
+    mt-2
+    text-orange-600
+  "
+>
+  ₦{stats.platformRevenue.toLocaleString()}
+</h3>
+
+      </div>
+
+      <div
+        className="
+          bg-white
+          rounded-3xl
+          p-6
+          shadow-sm
+          border-l-4
+          border-green-500
+        "
+      >
+
+        <p className="text-gray-500">
+          Delivery Commission
+        </p>
+
+       <h3
+  className="
+    text-4xl
+    font-bold
+    mt-2
+    text-green-600
+  "
+>
+  ₦{stats.deliveryRevenue.toLocaleString()}
+</h3>
+
+      </div>
+
+    </div>
+
+  </div>
+
+)}
 
         </div>
 

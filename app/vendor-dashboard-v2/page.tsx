@@ -27,6 +27,7 @@ export default function VendorDashboardV2() {
 
   const [currentTab, setCurrentTab] =
   useState<Tab>("dashboard");
+  
     const [orders, setOrders] =
   useState<any[]>([]);
 
@@ -75,8 +76,17 @@ const nextFridayText =
 const [totalEarned, setTotalEarned] =
   useState(0);
 
+const successfulOrders =
+  orders.filter(
+    (order) =>
+      order.status === "delivered"
+  ).length;
+
 const [vendorWallet, setVendorWallet] =
   useState<any>(null);
+
+  const [payoutHistory, setPayoutHistory] =
+  useState<any[]>([]);
 
   const [cacFile, setCacFile] =
   useState<File | null>(null);
@@ -199,6 +209,27 @@ await supabase
 
 setHasPendingPayout(
   !!pendingRequest
+);
+
+const {
+  data: payouts
+} =
+await supabase
+  .from("payout_requests")
+  .select("*")
+  .eq(
+    "requester_id",
+    profile.vendor_id
+  )
+  .order(
+    "requested_at",
+    {
+      ascending:false
+    }
+  );
+
+setPayoutHistory(
+  payouts || []
 );
 
 if (wallet) {
@@ -1987,6 +2018,34 @@ useEffect(() => {
     </div>
 
     <div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+    Successful Orders
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    {successfulOrders}
+  </h2>
+
+  <p className="
+    text-green-600
+    mt-2
+  ">
+    Completed Deliveries
+  </p>
+
+</div>
+
+    <div className="
       bg-white
       rounded-3xl
       p-8
@@ -2073,6 +2132,99 @@ useEffect(() => {
   </div>
 
 )}
+
+<div
+  className="
+    bg-white
+    rounded-3xl
+    p-8
+    shadow-sm
+    mt-8
+  "
+>
+
+  <h3
+    className="
+      text-2xl
+      font-bold
+      mb-6
+    "
+  >
+    Withdrawal History
+  </h3>
+
+  {payoutHistory.length === 0 ? (
+
+    <p className="text-gray-500">
+      No withdrawal requests yet.
+    </p>
+
+  ) : (
+
+    payoutHistory.map((payout) => (
+
+      <div
+        key={payout.id}
+        className="
+          border-b
+          py-4
+          flex
+          justify-between
+          items-center
+        "
+      >
+
+        <div>
+
+          <p className="font-semibold">
+            ₦{Number(
+              payout.amount
+            ).toLocaleString()}
+          </p>
+
+          <p className="text-sm text-gray-500">
+            {new Date(
+              payout.requested_at
+            ).toLocaleDateString()}
+          </p>
+
+        </div>
+
+        <div>
+
+          <span
+            className={`
+              px-3
+              py-2
+              rounded-full
+              text-xs
+              font-semibold
+
+              ${
+                payout.status === "pending"
+                  ? "bg-orange-100 text-orange-700"
+                  : payout.status === "approved"
+                  ? "bg-blue-100 text-blue-700"
+                  : payout.status === "processing"
+                  ? "bg-purple-100 text-purple-700"
+                  : payout.status === "paid"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }
+            `}
+          >
+            {payout.status.toUpperCase()}
+          </span>
+
+        </div>
+
+      </div>
+
+    ))
+
+  )}
+
+</div>
 
        {currentTab === "kyc" && (
 
