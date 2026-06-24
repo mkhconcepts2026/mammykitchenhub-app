@@ -31,6 +31,13 @@ export default function FinancePage() {
   setPayoutRequests
 ] = useState<any[]>([]);
 
+const [
+  vendorsMap,
+  setVendorsMap
+] = useState<
+  Record<string,string>
+>({});
+
 async function loadFinanceStats() {
 
 const {
@@ -50,6 +57,34 @@ await supabase
 
 setPayoutRequests(
   payouts || []
+);
+
+const {
+  data: vendors
+} =
+await supabase
+  .from("vendors")
+  .select(`
+    id,
+    name
+  `);
+
+const map:
+  Record<string,string> = {};
+
+(vendors || []).forEach(
+  (vendor) => {
+
+    map[
+      vendor.id
+    ] =
+    vendor.name;
+
+  }
+);
+
+setVendorsMap(
+  map
 );
 
   const {
@@ -216,7 +251,107 @@ useEffect(() => {
 
 }, []);
 
+async function markProcessing(
+  request: any
+) {
 
+  const confirmed =
+    confirm(
+      `Move ₦${Number(
+        request.amount
+      ).toLocaleString()} to Processing?`
+    );
+
+  if (!confirmed) {
+
+    return;
+
+  }
+
+  const {
+    error
+  } =
+  await supabase
+    .from(
+      "payout_requests"
+    )
+    .update({
+
+      status:
+        "processing"
+
+    })
+    .eq(
+      "id",
+      request.id
+    );
+
+  if (error) {
+
+    alert(
+      error.message
+    );
+
+    return;
+
+  }
+
+  loadFinanceStats();
+
+}
+
+async function markPaid(
+  request: any
+) {
+
+  const confirmed =
+    confirm(
+      `Mark ₦${Number(
+        request.amount
+      ).toLocaleString()} as Paid?`
+    );
+
+  if (!confirmed) {
+
+    return;
+
+  }
+
+  const {
+    error
+  } =
+  await supabase
+    .from(
+      "payout_requests"
+    )
+    .update({
+
+      status:
+        "paid",
+
+      processed_at:
+        new Date()
+          .toISOString()
+
+    })
+    .eq(
+      "id",
+      request.id
+    );
+
+  if (error) {
+
+    alert(
+      error.message
+    );
+
+    return;
+
+  }
+
+  loadFinanceStats();
+
+}
 
   return (
 
@@ -469,31 +604,137 @@ useEffect(() => {
 
             <div>
 
-              <p className="font-semibold">
-                ₦{
-                  Number(
-                    request.amount
-                  ).toLocaleString()
-                }
-              </p>
+  <p className="font-semibold">
+    ₦{
+      Number(
+        request.amount
+      ).toLocaleString()
+    }
+  </p>
 
-              <p className="text-sm text-gray-500">
-                {request.status}
-              </p>
+  <p
+    className="
+      text-xs
+      text-gray-400
+      mt-1
+    "
+  >
+    Requested{" "}
+    {
+      new Date(
+        request.requested_at
+      ).toLocaleDateString(
+        "en-NG",
+        {
+          day: "numeric",
+          month: "short",
+          year: "numeric"
+        }
+      )
+    }
+  </p>
 
-            </div>
+  <span
+    className={`
+      inline-block
+      mt-2
+      px-3
+      py-1
+      rounded-full
+      text-xs
+      font-semibold
 
-            <span
-              className="
-                px-4
-                py-2
-                rounded-xl
-                bg-gray-100
-                text-sm
-              "
-            >
-              {request.requester_type}
-            </span>
+      ${
+        request.status === "pending"
+          ? "bg-yellow-100 text-yellow-700"
+
+          : request.status === "processing"
+          ? "bg-blue-100 text-blue-700"
+
+          : request.status === "paid"
+          ? "bg-green-100 text-green-700"
+
+          : "bg-gray-100 text-gray-700"
+      }
+    `}
+  >
+    {request.status.toUpperCase()}
+  </span>
+
+</div>
+
+           <div
+  className="
+    flex
+    items-center
+    gap-3
+  "
+>
+
+  <span
+    className="
+      px-4
+      py-2
+      rounded-xl
+      bg-gray-100
+      text-sm
+      font-medium
+    "
+  >
+    {
+      vendorsMap[
+        request.requester_id
+      ] || "Unknown Vendor"
+    }
+  </span>
+
+  {request.status === "pending" && (
+
+    <button
+      onClick={() =>
+        markProcessing(
+          request
+        )
+      }
+      className="
+        bg-blue-600
+        text-white
+        px-4
+        py-2
+        rounded-xl
+        text-sm
+        font-semibold
+      "
+    >
+      Mark Processing
+    </button>
+
+  )}
+
+{request.status === "processing" && (
+
+  <button
+    onClick={() =>
+      markPaid(
+        request
+      )
+    }
+    className="
+      bg-green-600
+      text-white
+      px-4
+      py-2
+      rounded-xl
+      text-sm
+      font-semibold
+    "
+  >
+    Mark Paid
+  </button>
+
+)}
+
+</div>
 
           </div>
 
