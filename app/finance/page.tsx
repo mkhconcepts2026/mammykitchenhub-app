@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import FinanceHeader from "./FinanceHeader";
+import RevenueOverview from "./RevenueOverview";
+import ExecutiveSummary from "./ExecutiveSummary";
+import RevenueAnalytics from "./RevenueAnalytics";
+import SettlementCentre from "./SettlementCentre";
+import RecentFinancialActivity from "./RecentFinancialActivity";
 import { createClient } from "@/lib/supabase/client";
 
 export default function FinancePage() {
@@ -26,332 +32,723 @@ export default function FinancePage() {
 
     });
 
-    const [
-  payoutRequests,
-  setPayoutRequests
-] = useState<any[]>([]);
+  const [
+    payoutRequests,
+    setPayoutRequests
+  ] = useState<any[]>([]);
 
-const [
-  vendorsMap,
-  setVendorsMap
-] = useState<
-  Record<string,string>
->({});
+  const [
+    vendorsMap,
+    setVendorsMap
+  ] = useState<
+    Record<string, string>
+  >({});
 
-async function loadFinanceStats() {
+  const [summary, setSummary] =
+    useState({
 
-const {
-  data: payouts
-} =
-await supabase
-  .from(
-    "payout_requests"
-  )
-  .select("*")
-  .order(
-    "requested_at",
-    {
-      ascending: false
-    }
-  );
+      totalOrders: 0,
 
-setPayoutRequests(
-  payouts || []
-);
+      averageRevenue: 0,
 
-const {
-  data: vendors
-} =
-await supabase
-  .from("vendors")
-  .select(`
+      pendingRequests: 0,
+
+      completedPayouts: 0
+
+    });
+
+  const [
+    revenueTrends,
+    setRevenueTrends
+  ] = useState({
+
+    averageOrderValue: 0,
+
+    highestRevenueDay: "",
+
+    highestRevenueAmount: 0,
+
+    yesterdayRevenue: 0,
+
+    lastWeekRevenue: 0,
+
+    todayGrowth: 0,
+
+    weekGrowth: 0
+
+  });
+
+  const [
+    revenueAnalytics,
+    setRevenueAnalytics
+  ] = useState({
+
+    today: 0,
+
+    week: 0,
+
+    month: 0
+
+  });
+
+  const [
+    searchTerm,
+    setSearchTerm
+  ] = useState("");
+
+  const [
+    statusFilter,
+    setStatusFilter
+  ] = useState("All Status");
+
+  async function loadFinanceStats() {
+
+    const {
+      data: payouts
+    } =
+      await supabase
+        .from(
+          "payout_requests"
+        )
+        .select("*")
+        .order(
+          "requested_at",
+          {
+            ascending: false
+          }
+        );
+
+    setPayoutRequests(
+      payouts || []
+    );
+
+    const {
+      data: vendors
+    } =
+      await supabase
+        .from("vendors")
+        .select(`
     id,
     name
   `);
 
-const map:
-  Record<string,string> = {};
+    const map:
+      Record<string, string> = {};
 
-(vendors || []).forEach(
-  (vendor) => {
+    (vendors || []).forEach(
+      (vendor) => {
 
-    map[
-      vendor.id
-    ] =
-    vendor.name;
+        map[
+          vendor.id
+        ] =
+          vendor.name;
 
-  }
-);
-
-setVendorsMap(
-  map
-);
-
-  const {
-    data: orders
-  } =
-  await supabase
-    .from("orders")
-    .select(`
-      mkh_amount,
-      platform_fee,
-      delivery_fee
-    `);
-
-  const {
-    data: pendingPayouts
-  } =
-  await supabase
-    .from("payout_requests")
-    .select("amount")
-    .eq(
-      "status",
-      "pending"
+      }
     );
 
-  const {
-    data: processingPayouts
-  } =
-  await supabase
-    .from("payout_requests")
-    .select("amount")
-    .eq(
-      "status",
-      "processing"
+    setVendorsMap(
+      map
     );
 
-  const {
-    data: paidPayouts
-  } =
-  await supabase
-    .from("payout_requests")
-    .select("amount")
-    .eq(
-      "status",
-      "paid"
-    );
+    const {
+      data: orders
+    } =
+      await supabase
+        .from("orders")
+        .select(`
+    total,
+    mkh_amount,
+    platform_fee,
+    delivery_fee,
+    created_at
+  `);
 
-  const totalRevenue =
-    (orders || []).reduce(
+    const {
+      data: pendingPayouts
+    } =
+      await supabase
+        .from("payout_requests")
+        .select("amount")
+        .eq(
+          "status",
+          "pending"
+        );
 
-      (sum, order) =>
+    const {
+      data: processingPayouts
+    } =
+      await supabase
+        .from("payout_requests")
+        .select("amount")
+        .eq(
+          "status",
+          "processing"
+        );
 
-        sum +
-        Number(
-          order.mkh_amount || 0
-        ),
+    const {
+      data: paidPayouts
+    } =
+      await supabase
+        .from("payout_requests")
+        .select("amount")
+        .eq(
+          "status",
+          "paid"
+        );
 
+    /* ---------- DATE CALCULATIONS ---------- */
+
+    const today =
+      new Date();
+
+    today.setHours(
+      0,
+      0,
+      0,
       0
-
     );
 
-  const platformRevenue =
-    (orders || []).reduce(
+    const weekStart =
+      new Date(today);
 
-      (sum, order) =>
-
-        sum +
-        Number(
-          order.platform_fee || 0
-        ),
-
-      0
-
+    weekStart.setDate(
+      today.getDate() -
+      today.getDay()
     );
 
- const deliveryRevenue =
-  (orders || []).reduce(
+    const monthStart =
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      );
 
-    (sum, order) =>
+    const yesterday =
+      new Date(today);
 
-      sum +
+    yesterday.setDate(
+      today.getDate() - 1
+    );
 
-      (
-        Number(
-          order.mkh_amount || 0
+    const lastWeekStart =
+      new Date(weekStart);
+
+    lastWeekStart.setDate(
+      weekStart.getDate() - 7
+    );
+
+    /* ---------- REVENUE TOTALS ---------- */
+
+    const totalRevenue =
+      (orders || []).reduce(
+
+        (sum, order) =>
+
+          sum +
+
+          Number(
+            order.mkh_amount || 0
+          ),
+
+        0
+
+      );
+
+    const todayRevenue =
+      (orders || [])
+
+        .filter(
+
+          (order) =>
+
+            new Date(
+              order.created_at
+            ) >= today
+
         )
 
-        -
+        .reduce(
 
-        Number(
-          order.platform_fee || 0
+          (sum, order) =>
+
+            sum +
+
+            Number(
+              order.mkh_amount || 0
+            ),
+
+          0
+
+        );
+
+    const weekRevenue =
+      (orders || [])
+
+        .filter(
+
+          (order) =>
+
+            new Date(
+              order.created_at
+            ) >= weekStart
+
         )
-      ),
 
-    0
+        .reduce(
 
-  );
+          (sum, order) =>
 
-  const pendingAmount =
-    (pendingPayouts || []).reduce(
+            sum +
 
-      (sum, payout) =>
+            Number(
+              order.mkh_amount || 0
+            ),
 
-        sum +
-        Number(
-          payout.amount || 0
-        ),
+          0
 
-      0
+        );
+
+    const monthRevenue =
+      (orders || [])
+
+        .filter(
+
+          (order) =>
+
+            new Date(
+              order.created_at
+            ) >= monthStart
+
+        )
+
+        .reduce(
+
+          (sum, order) =>
+
+            sum +
+
+            Number(
+              order.mkh_amount || 0
+            ),
+
+          0
+
+        );
+
+    const yesterdayRevenue =
+      (orders || [])
+
+        .filter((order) => {
+
+          const orderDate =
+            new Date(
+              order.created_at
+            );
+
+          return (
+
+            orderDate >= yesterday &&
+
+            orderDate < today
+
+          );
+
+        })
+
+        .reduce(
+
+          (sum, order) =>
+
+            sum +
+
+            Number(
+              order.mkh_amount || 0
+            ),
+
+          0
+
+        );
+
+    const lastWeekRevenue =
+      (orders || [])
+
+        .filter((order) => {
+
+          const orderDate =
+            new Date(
+              order.created_at
+            );
+
+          return (
+
+            orderDate >= lastWeekStart &&
+
+            orderDate < weekStart
+
+          );
+
+        })
+
+        .reduce(
+
+          (sum, order) =>
+
+            sum +
+
+            Number(
+              order.mkh_amount || 0
+            ),
+
+          0
+
+        );
+
+    const averageOrderValue =
+      (orders && orders.length > 0)
+
+        ? Math.round(
+
+          orders.reduce(
+
+            (sum, order) =>
+
+              sum +
+
+              Number(
+                order.total || 0
+              ),
+
+            0
+
+          )
+
+          /
+
+          orders.length
+
+        )
+
+        : 0;
+
+    const revenueByDay:
+      Record<string, number> = {};
+
+    (orders || []).forEach(
+      (order) => {
+
+        const day =
+          new Date(
+            order.created_at
+          ).toLocaleDateString(
+            "en-NG",
+            {
+              weekday: "long"
+            }
+          );
+
+        revenueByDay[day] =
+
+          (revenueByDay[day] || 0)
+
+          +
+
+          Number(
+            order.mkh_amount || 0
+          );
+
+      }
+    );
+
+    let highestRevenueDay = "";
+
+    let highestRevenueAmount = 0;
+
+    Object.entries(
+      revenueByDay
+    ).forEach(
+
+      ([day, amount]) => {
+
+        if (
+          amount >
+          highestRevenueAmount
+        ) {
+
+          highestRevenueDay =
+            day;
+
+          highestRevenueAmount =
+            amount;
+
+        }
+
+      }
 
     );
 
-  const processingAmount =
-    (processingPayouts || []).reduce(
+    const platformRevenue =
+      (orders || []).reduce(
 
-      (sum, payout) =>
+        (sum, order) =>
 
-        sum +
-        Number(
-          payout.amount || 0
-        ),
+          sum +
+          Number(
+            order.platform_fee || 0
+          ),
 
-      0
+        0
 
-    );
+      );
 
-  const paidAmount =
-    (paidPayouts || []).reduce(
+    const deliveryRevenue =
+      (orders || []).reduce(
 
-      (sum, payout) =>
+        (sum, order) =>
 
-        sum +
-        Number(
-          payout.amount || 0
-        ),
+          sum +
 
-      0
+          (
+            Number(
+              order.mkh_amount || 0
+            )
 
-    );
+            -
 
-  setStats({
+            Number(
+              order.platform_fee || 0
+            )
+          ),
 
-    totalRevenue,
+        0
 
-    platformRevenue,
+      );
 
-    deliveryRevenue,
+    const pendingAmount =
+      (pendingPayouts || []).reduce(
 
-    pendingPayouts:
-      pendingAmount,
+        (sum, payout) =>
 
-    processingPayouts:
-      processingAmount,
+          sum +
+          Number(
+            payout.amount || 0
+          ),
 
-    paidPayouts:
-      paidAmount
+        0
 
-  });
+      );
 
-}
+    const processingAmount =
+      (processingPayouts || []).reduce(
 
-useEffect(() => {
+        (sum, payout) =>
 
-  loadFinanceStats();
+          sum +
+          Number(
+            payout.amount || 0
+          ),
 
-}, []);
+        0
 
-async function markProcessing(
-  request: any
-) {
+      );
 
-  const confirmed =
-    confirm(
-      `Move ₦${Number(
-        request.amount
-      ).toLocaleString()} to Processing?`
-    );
+    const paidAmount =
+      (paidPayouts || []).reduce(
 
-  if (!confirmed) {
+        (sum, payout) =>
 
-    return;
+          sum +
+          Number(
+            payout.amount || 0
+          ),
+
+        0
+
+      );
+
+    setStats({
+
+      totalRevenue,
+
+      platformRevenue,
+
+      deliveryRevenue,
+
+      pendingPayouts:
+        pendingAmount,
+
+      processingPayouts:
+        processingAmount,
+
+      paidPayouts:
+        paidAmount
+
+    });
+
+    setSummary({
+
+      totalOrders:
+        orders?.length || 0,
+
+      averageRevenue:
+        orders && orders.length > 0
+
+          ? Math.round(
+            totalRevenue /
+            orders.length
+          )
+
+          : 0,
+
+      pendingRequests:
+        pendingPayouts?.length || 0,
+
+      completedPayouts:
+        paidPayouts?.length || 0
+
+    });
+
+    setRevenueAnalytics({
+
+      today:
+        todayRevenue,
+
+      week:
+        weekRevenue,
+
+      month:
+        monthRevenue
+
+    });
+
+    setRevenueTrends({
+
+      averageOrderValue,
+
+      highestRevenueDay,
+
+      highestRevenueAmount,
+
+      yesterdayRevenue,
+
+      lastWeekRevenue,
+
+      todayGrowth: 0,
+
+      weekGrowth: 0
+
+    });
 
   }
 
-  const {
-    error
-  } =
-  await supabase
-    .from(
-      "payout_requests"
-    )
-    .update({
 
-      status:
-        "processing"
 
-    })
-    .eq(
-      "id",
-      request.id
-    );
+  useEffect(() => {
 
-  if (error) {
+    loadFinanceStats();
 
-    alert(
-      error.message
-    );
+  }, []);
 
-    return;
+  async function markProcessing(
+    request: any
+  ) {
 
-  }
+    const confirmed =
+      confirm(
+        `Move ₦${Number(
+          request.amount
+        ).toLocaleString()} to Processing?`
+      );
 
-  loadFinanceStats();
+    if (!confirmed) {
 
-}
+      return;
 
-async function markPaid(
-  request: any
-) {
+    }
 
-  const confirmed =
-    confirm(
-      `Mark ₦${Number(
-        request.amount
-      ).toLocaleString()} as Paid?`
-    );
+    const {
+      error
+    } =
+      await supabase
+        .from(
+          "payout_requests"
+        )
+        .update({
 
-  if (!confirmed) {
+          status:
+            "processing"
 
-    return;
+        })
+        .eq(
+          "id",
+          request.id
+        );
 
-  }
+    if (error) {
 
-  const {
-    error
-  } =
-  await supabase
-    .from(
-      "payout_requests"
-    )
-    .update({
+      alert(
+        error.message
+      );
 
-      status:
-        "paid",
+      return;
 
-      processed_at:
-        new Date()
-          .toISOString()
+    }
 
-    })
-    .eq(
-      "id",
-      request.id
-    );
-
-  if (error) {
-
-    alert(
-      error.message
-    );
-
-    return;
+    loadFinanceStats();
 
   }
 
-  loadFinanceStats();
+  async function markPaid(
+    request: any
+  ) {
 
-}
+    const confirmed =
+      confirm(
+        `Mark ₦${Number(
+          request.amount
+        ).toLocaleString()} as Paid?`
+      );
+
+    if (!confirmed) {
+
+      return;
+
+    }
+
+    const {
+      error
+    } =
+      await supabase
+        .from(
+          "payout_requests"
+        )
+        .update({
+
+          status:
+            "paid",
+
+          processed_at:
+            new Date()
+              .toISOString()
+
+        })
+        .eq(
+          "id",
+          request.id
+        );
+
+    if (error) {
+
+      alert(
+        error.message
+      );
+
+      return;
+
+    }
+
+    loadFinanceStats();
+
+  }
 
   return (
 
@@ -370,385 +767,128 @@ async function markPaid(
         "
       >
 
-       <div
-  className="
-    flex
-    flex-col
-    lg:flex-row
-    lg:items-center
-    gap-6
-    mb-10
-  "
->
+        <FinanceHeader />
 
- <Image
-  src="/logo.png"
-  alt="MKH Logo"
-  width={180}
-  height={52}
-  priority
-  style={{
-    width: "180px",
-    height: "auto"
-  }}
+
+        <RevenueOverview
+
+          totalRevenue={
+            stats.totalRevenue
+          }
+
+          platformRevenue={
+            stats.platformRevenue
+          }
+
+          deliveryRevenue={
+            stats.deliveryRevenue
+          }
+
+          pendingPayouts={
+            stats.pendingPayouts
+          }
+
+          processingPayouts={
+            stats.processingPayouts
+          }
+
+          paidPayouts={
+            stats.paidPayouts
+          }
+
+        />
+
+                 <ExecutiveSummary
+            totalOrders={
+              summary.totalOrders
+            }
+            averageRevenue={
+              summary.averageRevenue
+            }
+            pendingRequests={
+              summary.pendingRequests
+            }
+            completedPayouts={
+              summary.completedPayouts
+            }
+          />
+
+          <RevenueAnalytics
+
+            todayRevenue={
+              revenueAnalytics.today
+            }
+
+            weekRevenue={
+              revenueAnalytics.week
+            }
+
+            monthRevenue={
+              revenueAnalytics.month
+            }
+
+            averageOrderValue={
+              revenueTrends.averageOrderValue
+            }
+
+            highestRevenueDay={
+              revenueTrends.highestRevenueDay
+            }
+
+            highestRevenueAmount={
+              revenueTrends.highestRevenueAmount
+            }
+
+          />
+          <SettlementCentre
+
+            payoutRequests={
+              payoutRequests
+            }
+
+            vendorsMap={
+              vendorsMap
+            }
+
+            markProcessing={
+              markProcessing
+            }
+
+            markPaid={
+              markPaid
+            }
+
+          />
+
+   <RecentFinancialActivity
+
+  payoutRequests={
+    payoutRequests
+  }
+
+  vendorsMap={
+    vendorsMap
+  }
+
+  searchTerm={
+    searchTerm
+  }
+
+  setSearchTerm={
+    setSearchTerm
+  }
+
+  statusFilter={
+    statusFilter
+  }
+
+  setStatusFilter={
+    setStatusFilter
+  }
+
 />
 
-  <div>
-
-    <h1
-      className="
-        text-5xl
-        font-bold
-        tracking-tight
-      "
-    >
-      Finance & Accounts
-    </h1>
-
-    <p
-      className="
-        text-gray-500
-        mt-2
-        text-lg
-      "
-    >
-      Manage MKH revenue, settlements and payouts
-    </p>
-
-  </div>
-
-</div>
-<div
-  className="
-    grid
-    grid-cols-1
-    md:grid-cols-2
-    xl:grid-cols-3
-    gap-6
-    mb-10
-  "
->
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border
-      border-gray-100
-    "
-  >
-
-    <p className="text-gray-500">
-      Total MKH Revenue
-    </p>
-
-    <h2 className="text-4xl font-bold mt-3">
-      ₦{stats.totalRevenue.toLocaleString()}
-    </h2>
-
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border
-      border-gray-100
-    "
-  >
-
-    <p className="text-gray-500">
-      Platform Fees
-    </p>
-
-    <h2 className="text-4xl font-bold mt-3">
-      ₦{stats.platformRevenue.toLocaleString()}
-    </h2>
-
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border
-      border-gray-100
-    "
-  >
-
-    <p className="text-gray-500">
-      MKH Delivery Share
-    </p>
-
-    <h2 className="text-4xl font-bold mt-3">
-      ₦{stats.deliveryRevenue.toLocaleString()}
-    </h2>
-
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border
-      border-gray-100
-    "
-  >
-
-    <p className="text-gray-500">
-      Pending Payouts
-    </p>
-
-    <h2 className="text-4xl font-bold mt-3">
-      ₦{stats.pendingPayouts.toLocaleString()}
-    </h2>
-
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border
-      border-gray-100
-    "
-  >
-
-    <p className="text-gray-500">
-      Processing Payouts
-    </p>
-
-    <h2 className="text-4xl font-bold mt-3">
-      ₦{stats.processingPayouts.toLocaleString()}   
-       </h2>
-
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border
-      border-gray-100
-    "
-  >
-
-    <p className="text-gray-500">
-      Paid Payouts
-    </p>
-
-    <h2 className="text-4xl font-bold mt-3">
-      ₦{stats.paidPayouts.toLocaleString()}
-    </h2>
-
-   </div>
-
-</div>
-
-<div
-  className="
-    bg-white
-    rounded-3xl
-    p-8
-    shadow-sm
-    border
-    border-gray-100
-  "
->
-
-  <h2
-    className="
-      text-3xl
-      font-bold
-      mb-6
-    "
-  >
-    Settlement Queue
-  </h2>
-
-  {payoutRequests.length === 0 ? (
-
-    <p className="text-gray-500">
-      No payout requests found.
-    </p>
-
-  ) : (
-
-    <div className="space-y-4">
-
-      {payoutRequests.map(
-        (request) => (
-
-          <div
-            key={request.id}
-            className="
-              flex
-              justify-between
-              items-center
-              border-b
-              pb-4
-            "
-          >
-
-            <div>
-
-  <p className="font-semibold">
-    ₦{
-      Number(
-        request.amount
-      ).toLocaleString()
-    }
-  </p>
-
-  <p
-    className="
-      text-xs
-      text-gray-400
-      mt-1
-    "
-  >
-    Requested{" "}
-    {
-      new Date(
-        request.requested_at
-      ).toLocaleDateString(
-        "en-NG",
-        {
-          day: "numeric",
-          month: "short",
-          year: "numeric"
-        }
-      )
-    }
-  </p>
-
-  <span
-    className={`
-      inline-block
-      mt-2
-      px-3
-      py-1
-      rounded-full
-      text-xs
-      font-semibold
-
-      ${
-        request.status === "pending"
-          ? "bg-yellow-100 text-yellow-700"
-
-          : request.status === "processing"
-          ? "bg-blue-100 text-blue-700"
-
-          : request.status === "paid"
-          ? "bg-green-100 text-green-700"
-
-          : "bg-gray-100 text-gray-700"
-      }
-    `}
-  >
-    {request.status.toUpperCase()}
-  </span>
-
-</div>
-
-           <div
-  className="
-    flex
-    items-center
-    gap-3
-  "
->
-
-  <span
-    className="
-      px-4
-      py-2
-      rounded-xl
-      bg-gray-100
-      text-sm
-      font-medium
-    "
-  >
-    {
-      vendorsMap[
-        request.requester_id
-      ] || "Unknown Vendor"
-    }
-  </span>
-
-  {request.status === "pending" && (
-
-    <button
-      onClick={() =>
-        markProcessing(
-          request
-        )
-      }
-      className="
-        bg-blue-600
-        text-white
-        px-4
-        py-2
-        rounded-xl
-        text-sm
-        font-semibold
-      "
-    >
-      Mark Processing
-    </button>
-
-  )}
-
-{request.status === "processing" && (
-
-  <button
-    onClick={() =>
-      markPaid(
-        request
-      )
-    }
-    className="
-      bg-green-600
-      text-white
-      px-4
-      py-2
-      rounded-xl
-      text-sm
-      font-semibold
-    "
-  >
-    Mark Paid
-  </button>
-
-)}
-
-</div>
-
-          </div>
-
-        )
-
-      )}
-
-    </div>
-
-  )}
-
-</div>
-
-      </div>
+        </div>
 
     </main>
 
