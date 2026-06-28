@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  Suspense,
+  useEffect,
+  useState
+} from "react";
 
 import Link from "next/link";
 
@@ -16,7 +20,7 @@ import {
 import { createClient }
 from "@/lib/supabase/client";
 
-export default function SuccessPage() {
+function SuccessContent() {
 
   const searchParams =
     useSearchParams();
@@ -243,4 +247,31 @@ export default function SuccessPage() {
     </main>
 
   );
+}
+export default function SuccessPage() {
+
+  return (
+
+    <Suspense
+      fallback={
+
+        <main className="min-h-screen flex items-center justify-center">
+
+          <h1 className="text-2xl font-bold">
+
+            Loading...
+
+          </h1>
+
+        </main>
+
+      }
+    >
+
+      <SuccessContent />
+
+    </Suspense>
+
+  );
+
 }

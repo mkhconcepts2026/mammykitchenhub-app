@@ -29,23 +29,25 @@ export type CartItem = {
 
 type CartContextType = {
 
-  items:CartItem[];
+  items: CartItem[];
 
-  addItem:(
+  addItem: (
 
-    item:CartItem
+    item: CartItem
 
-  )=>void;
+  ) => void;
 
-  removeItem:(
+  removeItem: (
 
-    id:string
+    id: string
 
-  )=>void;
+  ) => void;
 
-  clearCart:()=>void;
+  clearCart: () => void;
 
-  subtotal:number;
+  subtotal: number;
+
+  totalItems: number;
 
 };
 
@@ -184,23 +186,33 @@ export function CartProvider({
 
   return(
 
-    <CartContext.Provider
+  <CartContext.Provider
 
-      value={{
+  value={{
 
-        items,
+    items,
 
-        addItem,
+    addItem,
 
-        removeItem,
+    removeItem,
 
-        clearCart,
+    clearCart,
 
-        subtotal
+    subtotal,
 
-      }}
+    totalItems: items.reduce(
 
-    >
+      (total, item) =>
+
+        total + item.quantity,
+
+      0
+
+    )
+
+  }}
+
+>
 
       {children}
 
