@@ -234,17 +234,42 @@ setPayoutHistory(
 
 if (wallet) {
 
-  setAvailableBalance(
+  let availableBalance =
     Number(
       wallet.available_balance || 0
-    )
+    );
+
+  let pendingBalance =
+    Number(
+      wallet.accrued_balance || 0
+    );
+
+  // Automatically move matured earnings
+  // into Available Balance during
+  // payout window.
+
+  if (
+
+    isPayoutWindowOpen &&
+
+    pendingBalance > 0
+
+  ) {
+
+    availableBalance +=
+      pendingBalance;
+
+    pendingBalance = 0;
+
+  }
+
+  setAvailableBalance(
+    availableBalance
   );
 
- setPendingBalance(
-  Number(
-    wallet.accrued_balance || 0
-  )
-);
+  setPendingBalance(
+    pendingBalance
+  );
 
   setTotalEarned(
     Number(
@@ -1117,7 +1142,7 @@ async function requestPayout() {
           "vendor",
 
         amount:
-          availableBalance,
+          pendingBalance,
 
         status:
           "pending"
@@ -1166,13 +1191,13 @@ async function requestPayout() {
 }
 useEffect(() => {
 
+  checkPayoutWindow();
+
   loadVendor();
 
   loadMenuItems();
 
   loadOrders();
-
-  checkPayoutWindow();
 
   loadVendorKyc();
 
@@ -1889,67 +1914,93 @@ useEffect(() => {
       gap-6
     ">
 
-      <div className="
-  bg-orange-500
-  text-white
-  rounded-3xl
-  p-6
-">
+  <div
+  className="
+    bg-orange-500
+    text-white
+    rounded-3xl
+    p-6
+  "
+>
 
   <p className="text-orange-100">
-    Available Balance
+    Available for Withdrawal
   </p>
 
-  <h2 className="
-    text-4xl
-    font-bold
-    mt-2
-  ">
-    ₦{availableBalance.toLocaleString()}
+  <h2
+    className="
+      text-4xl
+      font-bold
+      mt-2
+    "
+  >
+    ₦{pendingBalance.toLocaleString()}
   </h2>
 
-  <p className="
-    text-orange-100
-    mt-2
-  ">
-     Ready for withdrawal
+  <p
+    className="
+      text-orange-100
+      mt-2
+    "
+  >
+    {
+      isPayoutWindowOpen
+
+        ? "Withdrawal window is open"
+
+        : "Withdrawal window opens Friday 4PM"
+    }
   </p>
 
- <button
-  onClick={requestPayout}
-  disabled={
-    !isPayoutWindowOpen ||
-    isSubmittingPayout ||
-    availableBalance <= 0 ||
-    hasPendingPayout
-  }
-  className={`
-    mt-6
-    px-5
-    py-3
-    rounded-xl
-    font-semibold
-    w-full
-
-    ${
+  <button
+    onClick={requestPayout}
+    disabled={
+      !isPayoutWindowOpen ||
+      isSubmittingPayout ||
+      pendingBalance <= 0 ||
       hasPendingPayout
-        ? "bg-blue-100 text-blue-600 cursor-not-allowed"
-        : isPayoutWindowOpen
-        ? "bg-white text-orange-500"
-        : "bg-gray-300 text-gray-500 cursor-not-allowed"
     }
-  `}
->
-  {
-    isSubmittingPayout
-      ? "Submitting..."
-      : hasPendingPayout
-      ? "Payout Request Submitted"
-      : isPayoutWindowOpen
-      ? "Withdraw Funds"
-      : "Available Friday 4PM - Sunday 11:59PM"
-  }
-</button>
+    className={`
+      mt-6
+      px-5
+      py-3
+      rounded-xl
+      font-semibold
+      w-full
+
+      ${
+        hasPendingPayout
+
+          ? "bg-blue-100 text-blue-600 cursor-not-allowed"
+
+          : isPayoutWindowOpen
+
+          ? "bg-white text-orange-500"
+
+          : "bg-gray-300 text-gray-500 cursor-not-allowed"
+      }
+    `}
+  >
+
+    {
+
+      isSubmittingPayout
+
+        ? "Submitting..."
+
+        : hasPendingPayout
+
+        ? "Payout Request Submitted"
+
+        : isPayoutWindowOpen
+
+        ? "Withdraw Funds"
+
+        : "Available Friday 4PM - Sunday 11:59PM"
+
+    }
+
+  </button>
 
 </div>
 

@@ -33,8 +33,11 @@ type Order = {
 };
 
 type Rider = {
+
   id: string;
+
   full_name: string;
+
   phone: string;
 
   currentStatus?: string;
@@ -48,6 +51,24 @@ type Rider = {
   score?: number;
 
   activeOrder?: any;
+
+  liveLocation?: {
+
+    rider_id: string;
+
+    latitude: number;
+
+    longitude: number;
+
+    updated_at: string;
+
+    speed: number;
+
+    heading: number;
+
+    accuracy: number;
+
+  };
 
 };
 
@@ -207,13 +228,18 @@ const operationsQueueRef =
 
     }
 
-   if(
+  if(
+
   Number(
-    wallet.available_balance
-  ) <
+    wallet.accrued_balance
+  )
+
+  <
+
   Number(
     request.amount
   )
+
 ){
 
   alert(
@@ -223,7 +249,49 @@ const operationsQueueRef =
   return;
 
 }
-   const {
+   const newAccruedBalance =
+
+  Number(
+    wallet.accrued_balance
+  )
+
+  -
+
+  Number(
+    request.amount
+  );
+
+const {
+  error: walletError
+} =
+await supabase
+  .from("vendor_wallets")
+  .update({
+
+    accrued_balance:
+      newAccruedBalance
+
+  })
+  .eq(
+    "vendor_id",
+    request.requester_id
+  );
+
+if(walletError){
+
+  console.error(
+    walletError
+  );
+
+  alert(
+    "Failed to update vendor wallet."
+  );
+
+  return;
+
+}
+
+const {
   data: payoutUpdate,
   error: payoutError
 } =
@@ -240,6 +308,25 @@ await supabase
     request.id
   )
   .select();
+
+if(payoutError){
+
+  console.error(
+    payoutError
+  );
+
+  alert(
+    "Failed to approve payout."
+  );
+
+  return;
+
+}
+
+console.log(
+  "PAYOUT UPDATE:",
+  payoutUpdate
+);
 
 console.log(
   "PAYOUT UPDATE:",
@@ -565,6 +652,13 @@ await supabase
       "rider"
     );
 
+    const {
+  data: riderLocations
+} =
+await supabase
+  .from("rider_locations")
+  .select("*");
+
 console.log(
   "PAYOUT REQUESTS:",
   payoutRequests
@@ -740,23 +834,34 @@ const performanceScore =
           completedOrders * 10
         );
 
-      return {
+   const liveLocation =
+  riderLocations?.find(
 
-        ...rider,
+    (location) =>
 
-        currentStatus,
+      location.rider_id === rider.id
 
-        assignedOrders,
+  );
 
-        completedOrders,
+return {
 
-        revenue,
+  ...rider,
 
-        score,
+  currentStatus,
 
-        activeOrder
+  assignedOrders,
 
-      };
+  completedOrders,
+
+  revenue,
+
+  score,
+
+  activeOrder,
+
+  liveLocation
+
+};
 
     }
   );
@@ -1686,6 +1791,10 @@ return (
   Current Order
 </th>
 
+<th className="py-4">
+  Live GPS
+</th>
+
         </tr>
 
       </thead>
@@ -1764,6 +1873,15 @@ return (
   )}
 
 </td>
+
+<td className="py-4">
+
+  <span className="text-gray-400">
+    —
+  </span>
+
+</td>
+
 <td className="py-4">
 
   {orders.find(
@@ -1792,6 +1910,63 @@ return (
     </span>
 
   )}
+
+</td>
+
+<td className="py-4">
+
+  {
+
+    rider.liveLocation
+
+      ? (
+
+        <div className="text-sm">
+
+          <p>
+            📍
+            {
+              Number(
+                rider.liveLocation.latitude
+              ).toFixed(6)
+            }
+          </p>
+
+          <p>
+            {
+              Number(
+                rider.liveLocation.longitude
+              ).toFixed(6)
+            }
+          </p>
+
+          <p className="text-xs text-gray-500">
+
+            {
+
+              new Date(
+                rider.liveLocation.updated_at
+              ).toLocaleTimeString()
+
+            }
+
+          </p>
+
+        </div>
+
+      )
+
+      : (
+
+        <span className="text-gray-400">
+
+          No GPS
+
+        </span>
+
+      )
+
+  }
 
 </td>
 

@@ -310,46 +310,64 @@ setCompletedOrders(
 
   }
 
-  useEffect(()=>{
+ useEffect(()=>{
 
-    loadDashboard();
+  loadDashboard();
 
-    const channel =
-      supabase
-        .channel(
-          "rider-live"
-        )
-        .on(
-          "postgres_changes",
-          {
+  checkCurrentLocation();
 
-            event:"*",
+  const interval =
+    setInterval(
 
-            schema:"public",
+      ()=>{
 
-            table:"orders"
+        checkCurrentLocation();
 
-          },
+      },
 
-          ()=>{
+      5000
 
-            loadDashboard();
+    );
 
-          }
+  const channel =
+    supabase
+      .channel(
+        "rider-live"
+      )
+      .on(
+        "postgres_changes",
+        {
 
-        )
-        .subscribe();
+          event:"*",
 
-    return ()=>{
+          schema:"public",
 
-      supabase
-        .removeChannel(
-          channel
-        );
+          table:"orders"
 
-    };
+        },
 
-  },[]);
+        ()=>{
+
+          loadDashboard();
+
+        }
+
+      )
+      .subscribe();
+
+  return ()=>{
+
+    clearInterval(
+      interval
+    );
+
+    supabase.removeChannel(
+      channel
+    );
+
+  };
+
+},[]);
 async function acceptDelivery(
 
   orderId:string
@@ -677,6 +695,141 @@ async function verifyOtp(
   loadDashboard();
 
 }
+
+async function checkCurrentLocation(){
+
+  if(
+    !navigator.geolocation
+  ){
+
+    return;
+
+  }
+
+  navigator.geolocation.getCurrentPosition(
+
+    async(position)=>{
+
+      const {
+
+        data:{ user }
+
+      } =
+
+      await supabase
+        .auth
+        .getUser();
+
+      if(!user){
+
+        return;
+
+      }
+
+      const {
+
+        latitude,
+
+        longitude,
+
+        accuracy,
+
+        heading,
+
+        speed
+
+      } =
+
+      position.coords;
+
+      const {
+
+        error
+
+      } =
+
+    await supabase
+
+  .from("rider_locations")
+
+  .upsert(
+
+    {
+
+      rider_id:
+        user.id,
+
+      latitude,
+
+      longitude,
+
+      accuracy:
+        accuracy || 0,
+
+      heading:
+        heading || 0,
+
+      speed:
+        speed || 0,
+
+      location:
+        `POINT(${longitude} ${latitude})`,
+
+      updated_at:
+        new Date()
+
+    },
+
+    {
+
+      onConflict:
+        "rider_id"
+
+    }
+
+  );
+
+if(error){
+
+  console.error(
+    "LOCATION ERROR:",
+    error.message || error
+  );
+
+}else{
+
+  console.log(
+    "LOCATION UPDATED"
+  );
+
+}
+
+    },
+
+    (error)=>{
+
+      console.error(
+
+        error
+
+      );
+
+    },
+
+    {
+
+      enableHighAccuracy:true,
+
+      maximumAge:0,
+
+      timeout:10000
+
+    }
+
+  );
+
+}
+
   async function logout(){
 
     await supabase
