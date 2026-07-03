@@ -710,45 +710,85 @@ async function checkCurrentLocation(){
 
     async(position)=>{
 
-      const {
+     const {
 
-        data:{ user }
+  data:{ user }
 
-      } =
+} =
 
-      await supabase
-        .auth
-        .getUser();
+await supabase
+  .auth
+  .getUser();
 
-      if(!user){
+if(!user){
 
-        return;
+  return;
 
-      }
+}
 
-      const {
+const {
 
-        latitude,
+  data: profile,
 
-        longitude,
+  error: profileError
 
-        accuracy,
+} =
 
-        heading,
+await supabase
 
-        speed
+  .from("profiles")
 
-      } =
+  .select("role")
 
-      position.coords;
+  .eq("id", user.id)
 
-      const {
+  .single();
 
-        error
+if(
 
-      } =
+  profileError ||
 
-    await supabase
+  profile?.role !== "rider"
+
+){
+
+  console.warn(
+
+    "GPS update blocked. User is not a rider."
+
+  );
+
+  return;
+
+}
+
+     const {
+
+  latitude,
+
+  longitude,
+
+  accuracy,
+
+  heading,
+
+  speed
+
+} = position.coords;
+
+console.log(
+
+  "SENDING LOCATION:",
+
+  latitude,
+
+  longitude,
+
+  new Date().toLocaleTimeString()
+
+);
+
+const { error } = await supabase
 
   .from("rider_locations")
 
@@ -756,50 +796,50 @@ async function checkCurrentLocation(){
 
     {
 
-      rider_id:
-        user.id,
+      rider_id: user.id,
 
       latitude,
 
       longitude,
 
-      accuracy:
-        accuracy || 0,
+      accuracy: accuracy || 0,
 
-      heading:
-        heading || 0,
+      heading: heading || 0,
 
-      speed:
-        speed || 0,
+      speed: speed || 0,
 
-      location:
-        `POINT(${longitude} ${latitude})`,
+      location: `POINT(${longitude} ${latitude})`,
 
-      updated_at:
-        new Date()
+      updated_at: new Date()
 
     },
 
     {
 
-      onConflict:
-        "rider_id"
+      onConflict: "rider_id"
 
     }
 
   );
 
-if(error){
+if (error) {
 
   console.error(
+
     "LOCATION ERROR:",
-    error.message || error
+
+    error
+
   );
 
-}else{
+} else {
 
   console.log(
-    "LOCATION UPDATED"
+
+    "LOCATION UPDATED:",
+
+    new Date().toLocaleTimeString()
+
   );
 
 }

@@ -2,6 +2,17 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import LiveDispatchMap from "@/components/maps/LiveDispatchMap";
+
+import {
+
+  GoogleMap,
+
+  LoadScript,
+
+  Marker
+
+} from "@react-google-maps/api";
 
 const supabase = createClient();
 type Order = {
@@ -186,6 +197,27 @@ const [
 
 const operationsQueueRef =
   useRef<HTMLDivElement>(null);
+
+  const mapContainerStyle = {
+
+  width: "100%",
+
+  height: "500px",
+
+  borderRadius: "24px"
+
+};
+
+const mapCenter = {
+
+  lat: 6.5244,
+
+  lng: 3.3792
+
+};
+
+const [riderLocations, setRiderLocations] =
+  useState<any[]>([]);
 
  async function approvePayout(
   request: any
@@ -651,6 +683,32 @@ await supabase
       "role",
       "rider"
     );
+
+const {
+  data: riderLocationsData,
+  error: riderLocationsError
+} =
+await supabase
+  .from("rider_locations")
+  .select("*");
+
+if (riderLocationsError) {
+
+  console.error(
+    "RIDER LOCATIONS:",
+    riderLocationsError
+  );
+
+}
+
+setRiderLocations(
+  riderLocationsData || []
+);
+
+console.log(
+  "RIDER LOCATIONS:",
+  riderLocationsData
+);
 
     const {
   data: riderLocations
@@ -1141,10 +1199,10 @@ useEffect(() => {
 
   loadDashboard();
 
-  const channel =
+  const ordersChannel =
     supabase
       .channel(
-        "manager-v3-live"
+        "manager-orders-live"
       )
       .on(
         "postgres_changes",
@@ -1161,10 +1219,38 @@ useEffect(() => {
       )
       .subscribe();
 
+  const riderLocationsChannel =
+    supabase
+      .channel(
+        "manager-rider-locations"
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rider_locations"
+        },
+        () => {
+
+  console.log(
+    "RIDER LOCATION EVENT"
+  );
+
+  loadDashboard();
+
+}
+      )
+      .subscribe();
+
   return () => {
 
     supabase.removeChannel(
-      channel
+      ordersChannel
+    );
+
+    supabase.removeChannel(
+      riderLocationsChannel
     );
 
   };
@@ -1752,6 +1838,84 @@ return (
     mb-8
   "
 >
+
+<div
+  className="
+    bg-white
+    rounded-3xl
+    p-6
+    shadow-sm
+    mb-8
+  "
+>
+
+  <h2
+    className="
+      text-2xl
+      font-bold
+      mb-6
+    "
+  >
+    🗺️ Live Rider Map
+  </h2>
+
+{/* OLD MAP
+  <LoadScript
+    googleMapsApiKey={
+      process.env
+        .NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!
+    }
+  >
+
+    <GoogleMap
+
+      mapContainerStyle={
+        mapContainerStyle
+      }
+
+      center={
+        mapCenter
+      }
+
+      zoom={12}
+
+    >
+
+console.log("MAP RIDER LOCATIONS:", riderLocations);
+
+{riderLocations.map((location) => (
+
+  <Marker
+
+    key={location.rider_id}
+
+    position={{
+
+      lat: Number(location.latitude),
+
+      lng: Number(location.longitude)
+
+    }}
+
+    title={`Rider ${location.rider_id}`}
+
+  />
+
+))}
+    </GoogleMap>
+
+  </LoadScript>
+  */}
+
+ <LiveDispatchMap
+
+  riderLocations={riderLocations}
+
+  riders={riders}
+
+/>
+
+</div>
 
   <h2
     className="
