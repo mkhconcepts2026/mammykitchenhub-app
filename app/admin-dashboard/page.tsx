@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-
 import {
   LayoutDashboard,
   Store,
@@ -12,6 +11,8 @@ import {
   ClipboardCheck
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import EmployeeManagement from "./EmployeeManagement";
+
 
 export default function AdminDashboard() {
  const [activeTab, setActiveTab] =
@@ -614,6 +615,30 @@ console.log(
       <Wallet size={20} />
       Revenue
     </button>
+
+<button
+  onClick={() =>
+    setActiveTab("employees")
+  }
+  className={`
+    w-full
+    flex
+    items-center
+    gap-3
+    px-4
+    py-3
+    rounded-2xl
+    transition-all
+
+    ${
+      activeTab === "employees"
+        ? "bg-orange-500 text-white shadow-md"
+        : "hover:bg-gray-100"
+    }
+  `}
+>
+  👥 Employees
+</button>
 
   </div>
 
@@ -1834,6 +1859,12 @@ setSelectedOrder(order);
     </div>
 
   </div>
+
+)}
+
+{activeTab === "employees" && (
+
+  <EmployeeManagement />
 
 )}
 
