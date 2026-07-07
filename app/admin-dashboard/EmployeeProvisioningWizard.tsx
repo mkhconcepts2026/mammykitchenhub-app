@@ -1,12 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  generateEmployeeEmail,
+  generateUsername,
+} from "@/lib/employees/emailGenerator";
 
 export default function EmployeeProvisioningWizard() {
-
+const supabase = createClient();
   const [step, setStep] = useState(1);
+  const [departments, setDepartments] = useState<any[]>([]);
+const [roles, setRoles] = useState<any[]>([]);
+const [states, setStates] = useState<any[]>([]);
+const [lgas, setLgas] = useState<any[]>([]);
+const [territories, setTerritories] = useState<any[]>([]);
+const [selectedState, setSelectedState] = useState("");
+const [selectedLga, setSelectedLga] = useState("");
+const [formData, setFormData] = useState({
+  firstName: "",
+  lastName: "",
+  phone: "",
+  gender: "",
+  nationality: "",
+  address: "",
+  photo: null as File | null,
+photoUrl: "",
 
+  employmentType: "Full Time",
+  departmentId: "",
+  roleId: "",
+  reportsTo: "",
+
+  stateId: "",
+  lgaId: "",
+  territoryId: "",
+
+  officeLocation: "",
+
+  email: "",
+  username: "",
+});
+useEffect(() => {
+
+  if (!formData.firstName || !formData.lastName) return;
+
+  setFormData((prev) => ({
+
+    ...prev,
+
+    email: generateEmployeeEmail(
+      prev.firstName,
+      prev.lastName
+    ),
+
+    username: generateUsername(
+      prev.firstName,
+      prev.lastName
+    ),
+
+  }));
+
+}, [
+
+  formData.firstName,
+
+  formData.lastName,
+
+]);
   const nextStep = () => {
 
     if (step < 6) {
@@ -26,6 +88,212 @@ export default function EmployeeProvisioningWizard() {
     }
 
   };
+
+useEffect(() => {
+  loadMasterData();
+}, []);
+
+async function handlePhotoUpload(
+  file: File
+) {
+
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+
+    alert("Image must be smaller than 5MB.");
+
+    return;
+
+  }
+
+  const fileName = `${Date.now()}-${file.name}`;
+
+  const { error } = await supabase.storage
+
+    .from("employee-photos")
+
+    .upload(fileName, file);
+
+  if (error) {
+
+    alert(error.message);
+
+    return;
+
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage
+
+    .from("employee-photos")
+
+    .getPublicUrl(fileName);
+
+  setFormData((prev) => ({
+    ...prev,
+    photo: file,
+    photoUrl: publicUrl,
+  }));
+
+}
+async function createEmployee() {
+
+  // =====================================================
+  // REQUIRED FIELD VALIDATION
+  // =====================================================
+
+  const requiredFields = [
+
+    { key: "firstName", label: "First Name" },
+
+    { key: "lastName", label: "Last Name" },
+
+    { key: "phone", label: "Phone Number" },
+
+    { key: "gender", label: "Gender" },
+
+    { key: "nationality", label: "Nationality" },
+
+    { key: "address", label: "Residential Address" },
+
+    { key: "departmentId", label: "Department" },
+
+    { key: "roleId", label: "Employee Role" },
+
+    { key: "stateId", label: "State" },
+
+  ];
+
+  for (const field of requiredFields) {
+
+    if (!formData[field.key as keyof typeof formData]) {
+
+      alert(`${field.label} is required.`);
+
+      return;
+
+    }
+
+  }
+
+  if (!formData.photoUrl) {
+
+    alert("Employee photograph is required.");
+
+    return;
+
+  }
+
+  try {
+
+    const response = await fetch(
+
+      "/api/admin/employees/create",
+
+      {
+
+        method: "POST",
+
+        headers: {
+
+          "Content-Type": "application/json",
+
+        },
+
+        body: JSON.stringify(formData),
+
+      }
+
+    );
+
+    const result = await response.json();
+
+    if (!result.success) {
+
+      alert(result.message);
+
+      return;
+
+    }
+
+    alert("✅ Employee created successfully.");
+
+    window.location.reload();
+
+  } catch (error) {
+
+    console.error(error);
+
+    alert("Unable to create employee.");
+
+  }
+
+}
+async function loadLGAs(stateId: string) {
+
+  setSelectedState(stateId);
+
+  setSelectedLga("");
+
+  setTerritories([]);
+
+  if (!stateId) {
+
+    setLgas([]);
+
+    return;
+
+  }
+
+  const { data } = await supabase
+
+    .from("local_governments")
+
+    .select("*")
+
+    .eq("state_id", stateId)
+
+    .order("name");
+
+  setLgas(data || []);
+
+}
+
+async function loadMasterData() {
+
+  const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+console.log("CURRENT USER:", user);
+
+  const { data: departmentData } = await supabase
+    .from("departments")
+    .select("*")
+    .order("name");
+
+  const { data: roleData } = await supabase
+    .from("employee_roles")
+    .select("*")
+    .order("name");
+
+  const { data: stateData } = await supabase
+    .from("states")
+    .select("*")
+    .order("name");
+
+  console.log("Departments:", departmentData);
+console.log("Roles:", roleData);
+console.log("States:", stateData);
+
+setDepartments(departmentData || []);
+setRoles(roleData || []);
+setStates(stateData || []);
+
+}
+
   return (
     <div className="fixed inset-0 z-50 bg-gray-100">
 
@@ -256,10 +524,18 @@ export default function EmployeeProvisioningWizard() {
                 </label>
 
                 <input
-                  type="text"
-                  placeholder="John"
-                  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
-                />
+  type="text"
+  placeholder="John"
+  value={formData.firstName}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      firstName: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
+  required
+/>
 
               </div>
 
@@ -270,10 +546,18 @@ export default function EmployeeProvisioningWizard() {
                 </label>
 
                 <input
-                  type="text"
-                  placeholder="Doe"
-                  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
-                />
+  type="text"
+  placeholder="Doe"
+  value={formData.lastName}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      lastName: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
+  required
+/>
 
               </div>
 
@@ -284,10 +568,18 @@ export default function EmployeeProvisioningWizard() {
                 </label>
 
                 <input
-                  type="text"
-                  placeholder="+234..."
-                  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
-                />
+  type="text"
+  placeholder="+234..."
+  value={formData.phone}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      phone: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
+  required
+/>
 
               </div>
 
@@ -314,23 +606,35 @@ export default function EmployeeProvisioningWizard() {
   </label>
 
   <select
-    className="
-      w-full
-      rounded-2xl
-      border
-      p-4
-      focus:border-orange-500
-      focus:outline-none
-    "
-  >
+  value={formData.gender}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      gender: e.target.value,
+    }))
+  }
+  className="
+    w-full
+    rounded-2xl
+    border
+    p-4
+    focus:border-orange-500
+    focus:outline-none
+  "
+  required
+>
+  <option value="">
+    Select Gender
+  </option>
 
-    <option>Select Gender</option>
+  <option value="Male">
+    Male
+  </option>
 
-    <option>Male</option>
-
-    <option>Female</option>
-
-  </select>
+  <option value="Female">
+    Female
+  </option>
+</select>
 
 </div>
 
@@ -342,18 +646,26 @@ export default function EmployeeProvisioningWizard() {
 
   </label>
 
-  <input
-    type="text"
-    placeholder="Nigerian"
-    className="
-      w-full
-      rounded-2xl
-      border
-      p-4
-      focus:border-orange-500
-      focus:outline-none
-    "
-  />
+ <input
+  type="text"
+  placeholder="Nigerian"
+  value={formData.nationality}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      nationality: e.target.value,
+    }))
+  }
+  className="
+    w-full
+    rounded-2xl
+    border
+    p-4
+    focus:border-orange-500
+    focus:outline-none
+  "
+  required
+/>
 
 </div>
 
@@ -365,24 +677,121 @@ export default function EmployeeProvisioningWizard() {
 
   </label>
 
-  <textarea
-    rows={4}
-    placeholder="Employee Address..."
+ <textarea
+  rows={4}
+  placeholder="Employee Address..."
+  value={formData.address}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      address: e.target.value,
+    }))
+  }
+  className="
+    w-full
+    rounded-2xl
+    border
+    p-4
+    focus:border-orange-500
+    focus:outline-none
+  "
+  required
+/>
+
+</div>
+
+<div className="md:col-span-2">
+
+  <label className="mb-3 block font-medium">
+
+    Employee Photograph
+    <span className="ml-1 text-red-500">*</span>
+
+  </label>
+
+  <div
     className="
-      w-full
       rounded-2xl
-      border
-      p-4
-      focus:border-orange-500
-      focus:outline-none
+      border-2
+      border-dashed
+      border-gray-300
+      bg-gray-50
+      p-8
+      text-center
     "
-  />
+  >
+
+    <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-gray-200 text-4xl">
+
+      👤
+
+    </div>
+
+    <p className="font-semibold">
+
+      Upload Employee Passport Photograph
+
+    </p>
+
+    <p className="mt-2 text-sm text-gray-500">
+
+      JPG, PNG or WEBP
+
+    </p>
+
+    <p className="text-sm text-gray-500">
+
+      Maximum file size: 5MB
+
+    </p>
+
+   <input
+
+  type="file"
+
+  accept="image/png,image/jpeg,image/webp"
+
+  onChange={(e) => {
+
+    const file = e.target.files?.[0];
+
+    if (file) {
+
+      handlePhotoUpload(file);
+
+    }
+
+  }}
+
+  className="mt-6 block w-full"
+
+/>
+{formData.photoUrl && (
+
+  <div className="mt-6">
+
+    <img
+
+      src={formData.photoUrl}
+
+      alt="Employee"
+
+      className="mx-auto h-40 w-40 rounded-full object-cover border"
+
+    />
+
+  </div>
+
+)}
+  </div>
 
 </div>
 
 </div>
 
 )}
+
+
 
 {step === 2 && (
 
@@ -396,17 +805,22 @@ export default function EmployeeProvisioningWizard() {
 
     </label>
 
-    <select className="w-full rounded-2xl border p-4">
-
-      <option>Full Time</option>
-
-      <option>Part Time</option>
-
-      <option>Contract</option>
-
-      <option>Intern</option>
-
-    </select>
+    <select
+  value={formData.employmentType}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      employmentType: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4"
+  required
+>
+  <option value="Full Time">Full Time</option>
+  <option value="Part Time">Part Time</option>
+  <option value="Contract">Contract</option>
+  <option value="Intern">Intern</option>
+</select>
 
   </div>
 
@@ -418,21 +832,34 @@ export default function EmployeeProvisioningWizard() {
 
     </label>
 
-    <select className="w-full rounded-2xl border p-4">
+    <select
+  value={formData.departmentId}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      departmentId: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4"
+  required
+>
 
-      <option>Operations</option>
+  <option value="">
+    Select Department
+  </option>
 
-      <option>Finance</option>
+  {departments.map((department) => (
 
-      <option>Human Resources</option>
+    <option
+      key={department.id}
+      value={department.id}
+    >
+      {department.name}
+    </option>
 
-      <option>Customer Support</option>
+  ))}
 
-      <option>Corporate Services</option>
-
-      <option>Executive</option>
-
-    </select>
+</select>
 
   </div>
 <div>
@@ -443,37 +870,32 @@ export default function EmployeeProvisioningWizard() {
 
   </label>
 
- <select className="w-full rounded-2xl border p-4">
+ <select
+  value={formData.roleId}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      roleId: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4"
+  required
+>
 
-  <option value="">Select Role</option>
-
-  <option value="managing-director">
-    Managing Director
+  <option value="">
+    Select Role
   </option>
 
-  <option value="admin">
-    Admin
-  </option>
+  {roles.map((role) => (
 
-  <option value="operations-manager">
-    Operations Manager
-  </option>
+    <option
+      key={role.id}
+      value={role.id}
+    >
+      {role.name}
+    </option>
 
-  <option value="relationship-manager">
-    Territory Relationship Manager
-  </option>
-
-  <option value="finance">
-    Finance
-  </option>
-
-  <option value="human-resources">
-    Human Resources
-  </option>
-
-  <option value="customer-support">
-    Customer Support
-  </option>
+  ))}
 
 </select>
 
@@ -486,13 +908,17 @@ export default function EmployeeProvisioningWizard() {
 
     </label>
 
-    <input
-
-      className="w-full rounded-2xl border p-4"
-
-      placeholder="Managing Director"
-
-    />
+   <input
+  value={formData.reportsTo}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      reportsTo: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4"
+  placeholder="Managing Director"
+/>
 
   </div>
 
@@ -531,23 +957,49 @@ export default function EmployeeProvisioningWizard() {
 
     </label>
 
-    <select className="w-full rounded-2xl border p-4">
+  <select
+  value={formData.stateId}
+  onChange={(e) => {
 
-      <option>Select State</option>
+    const stateId = e.target.value;
 
-      <option>Lagos</option>
+    setFormData((prev) => ({
+      ...prev,
+      stateId,
+      lgaId: "",
+      territoryId: "",
+    }));
 
-      <option>Abuja (FCT)</option>
+    loadLGAs(stateId);
 
-      <option>Rivers</option>
+  }}
+  className="w-full rounded-2xl border p-4"
+  required
+>
 
-      <option>Oyo</option>
+  <option value="">
 
-      <option>Kano</option>
+    Select State
 
-      <option>Enugu</option>
+  </option>
 
-    </select>
+  {states.map((state) => (
+
+    <option
+
+      key={state.id}
+
+      value={state.id}
+
+    >
+
+      {state.name}
+
+    </option>
+
+  ))}
+
+</select>
 
   </div>
 
@@ -559,29 +1011,129 @@ export default function EmployeeProvisioningWizard() {
 
     </label>
 
-    <select className="w-full rounded-2xl border p-4">
+  <select
 
-      <option>Select Local Government</option>
+  value={formData.lgaId}
 
-    </select>
+  onChange={async (e) => {
+
+    const lgaId = e.target.value;
+
+    setFormData((prev) => ({
+      ...prev,
+      lgaId,
+      territoryId: "",
+    }));
+
+    setSelectedLga(lgaId);
+
+    if (!lgaId) {
+
+      setTerritories([]);
+
+      return;
+
+    }
+
+    const { data, error } = await supabase
+
+      .from("territories")
+
+      .select("*")
+
+      .eq("lga_id", lgaId)
+
+      .order("name");
+
+    if (error) {
+
+      console.error(error);
+
+      setTerritories([]);
+
+      return;
+
+    }
+
+    setTerritories(data || []);
+
+  }}
+
+  className="w-full rounded-2xl border p-4"
+
+  required
+
+>
+
+  <option value="">
+
+    Select Local Government
+
+  </option>
+
+  {lgas.map((lga) => (
+
+    <option
+
+      key={lga.id}
+
+      value={lga.id}
+
+    >
+
+      {lga.name}
+
+    </option>
+
+  ))}
+
+</select>
 
   </div>
 
-  <div>
+ <div>
 
-    <label className="mb-2 block font-medium">
+  <label className="mb-2 block font-medium">
 
-      Territory
+    Territory
 
-    </label>
+  </label>
 
-    <select className="w-full rounded-2xl border p-4">
+ <select
 
-      <option>Select Territory</option>
+  value={formData.territoryId}
 
-    </select>
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      territoryId: e.target.value,
+    }))
+  }
 
-  </div>
+  className="w-full rounded-2xl border p-4"
+
+  required
+
+>
+
+    <option value="">
+      Select Territory
+    </option>
+
+    {territories.map((territory) => (
+
+      <option
+        key={territory.id}
+        value={territory.id}
+      >
+        {territory.name}
+      </option>
+
+    ))}
+
+  </select>
+
+</div>
 
   <div>
 
@@ -591,13 +1143,24 @@ export default function EmployeeProvisioningWizard() {
 
     </label>
 
-    <input
+  <input
 
-      placeholder="Office / Hub"
+  value={formData.officeLocation}
 
-      className="w-full rounded-2xl border p-4"
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      officeLocation: e.target.value,
+    }))
+  }
 
-    />
+  placeholder="Office / Hub"
+
+  className="w-full rounded-2xl border p-4"
+
+  required
+
+/>
 
   </div>
 
@@ -706,15 +1269,15 @@ will only require a State assignment.
 
     </label>
 
-    <input
+   <input
 
-      disabled
+  disabled
 
-      value="john.doe@mammykitchenhub.com"
+  value={formData.email}
 
-      className="w-full rounded-2xl border bg-gray-100 p-4 font-semibold text-orange-600"
+  className="w-full rounded-2xl border bg-gray-100 p-4 font-semibold text-orange-600"
 
-    />
+/>
 
   </div>
 
@@ -730,7 +1293,7 @@ will only require a State assignment.
 
       disabled
 
-      value="john.doe"
+      value={formData.username}
 
       className="w-full rounded-2xl border bg-gray-100 p-4"
 
@@ -840,11 +1403,29 @@ will only require a State assignment.
 
       <div className="space-y-2 text-sm">
 
-        <p><strong>Name:</strong> John Doe</p>
+        <p>
 
-        <p><strong>Phone:</strong> +234 xxx xxx xxxx</p>
+<strong>Name:</strong>{" "}
 
-        <p><strong>Nationality:</strong> Nigerian</p>
+{formData.firstName} {formData.lastName}
+
+</p>
+
+        <p>
+
+<strong>Phone:</strong>{" "}
+
+{formData.phone}
+
+</p>
+
+        <p>
+
+<strong>Nationality:</strong>{" "}
+
+{formData.nationality}
+
+</p>
 
       </div>
 
@@ -900,7 +1481,13 @@ will only require a State assignment.
 
       <div className="space-y-2 text-sm">
 
-        <p><strong>Email:</strong> john.doe@mammykitchenhub.com</p>
+       <p>
+
+<strong>Email:</strong>{" "}
+
+{formData.email}
+
+</p>
 
         <p><strong>Employee No:</strong> MKH-EMP-000001</p>
 
@@ -972,25 +1559,20 @@ will only require a State assignment.
 
     </div>
 
-    <button
-
-      onClick={nextStep}
-
-      className="
-        rounded-xl
-        bg-orange-500
-        px-8
-        py-3
-        font-semibold
-        text-white
-        hover:bg-orange-600
-      "
-
-    >
-
-     {step === 5 ? "Create Employee" : "Continue →"}
-
-    </button>
+  <button
+  onClick={step === 5 ? createEmployee : nextStep}
+  className="
+    rounded-xl
+    bg-orange-500
+    px-8
+    py-3
+    font-semibold
+    text-white
+    hover:bg-orange-600
+  "
+>
+  {step === 5 ? "Create Employee" : "Continue →"}
+</button>
 
   </div>
 
