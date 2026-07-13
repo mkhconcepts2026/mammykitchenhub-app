@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -10,14 +11,17 @@ import {
 
 export default function EmployeeProvisioningWizard() {
 const supabase = createClient();
-  const [step, setStep] = useState(1);
-  const [departments, setDepartments] = useState<any[]>([]);
+const [employeePhoto, setEmployeePhoto] = useState<File | null>(null);
+const [step, setStep] = useState(1);
+const router = useRouter();
+const [departments, setDepartments] = useState<any[]>([]);
 const [roles, setRoles] = useState<any[]>([]);
 const [states, setStates] = useState<any[]>([]);
 const [lgas, setLgas] = useState<any[]>([]);
 const [territories, setTerritories] = useState<any[]>([]);
 const [selectedState, setSelectedState] = useState("");
 const [selectedLga, setSelectedLga] = useState("");
+const hasCheckedDraft = useRef(false);
 const [formData, setFormData] = useState({
   firstName: "",
   lastName: "",
@@ -42,6 +46,15 @@ photoUrl: "",
   email: "",
   username: "",
 });
+
+const selectedRole = roles.find(
+  (role) => role.id === formData.roleId
+);
+
+const isTerritoryManager =
+  selectedRole?.name ===
+  "Territory Relationship Manager";
+
 useEffect(() => {
 
   if (!formData.firstName || !formData.lastName) return;
@@ -69,15 +82,156 @@ useEffect(() => {
   formData.lastName,
 
 ]);
-  const nextStep = () => {
 
-    if (step < 6) {
+useEffect(() => {
 
-      setStep(step + 1);
+  async function checkForDraft() {
 
+    if (hasCheckedDraft.current) return;
+
+hasCheckedDraft.current = true;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("employee_drafts")
+      .select("*")
+      .eq("created_by", user.id)
+      .eq("status", "draft")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) return;
+
+    const resume = window.confirm(
+      "An incomplete employee onboarding was found.\n\nWould you like to resume it?"
+    );
+
+    if (!resume) return;
+
+    setFormData(data.form_data);
+
+    if (data.step) {
+      setStep(data.step);
     }
 
-  };
+  }
+
+  checkForDraft();
+
+}, []);
+
+function validateCurrentStep() {
+
+  switch (step) {
+
+   case 1: {
+
+ if (!formData.photoUrl) {
+
+  alert("Employee photo is required.");
+
+  return false;
+
+}
+
+  if (!formData.firstName.trim()) {
+
+    alert("First Name is required.");
+
+    return false;
+
+  }
+
+  if (!formData.lastName.trim()) {
+
+    alert("Last Name is required.");
+
+    return false;
+
+  }
+
+  if (!formData.phone.trim()) {
+
+    alert("Phone Number is required.");
+
+    return false;
+
+  }
+
+  if (!formData.gender) {
+
+    alert("Gender is required.");
+
+    return false;
+
+  }
+
+  if (!formData.nationality.trim()) {
+
+    alert("Nationality is required.");
+
+    return false;
+
+  }
+
+  return true;
+
+}
+
+    case 2:
+
+      return true;
+
+    case 3:
+
+      return true;
+
+    case 4:
+
+      return true;
+
+    case 5:
+
+      return true;
+
+    default:
+
+      return true;
+
+  }
+
+}
+
+  const nextStep = () => {
+
+  if (!validateCurrentStep()) return;
+
+  // Skip Territory for non-Territory Managers
+
+  if (
+    step === 3 &&
+    !isTerritoryManager
+  ) {
+
+    setStep(5);
+
+    return;
+
+  }
+
+  if (step < 6) {
+
+    setStep(step + 1);
+
+  }
+
+};
 
   const previousStep = () => {
 
@@ -131,11 +285,11 @@ async function handlePhotoUpload(
 
     .getPublicUrl(fileName);
 
-  setFormData((prev) => ({
-    ...prev,
-    photo: file,
-    photoUrl: publicUrl,
-  }));
+ setFormData((prev) => ({
+  ...prev,
+  photo: null,
+  photoUrl: publicUrl,
+}));
 
 }
 async function createEmployee() {
@@ -188,6 +342,10 @@ async function createEmployee() {
 
   try {
 
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
     const response = await fetch(
 
       "/api/admin/employees/create",
@@ -202,7 +360,10 @@ async function createEmployee() {
 
         },
 
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+  ...formData,
+  createdBy: user?.id,
+}),
 
       }
 
@@ -218,9 +379,9 @@ async function createEmployee() {
 
     }
 
-    alert("✅ Employee created successfully.");
+   alert("✅ Employee created successfully.");
 
-    window.location.reload();
+router.push("/hr/employees");
 
   } catch (error) {
 
@@ -337,7 +498,8 @@ setStates(stateData || []);
 
           </div>
 
-         <button
+      <button
+  onClick={() => router.push("/hr")}
   className="
     rounded-xl
     border
@@ -365,115 +527,211 @@ setStates(stateData || []);
 
         </header>
 
-        {/* =======================================================
-            PROGRESS BAR
-        ======================================================= */}
+    {/* =======================================================
+    PROGRESS BAR
+======================================================= */}
 
-        <div className="border-b bg-white px-10 py-8">
+<div className="border-b bg-white px-10 py-8">
 
-          <div className="flex items-center">
+  <div className="flex items-center">
 
-            {/* STEP 1 */}
+    {/* STEP 1 */}
 
-            <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center">
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500 font-bold text-white">
-                1
-              </div>
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-full font-bold text-white transition-all
+        ${
+          step === 1
+            ? "bg-orange-500"
+            : step > 1
+            ? "bg-green-500"
+            : "bg-gray-300"
+        }`}
+      >
+        1
+      </div>
 
-              <span className="mt-2 text-sm font-semibold text-orange-600">
-                Personal
-              </span>
+      <span
+        className={`mt-2 text-sm font-semibold
+        ${
+          step === 1
+            ? "text-orange-600"
+            : step > 1
+            ? "text-green-600"
+            : "text-gray-500"
+        }`}
+      >
+        Personal
+      </span>
 
-            </div>
+    </div>
 
-            <div className="h-1 flex-1 bg-orange-500"></div>
+    <div
+      className={`h-1 flex-1 transition-all ${
+        step > 1 ? "bg-green-500" : "bg-gray-200"
+      }`}
+    />
 
-            {/* STEP 2 */}
+    {/* STEP 2 */}
 
-            <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center">
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 font-bold">
-                2
-              </div>
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-full font-bold text-white transition-all
+        ${
+          step === 2
+            ? "bg-orange-500"
+            : step > 2
+            ? "bg-green-500"
+            : "bg-gray-300"
+        }`}
+      >
+        2
+      </div>
 
-              <span className="mt-2 text-sm text-gray-500">
-                Employment
-              </span>
+      <span
+        className={`mt-2 text-sm font-semibold
+        ${
+          step === 2
+            ? "text-orange-600"
+            : step > 2
+            ? "text-green-600"
+            : "text-gray-500"
+        }`}
+      >
+        Employment
+      </span>
 
-            </div>
+    </div>
 
-            <div className="h-1 flex-1 bg-gray-200"></div>
+    <div
+      className={`h-1 flex-1 transition-all ${
+        step > 2 ? "bg-green-500" : "bg-gray-200"
+      }`}
+    />
 
-            {/* STEP 3 */}
+    {/* STEP 3 */}
 
-            <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center">
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 font-bold">
-                3
-              </div>
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-full font-bold text-white transition-all
+        ${
+          step === 3
+            ? "bg-orange-500"
+            : step > 3
+            ? "bg-green-500"
+            : "bg-gray-300"
+        }`}
+      >
+        3
+      </div>
 
-              <span className="mt-2 text-sm text-gray-500">
-                Role
-              </span>
+      <span
+        className={`mt-2 text-sm font-semibold
+        ${
+          step === 3
+            ? "text-orange-600"
+            : step > 3
+            ? "text-green-600"
+            : "text-gray-500"
+        }`}
+      >
+        Location
+      </span>
 
-            </div>
+    </div>
 
-            <div className="h-1 flex-1 bg-gray-200"></div>
+    <div
+      className={`h-1 flex-1 transition-all ${
+        step > 3 ? "bg-green-500" : "bg-gray-200"
+      }`}
+    />
 
-            {/* STEP 4 */}
+    {/* STEP 4 */}
 
-            <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center">
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 font-bold">
-                4
-              </div>
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-full font-bold text-white transition-all
+        ${
+          step === 4
+            ? "bg-orange-500"
+            : step > 4
+            ? "bg-green-500"
+            : "bg-gray-300"
+        }`}
+      >
+        4
+      </div>
 
-              <span className="mt-2 text-sm text-gray-500">
-                Territory
-              </span>
+      <span
+        className={`mt-2 text-sm font-semibold
+        ${
+          step === 4
+            ? "text-orange-600"
+            : step > 4
+            ? "text-green-600"
+            : "text-gray-500"
+        }`}
+      >
+        Account
+      </span>
 
-            </div>
+    </div>
 
-            <div className="h-1 flex-1 bg-gray-200"></div>
+    <div
+      className={`h-1 flex-1 transition-all ${
+        step > 4 ? "bg-green-500" : "bg-gray-200"
+      }`}
+    />
 
-            {/* STEP 5 */}
+    {/* STEP 5 */}
 
-            <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center">
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 font-bold">
-                5
-              </div>
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-full font-bold text-white transition-all
+        ${
+          step === 5
+            ? "bg-orange-500"
+            : step > 5
+            ? "bg-green-500"
+            : "bg-gray-300"
+        }`}
+      >
+        5
+      </div>
 
-              <span className="mt-2 text-sm text-gray-500">
-                Account
-              </span>
+      <span
+        className={`mt-2 text-sm font-semibold
+        ${
+          step === 5
+            ? "text-orange-600"
+            : step > 5
+            ? "text-green-600"
+            : "text-gray-500"
+        }`}
+      >
+        Review
+      </span>
 
-            </div>
+    </div>
 
-            <div className="h-1 flex-1 bg-gray-200"></div>
+    <div
+      className={`h-1 flex-1 transition-all ${
+        step > 5 ? "bg-green-500" : "bg-gray-200"
+      }`}
+    />
 
-            {/* STEP 6 */}
+  </div>
 
-            <div className="flex flex-col items-center">
+</div>
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 font-bold">
-                6
-              </div>
-
-              <span className="mt-2 text-sm text-gray-500">
-                Review
-              </span>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* =======================================================
-            CONTENT
-        ======================================================= */}
+{/* =======================================================
+    CONTENT
+======================================================= */}
 
         <main className="flex-1 overflow-y-auto px-10 py-10">
 
@@ -487,13 +745,11 @@ setStates(stateData || []);
 
   {step === 2 && "Employment Details"}
 
-  {step === 3 && "Role & Department"}
+  {step === 3 && "Location/Assignment"}
 
-  {step === 4 && "Territory Assignment"}
+  {step === 4 && "Account Setup"}
 
-  {step === 5 && "Account Setup"}
-
-  {step === 6 && "Review & Create"}
+  {step === 5 && "Review & Create"}
 
 </h2>
 
@@ -501,15 +757,13 @@ setStates(stateData || []);
 
   {step === 1 && "Enter the employee's personal information."}
 
-  {step === 2 && "Employment details and start date."}
+  {step === 2 && "Employment details."}
 
-  {step === 3 && "Assign department and employee role."}
+  {step === 3 && "Assign employee location."}
 
-  {step === 4 && "Assign territory where applicable."}
+  {step === 4 && "Generate employee account."}
 
-  {step === 5 && "Generate the employee account."}
-
-  {step === 6 && "Review all information before creating the employee."}
+  {step === 5 && "Review all information before creating the employee."}
 
 </p>
 
@@ -940,6 +1194,67 @@ setStates(stateData || []);
 
 />
   </div>
+
+{!isTerritoryManager && (
+
+  <>
+    <div>
+
+      <label className="mb-2 block font-medium">
+        State
+      </label>
+
+      <select
+        value={formData.stateId}
+        onChange={(e) =>
+          setFormData((prev) => ({
+            ...prev,
+            stateId: e.target.value,
+          }))
+        }
+        className="w-full rounded-2xl border p-4"
+      >
+        <option value="">
+          Select State
+        </option>
+
+        {states.map((state) => (
+          <option
+            key={state.id}
+            value={state.id}
+          >
+            {state.name}
+          </option>
+        ))}
+
+      </select>
+
+    </div>
+
+    <div>
+
+      <label className="mb-2 block font-medium">
+        Office Location
+      </label>
+
+      <input
+        value={formData.officeLocation}
+        onChange={(e) =>
+          setFormData((prev) => ({
+            ...prev,
+            officeLocation: e.target.value,
+          }))
+        }
+        placeholder="Office / Hub"
+        className="w-full rounded-2xl border p-4"
+      />
+
+    </div>
+
+  </>
+
+)}
+
 
 </div>
 
@@ -1524,55 +1839,164 @@ will only require a State assignment.
 
         </main>
 
-        {/* =======================================================
-            FOOTER
-        ======================================================= */}
+       {/* =======================================================
+    FOOTER
+======================================================= */}
 
-        <footer className="border-t bg-white px-10 py-5 shadow-lg">
+<footer className="border-t bg-white px-10 py-5 shadow-lg">
 
-  <div className="flex items-center justify-between">
+  <div className="flex flex-wrap items-center justify-between gap-4">
+
+    {/* LEFT */}
+
+    <div className="flex gap-3">
+
+      <button
+        onClick={previousStep}
+        disabled={step === 1}
+        className="
+          rounded-xl
+          border
+          px-6
+          py-3
+          font-semibold
+          transition
+          hover:bg-gray-50
+          disabled:cursor-not-allowed
+          disabled:opacity-40
+        "
+      >
+        ← Back
+      </button>
 
     <button
+  onClick={async () => {
 
-      onClick={previousStep}
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      disabled={step === 1}
+    if (!user) {
+      alert("You must be logged in.");
+      return;
+    }
 
-      className="
-        rounded-xl
-        border
-        px-6
-        py-3
-        font-semibold
-        disabled:opacity-40
-      "
+   // --------------------------------------
+// CHECK IF A DRAFT ALREADY EXISTS
+// --------------------------------------
 
-    >
+const { data: existingDraft } =
+  await supabase
+    .from("employee_drafts")
+    .select("id")
+    .eq("created_by", user.id)
+    .eq("status", "draft")
+    .maybeSingle();
 
-      ← Back
+let error;
 
-    </button>
+if (existingDraft) {
 
-    <div className="text-sm text-gray-500">
+  ({ error } = await supabase
 
-      Step {step} of 6
+    .from("employee_drafts")
+
+    .update({
+
+      step,
+
+      form_data: formData,
+
+      updated_at: new Date(),
+
+    })
+
+    .eq("id", existingDraft.id));
+
+}
+
+else {
+
+  ({ error } = await supabase
+
+    .from("employee_drafts")
+
+    .insert({
+
+      created_by: user.id,
+
+      step,
+
+      form_data: formData,
+
+      status: "draft",
+
+    }));
+
+}
+
+    if (error) {
+      console.error(error);
+      alert("Unable to save draft.");
+      return;
+    }
+
+    alert("Draft saved successfully.");
+
+  }}
+  className="
+    rounded-xl
+    border
+    border-orange-300
+    bg-orange-50
+    px-6
+    py-3
+    font-semibold
+    text-orange-600
+    transition
+    hover:bg-orange-100
+  "
+>
+  💾 Save Draft
+</button>
 
     </div>
 
-  <button
-  onClick={step === 5 ? createEmployee : nextStep}
-  className="
-    rounded-xl
-    bg-orange-500
-    px-8
-    py-3
-    font-semibold
-    text-white
-    hover:bg-orange-600
-  "
->
-  {step === 5 ? "Create Employee" : "Continue →"}
-</button>
+    {/* CENTER */}
+
+    <div className="text-center">
+
+      <p className="text-sm text-gray-500">
+
+        Step {step} of 6
+
+      </p>
+
+      <p className="text-xs text-gray-400">
+
+        Your progress is being recorded.
+
+      </p>
+
+    </div>
+
+    {/* RIGHT */}
+
+    <button
+      onClick={step === 5 ? createEmployee : nextStep}
+      className="
+        rounded-xl
+        bg-orange-500
+        px-8
+        py-3
+        font-semibold
+        text-white
+        transition
+        hover:bg-orange-600
+      "
+    >
+      {step === 5 ? "Create Employee" : "Save & Continue →"}
+    </button>
 
   </div>
 

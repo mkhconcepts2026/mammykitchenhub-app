@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Search, UserPlus, Eye, Pencil } from "lucide-react";
@@ -9,6 +10,7 @@ const supabase = createClient();
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<any[]>([]);
+  const router = useRouter();
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -40,6 +42,26 @@ export default function EmployeesPage() {
     <div className="min-h-screen bg-gray-100 p-8">
 
       <div className="mb-8 flex items-center justify-between">
+
+<div className="flex items-center gap-3">
+
+  <button
+    onClick={() => router.push("/hr")}
+    className="
+      rounded-xl
+      border
+      bg-white
+      px-4
+      py-2
+      font-semibold
+      transition
+      hover:bg-gray-50
+    "
+  >
+    ← HR Dashboard
+  </button>
+
+</div>
 
         <div>
 

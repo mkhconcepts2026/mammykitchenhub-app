@@ -101,57 +101,52 @@ export default function LoginPage() {
 
       }
 
-      switch (
-        profile?.role
-      ) {
+switch (profile?.role) {
 
-        case "vendor":
+  case "vendor":
+    router.push("/vendor-dashboard-v2");
+    break;
 
-          router.push(
-            "/vendor-dashboard-v2"
-          );
+  case "customer":
+    router.push("/dashboard");
+    break;
 
-          break;
+    case "hr":
 
-        case "customer":
+  router.push(
+    "/hr"
+  );
 
-          router.push(
-            "/dashboard"
-          );
+  break;
 
-          break;
+  case "rider":
+    router.push("/rider-dashboard");
+    break;
 
-        case "rider":
+  case "manager":
+    router.push("/manager");
+    break;
 
-          router.push(
-            "/rider-dashboard"
-          );
+  case "admin":
+    router.push("/admin-dashboard");
+    break;
 
-          break;
+ case "hr":
+case "operations":
+case "support":
 
-        case "manager":
+    router.push("/hr");
 
-          router.push(
-            "/manager"
-          );
+    break;
 
-          break;
+  case "finance":
+    router.push("/finance");
+    break;
 
-        case "admin":
+  default:
+    router.push("/dashboard");
 
-          router.push(
-            "/admin-dashboard"
-          );
-
-          break;
-
-        default:
-
-          router.push(
-            "/dashboard"
-          );
-
-      }
+}
 
     }
 
