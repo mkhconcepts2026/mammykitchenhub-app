@@ -1,16 +1,22 @@
 export function generateEmployeeEmail(
-  firstName: string,
-  lastName: string
+  loginId: string
 ) {
-  const first = firstName.trim().toLowerCase();
-  const last = lastName.trim().toLowerCase();
-
-  return `${first}.${last}@mammykitchenhub.com`;
+  return `${loginId}@mammykitchenhub.com`;
 }
 
 export function generateUsername(
   firstName: string,
   lastName: string
 ) {
-  return `${firstName.trim().toLowerCase()}.${lastName.trim().toLowerCase()}`;
+  const first = firstName
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  const last = lastName
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  return `${first}.${last}`;
 }

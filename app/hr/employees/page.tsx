@@ -3,28 +3,106 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import EmployeeCredentialsModal from "@/components/hr/EmployeeCredentialsModal";
 import { createClient } from "@/lib/supabase/client";
-import { Search, UserPlus, Eye, Pencil } from "lucide-react";
+import {
+  Search,
+  UserPlus,
+  Eye,
+  Pencil,
+  KeyRound,
+  Trash2,
+} from "lucide-react";
 
 const supabase = createClient();
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const router = useRouter();
+  const [showCredentials, setShowCredentials] = useState(false);
+const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+const [employeeToDelete, setEmployeeToDelete] = useState<any>(null);
 
   useEffect(() => {
     loadEmployees();
   }, []);
 
   async function loadEmployees() {
-    const { data } = await supabase
-      .from("employees")
-      .select("*")
-      .order("created_at", { ascending: false });
+   const { data } = await supabase
+  .from("employees")
+  .select(`
+    *,
+    department:department_id (
+      name
+    ),
+    role:role_id (
+      name
+    ),
+    state:state_id (
+      name
+    ),
+    profiles:profile_id (
+      must_change_password
+    )
+  `)
+  .order("created_at", {
+    ascending: false,
+  });
 
-    setEmployees(data || []);
+setEmployees(data || []);
   }
+
+ async function deleteEmployee() {
+
+  if (!employeeToDelete) {
+
+    alert("No employee selected.");
+
+    return;
+
+  }
+
+  console.log("Deleting employee:", employeeToDelete);
+
+  const response = await fetch(
+    "/api/hr/employees/delete",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        employeeId: employeeToDelete.id,
+      }),
+    }
+  );
+
+  console.log("HTTP Status:", response.status);
+
+  const result = await response.json();
+
+  console.log("API Result:", result);
+
+  if (!response.ok || !result.success) {
+
+    alert(result.message);
+
+    return;
+
+  }
+
+  alert("Employee deleted successfully.");
+
+  setShowDeleteDialog(false);
+
+  setEmployeeToDelete(null);
+
+  await loadEmployees();
+
+}
 
   const filteredEmployees = employees.filter((employee) => {
     const name =
@@ -118,6 +196,10 @@ export default function EmployeesPage() {
 
               <th className="p-4 text-left">Department</th>
 
+               <th className="p-4 text-left">Role</th>
+
+               <th className="p-4 text-left">State</th>
+
               <th className="p-4 text-left">Status</th>
 
               <th className="p-4 text-center">Actions</th>
@@ -160,27 +242,92 @@ export default function EmployeesPage() {
                   {employee.first_name} {employee.last_name}
                 </td>
 
-                <td className="p-4">
-                  {employee.department_id}
-                </td>
+               <td className="p-4">
+  {employee.department?.name ?? "-"}
+             </td>
+
+             <td className="p-4">
+  {employee.role?.name ?? "-"}
+</td>
+
+
+<td className="p-4">
+  {employee.state?.name ?? "-"}
+</td>
 
                 <td className="p-4">
                   {employee.status}
                 </td>
 
+            
                 <td className="p-4">
 
-                  <div className="flex justify-center gap-4">
+                 <div className="flex justify-center gap-4">
 
-                    <button>
-                      <Eye size={18} />
-                    </button>
+  <button
+    title="View Employee"
+  >
+    <Eye size={18} />
+  </button>
 
-                    <button>
-                      <Pencil size={18} />
-                    </button>
+  <button
+    title="Edit Employee"
+  >
+    <Pencil size={18} />
+  </button>
 
-                  </div>
+ <button
+  title="Login Credentials"
+  onClick={() => {
+
+    setSelectedEmployee({
+
+      employeeNumber:
+        employee.employee_number,
+
+      fullName:
+        `${employee.first_name} ${employee.last_name}`,
+
+      username:
+        employee.username,
+
+      loginId:
+        employee.email,
+
+       profileId:
+    employee.profile_id,
+
+      temporaryPassword:
+  employee.profiles?.must_change_password
+    ? "First Login Pending"
+    : "Password Already Changed",
+
+    });
+
+    setShowCredentials(true);
+
+  }}
+>
+  <KeyRound size={18} />
+</button>
+
+<button
+  title="Delete Employee"
+ onClick={() => {
+
+  setEmployeeToDelete(employee);
+
+  setShowDeleteDialog(true);
+
+}}
+>
+  <Trash2
+    size={18}
+    className="text-red-600"
+  />
+</button>
+
+</div>
 
                 </td>
 
@@ -208,7 +355,140 @@ export default function EmployeesPage() {
         </table>
 
       </div>
+<EmployeeCredentialsModal
 
+  open={showCredentials}
+
+  credentials={selectedEmployee}
+
+  profileId={
+    selectedEmployee?.profileId
+  }
+
+  onPasswordReset={(newPassword) => {
+
+    setSelectedEmployee((prev: any) => ({
+
+      ...prev,
+
+      temporaryPassword: newPassword,
+
+    }));
+
+  }}
+
+  onClose={() => {
+
+    setShowCredentials(false);
+
+  }}
+
+/>
+
+{showDeleteDialog && (
+
+  <div
+    className="
+      fixed
+      inset-0
+      z-50
+      flex
+      items-center
+      justify-center
+      bg-black/50
+    "
+  >
+
+    <div
+      className="
+        w-full
+        max-w-md
+        rounded-2xl
+        bg-white
+        p-8
+        shadow-xl
+      "
+    >
+
+      <h2 className="mb-4 text-2xl font-bold text-red-600">
+
+        Delete Employee
+
+      </h2>
+
+      <p className="mb-6 text-gray-600">
+
+        You are about to permanently delete this employee record.
+
+        <br /><br />
+
+        <strong>
+
+          {employeeToDelete?.first_name}{" "}
+          {employeeToDelete?.last_name}
+
+        </strong>
+
+        <br /><br />
+
+        This action cannot be undone.
+
+        <br /><br />
+
+        Do you want to continue?
+
+      </p>
+
+      <div className="flex justify-end gap-3">
+
+        <button
+
+          onClick={() => {
+
+            setShowDeleteDialog(false);
+
+            setEmployeeToDelete(null);
+
+          }}
+
+          className="
+            rounded-xl
+            border
+            px-5
+            py-2
+          "
+
+        >
+
+          Cancel
+
+        </button>
+
+        <button
+
+         onClick={deleteEmployee}
+
+          className="
+            rounded-xl
+            bg-red-600
+            px-5
+            py-2
+            text-white
+          "
+
+        >
+
+          Delete Employee
+
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+)}
     </div>
   );
 }

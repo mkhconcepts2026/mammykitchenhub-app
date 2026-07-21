@@ -3,6 +3,7 @@ import {
   generateEmployeeEmail,
   generateUsername,
 } from "./emailGenerator";
+import { generateUniqueLogin } from "./authProvisioning";
 import { validateEmployee } from "./validation";
 
 export async function prepareEmployee(data: any) {
@@ -11,15 +12,13 @@ export async function prepareEmployee(data: any) {
   const employeeNumber =
     await generateEmployeeNumber();
 
-  const email = generateEmployeeEmail(
-    data.firstName,
-    data.lastName
-  );
-
-  const username = generateUsername(
-    data.firstName,
-    data.lastName
-  );
+ const {
+  username,
+  email,
+} = await generateUniqueLogin(
+  data.firstName,
+  data.lastName
+);
 
   return {
     ...data,

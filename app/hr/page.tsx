@@ -27,6 +27,12 @@ const [drafts, setDrafts] = useState<any[]>([]);
 
 const [employeeCount, setEmployeeCount] = useState(0);
 
+const [pendingCount, setPendingCount] = useState(0);
+
+const [departmentCount, setDepartmentCount] = useState(0);
+
+const [roleCount, setRoleCount] = useState(0);
+
 const [loading, setLoading] = useState(false);
 
 useEffect(() => {
@@ -51,7 +57,7 @@ useEffect(() => {
       .eq("id", user.id)
       .single();
 
-    if (error || profile?.role !== "hr") {
+    if (error || profile?.role !== "HR") {
 
       router.replace("/login");
 
@@ -126,14 +132,46 @@ setTimeout(() => {
 
     }
 
-const { count } = await supabase
-  .from("employees")
-  .select("*", {
-    count: "exact",
-    head: true,
-  });
+const [
+  employeesResult,
+  pendingResult,
+  departmentsResult,
+  rolesResult,
+] = await Promise.all([
+  supabase
+    .from("employees")
+    .select("*", {
+      count: "exact",
+      head: true,
+    }),
 
-setEmployeeCount(count || 0);
+  supabase
+    .from("employees")
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq("status", "pending"),
+
+  supabase
+    .from("departments")
+    .select("*", {
+      count: "exact",
+      head: true,
+    }),
+
+  supabase
+    .from("employee_roles")
+    .select("*", {
+      count: "exact",
+      head: true,
+    }),
+]);
+
+setEmployeeCount(employeesResult.count || 0);
+setPendingCount(pendingResult.count || 0);
+setDepartmentCount(departmentsResult.count || 0);
+setRoleCount(rolesResult.count || 0);
 
     setDrafts(data || []);
 
@@ -359,7 +397,7 @@ if (loading) {
 
           <h2 className="text-4xl font-bold">
 
-            0
+            {pendingCount}
 
           </h2>
 
@@ -403,7 +441,7 @@ if (loading) {
 
           <h2 className="text-4xl font-bold">
 
-            0
+            {departmentCount}
 
           </h2>
 
@@ -447,7 +485,7 @@ if (loading) {
 
           <h2 className="text-4xl font-bold text-gray-700">
 
-  --
+  {roleCount}
 
 </h2>
 
@@ -721,7 +759,7 @@ if (loading) {
 
           <div className="rounded-full bg-orange-100 px-4 py-2 font-semibold text-orange-600">
 
-            Version 1.0
+            Version 1.1
 
           </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -20,6 +21,10 @@ export default function LoginPage() {
     setPassword] =
     useState("");
 
+const [showPassword,
+  setShowPassword] =
+  useState(false);
+
   const [loading,
     setLoading] =
     useState(false);
@@ -27,6 +32,16 @@ export default function LoginPage() {
   const [error,
     setError] =
     useState("");
+
+    function delay(ms: number) {
+
+  return new Promise((resolve) =>
+
+    setTimeout(resolve, ms)
+
+  );
+
+}
 
   async function handleLogin() {
 
@@ -36,6 +51,9 @@ export default function LoginPage() {
 
       setError("");
 
+console.log("LOGIN EMAIL:", email);
+console.log("LOGIN PASSWORD:", password);
+      
       const {
 
         data,
@@ -79,7 +97,7 @@ export default function LoginPage() {
       } =
       await supabase
         .from("profiles")
-        .select("role")
+        .select("role, must_change_password")
         .eq(
           "id",
           data.user.id
@@ -101,49 +119,105 @@ export default function LoginPage() {
 
       }
 
+     if (profile?.must_change_password) {
+
+  await delay(700);
+
+  router.push("/change-password");
+
+  return;
+
+}
+
 switch (profile?.role) {
 
-  case "vendor":
-    router.push("/vendor-dashboard-v2");
-    break;
+  case "CUSTOMER":
 
-  case "customer":
+  await delay(700);
     router.push("/dashboard");
     break;
 
-    case "hr":
+  case "VENDOR":
 
-  router.push(
-    "/hr"
-  );
+  await delay(700);
+    router.push("/vendor-dashboard-v2");
+    break;
 
-  break;
+  case "RIDER":
 
-  case "rider":
+  await delay(700);
     router.push("/rider-dashboard");
     break;
 
-  case "manager":
-    router.push("/manager");
-    break;
+  case "ADMIN":
 
-  case "admin":
+  await delay(700);
     router.push("/admin-dashboard");
     break;
 
- case "hr":
-case "operations":
-case "support":
+  case "HR":
 
+  await delay(700);
     router.push("/hr");
-
     break;
 
-  case "finance":
+  case "FINANCE":
+
+  await delay(700);
     router.push("/finance");
     break;
 
+  case "EXECUTIVE":
+
+  await delay(700);
+    router.push("/admin-dashboard");
+    break;
+
+  case "COO":
+
+  await delay(700);
+    router.push("/admin-dashboard");
+    break;
+
+  case "OPERATIONS":
+
+  await delay(700);
+    router.push("/admin-dashboard");
+    break;
+
+  case "DIVISION":
+
+  await delay(700);
+    router.push("/admin-dashboard");
+    break;
+
+  case "TERRITORY":
+
+  await delay(700);
+    router.push("/manager-v3");
+    break;
+
+  case "SUPPORT":
+
+  await delay(700);
+    router.push("/admin-dashboard");
+    break;
+
+  case "GROWTH":
+
+  await delay(700);
+    router.push("/admin-dashboard");
+    break;
+
+  case "NONE":
+
+  await delay(700);
+    router.push("/dashboard");
+    break;
+
   default:
+
+  await delay(700);
     router.push("/dashboard");
 
 }
@@ -221,24 +295,64 @@ case "support":
             "
           />
 
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e)=>
+         <div className="relative">
 
-              setPassword(
-                e.target.value
-              )
+  <input
+    type={
+      showPassword
+        ? "text"
+        : "password"
+    }
+    placeholder="Password"
+    value={password}
+    onChange={(e) =>
 
-            }
-            className="
-              w-full
-              border
-              rounded-xl
-              p-4
-            "
-          />
+      setPassword(
+        e.target.value
+      )
+
+    }
+    className="
+      w-full
+      border
+      rounded-xl
+      p-4
+      pr-12
+    "
+  />
+
+  <button
+    type="button"
+    onClick={() =>
+
+      setShowPassword(
+        !showPassword
+      )
+
+    }
+    className="
+      absolute
+      right-4
+      top-1/2
+      -translate-y-1/2
+      text-gray-500
+      hover:text-gray-700
+    "
+  >
+
+    {
+
+      showPassword
+
+        ? <EyeOff size={20} />
+
+        : <Eye size={20} />
+
+    }
+
+  </button>
+
+</div>
 
           {
 

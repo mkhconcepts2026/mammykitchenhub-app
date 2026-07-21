@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import EmployeeCredentialsModal from "@/components/hr/EmployeeCredentialsModal";
 import { createClient } from "@/lib/supabase/client";
 import {
   generateEmployeeEmail,
@@ -13,8 +14,14 @@ export default function EmployeeProvisioningWizard() {
 const supabase = createClient();
 const [employeePhoto, setEmployeePhoto] = useState<File | null>(null);
 const [step, setStep] = useState(1);
+const [showCredentials, setShowCredentials] =
+  useState(false);
+
+const [employeeCredentials, setEmployeeCredentials] =
+  useState<any>(null);
 const router = useRouter();
 const [departments, setDepartments] = useState<any[]>([]);
+const [employees, setEmployees] = useState<any[]>([]);
 const [roles, setRoles] = useState<any[]>([]);
 const [states, setStates] = useState<any[]>([]);
 const [lgas, setLgas] = useState<any[]>([]);
@@ -42,7 +49,7 @@ photoUrl: "",
   territoryId: "",
 
   officeLocation: "",
-
+   hireDate: "",
   email: "",
   username: "",
 });
@@ -63,15 +70,17 @@ useEffect(() => {
 
     ...prev,
 
-    email: generateEmployeeEmail(
-      prev.firstName,
-      prev.lastName
-    ),
-
     username: generateUsername(
-      prev.firstName,
-      prev.lastName
-    ),
+  prev.firstName,
+  prev.lastName
+),
+
+email: generateEmployeeEmail(
+  generateUsername(
+    prev.firstName,
+    prev.lastName
+  )
+),
 
   }));
 
@@ -208,24 +217,11 @@ function validateCurrentStep() {
 
 }
 
-  const nextStep = () => {
+ const nextStep = () => {
 
   if (!validateCurrentStep()) return;
 
-  // Skip Territory for non-Territory Managers
-
-  if (
-    step === 3 &&
-    !isTerritoryManager
-  ) {
-
-    setStep(5);
-
-    return;
-
-  }
-
-  if (step < 6) {
+  if (step < 5) {
 
     setStep(step + 1);
 
@@ -379,9 +375,9 @@ const {
 
     }
 
-   alert("✅ Employee created successfully.");
+   setEmployeeCredentials(result.credentials);
 
-router.push("/hr/employees");
+setShowCredentials(true);
 
   } catch (error) {
 
@@ -440,6 +436,11 @@ console.log("CURRENT USER:", user);
     .select("*")
     .order("name");
 
+    const { data: employeeData } = await supabase
+  .from("employees")
+  .select("id, first_name, last_name")
+  .order("first_name");
+
   const { data: stateData } = await supabase
     .from("states")
     .select("*")
@@ -452,6 +453,8 @@ console.log("States:", stateData);
 setDepartments(departmentData || []);
 setRoles(roleData || []);
 setStates(stateData || []);
+
+setEmployees(employeeData || []);
 
 }
 
@@ -843,10 +846,17 @@ setStates(stateData || []);
                   Date Joined
                 </label>
 
-                <input
-                  type="date"
-                  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
-                />
+               <input
+  type="date"
+  value={formData.hireDate}
+  onChange={(e) =>
+    setFormData((prev) => ({
+      ...prev,
+      hireDate: e.target.value,
+    }))
+  }
+  className="w-full rounded-2xl border p-4 focus:border-orange-500 focus:outline-none"
+/>
 
               </div>
 
@@ -1162,7 +1172,7 @@ setStates(stateData || []);
 
     </label>
 
-   <input
+   <select
   value={formData.reportsTo}
   onChange={(e) =>
     setFormData((prev) => ({
@@ -1171,8 +1181,26 @@ setStates(stateData || []);
     }))
   }
   className="w-full rounded-2xl border p-4"
-  placeholder="Managing Director"
-/>
+>
+
+  <option value="">
+    Select Supervisor
+  </option>
+
+  {employees.map((employee) => (
+
+    <option
+      key={employee.id}
+      value={employee.id}
+    >
+
+      {employee.first_name} {employee.last_name}
+
+    </option>
+
+  ))}
+
+</select>
 
   </div>
 
@@ -1479,6 +1507,8 @@ setStates(stateData || []);
 
   </div>
 
+  
+
   <div>
 
     <label className="mb-2 block font-medium">
@@ -1756,11 +1786,37 @@ will only require a State assignment.
 
       <div className="space-y-2 text-sm">
 
-        <p><strong>Department:</strong> Operations</p>
+       <p>
 
-        <p><strong>Role:</strong> Territory Relationship Manager</p>
+<strong>Department:</strong>{" "}
 
-        <p><strong>Reports To:</strong> Operations Manager</p>
+{
+  departments.find(
+    (d) => d.id === formData.departmentId
+  )?.name || "-"
+}
+
+</p>
+
+<p>
+
+<strong>Role:</strong>{" "}
+
+{
+  roles.find(
+    (r) => r.id === formData.roleId
+  )?.name || "-"
+}
+
+</p>
+
+<p>
+
+<strong>Reports To:</strong>{" "}
+
+{formData.reportsTo || "-"}
+
+</p>
 
       </div>
 
@@ -1776,12 +1832,41 @@ will only require a State assignment.
 
       <div className="space-y-2 text-sm">
 
-        <p><strong>State:</strong> Lagos</p>
+        <p>
 
-        <p><strong>LGA:</strong> Eti-Osa</p>
+<strong>State:</strong>{" "}
 
-        <p><strong>Territory:</strong> Lekki Phase 1</p>
+{
+  states.find(
+    (s) => s.id === formData.stateId
+  )?.name || "-"
+}
 
+</p>
+
+<p>
+
+<strong>LGA:</strong>{" "}
+
+{
+  lgas.find(
+    (l) => l.id === formData.lgaId
+  )?.name || "-"
+}
+
+</p>
+
+<p>
+
+<strong>Territory:</strong>{" "}
+
+{
+  territories.find(
+    (t) => t.id === formData.territoryId
+  )?.name || "-"
+}
+
+</p>
       </div>
 
     </div>
@@ -1804,7 +1889,13 @@ will only require a State assignment.
 
 </p>
 
-        <p><strong>Employee No:</strong> MKH-EMP-000001</p>
+        <p>
+
+<strong>Employee No:</strong>
+
+Will be generated automatically
+
+</p>
 
         <p><strong>Status:</strong> Ready to Create</p>
 
@@ -1968,7 +2059,7 @@ else {
 
       <p className="text-sm text-gray-500">
 
-        Step {step} of 6
+        Step {step} of 5
 
       </p>
 
@@ -2004,6 +2095,16 @@ else {
 
       </div>
 
+<EmployeeCredentialsModal
+  open={showCredentials}
+  credentials={employeeCredentials}
+  onClose={() => {
+    setShowCredentials(false);
+    window.location.href = "/hr/employees";
+  }}
+/>
+
     </div>
+
   );
 }
