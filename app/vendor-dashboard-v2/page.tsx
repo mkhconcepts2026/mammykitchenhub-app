@@ -501,16 +501,43 @@ async function updateOrderStatus(
   status:string
 ){
 
-  const { error } =
-    await supabase
-      .from("orders")
-      .update({
-        status
-      })
-      .eq(
-        "id",
-        orderId
-      );
+ const updates: any = {
+  status,
+};
+
+const now = new Date().toISOString();
+
+switch (status) {
+  case "accepted":
+    updates.accepted_at = now;
+    break;
+
+  case "preparing":
+    updates.preparing_at = now;
+    break;
+
+  case "ready_for_pickup":
+    updates.ready_at = now;
+    break;
+
+  case "picked_up":
+    updates.picked_up_at = now;
+    break;
+
+  case "delivered":
+    updates.delivered_at = now;
+    break;
+
+  case "cancelled":
+    updates.cancelled_at = now;
+    break;
+}
+
+const { error } =
+  await supabase
+    .from("orders")
+    .update(updates)
+    .eq("id", orderId);
 
   if(error){
 
@@ -518,6 +545,33 @@ async function updateOrderStatus(
     return;
 
   }
+
+  const eventTitles: Record<string, string> = {
+  accepted: "Vendor Accepted Order",
+  preparing: "Kitchen Started Preparation",
+  ready_for_pickup: "Order Ready for Pickup",
+  picked_up: "Rider Picked Up Order",
+  delivered: "Order Delivered",
+  cancelled: "Order Cancelled",
+};
+
+await supabase
+  .from("order_events")
+  .insert({
+
+    order_id: orderId,
+
+    event_type: status,
+
+    title: eventTitles[status] || status,
+
+    description: `Order status changed to ${status.replaceAll("_", " ")}`,
+
+    actor_type: "vendor",
+
+    actor_id: (await supabase.auth.getUser()).data.user?.id ?? null,
+
+  });
 
   if(status === "delivered"){
 

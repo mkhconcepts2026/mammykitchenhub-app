@@ -129,7 +129,9 @@ console.log("LOGIN PASSWORD:", password);
 
 }
 
-switch (profile?.role) {
+const role = profile?.role?.toUpperCase();
+
+switch (role) {
 
   case "CUSTOMER":
 

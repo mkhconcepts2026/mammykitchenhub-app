@@ -143,6 +143,16 @@ export default function RiderDashboardPage(){
 
       }
 
+      console.log("AUTH USER ID:", user.id);
+
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("id, role")
+  .eq("id", user.id)
+  .single();
+
+console.log("PROFILE:", profile);
+
       /*
       AVAILABLE PICKUPS
       */

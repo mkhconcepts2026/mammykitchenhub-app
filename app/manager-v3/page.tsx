@@ -3,7 +3,10 @@
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import LiveDispatchMap from "@/components/maps/LiveDispatchMap";
-
+import Sidebar from "@/components/manager/Sidebar";
+import Header from "@/components/manager/Header";
+import ExecutiveOverview from "@/components/manager/ExecutiveOverview";
+import ExceptionManagementPanel from "@/components/manager/ExceptionManagementPanel";
 import {
 
   GoogleMap,
@@ -1433,224 +1436,17 @@ return (
   mb-10
 ">
 
-  <div className="
-    bg-green-50
-    border
-    border-green-200
-    rounded-3xl
-    p-6
-  ">
-    <p className="text-gray-500">
-      Total Revenue
-    </p>
-
-    <h2 className="
-      text-4xl
-      font-bold
-      text-green-600
-      mt-2
-    ">
-      ₦{kpis.revenue.toLocaleString()}
-    </h2>
-  </div>
-
-  <div className="
-    bg-blue-50
-    border
-    border-blue-200
-    rounded-3xl
-    p-6
-  ">
-    <p className="text-gray-500">
-      Average Order Value
-    </p>
-
-    <h2 className="
-      text-4xl
-      font-bold
-      text-blue-600
-      mt-2
-    ">
-      ₦{kpis.averageOrder.toLocaleString()}
-    </h2>
-  </div>
-
-  <div className="
-    bg-purple-50
-    border
-    border-purple-200
-    rounded-3xl
-    p-6
-  ">
-    <p className="text-gray-500">
-      Completion Rate
-    </p>
-
-    <h2 className="
-      text-4xl
-      font-bold
-      text-purple-600
-      mt-2
-    ">
-      {kpis.completionRate}%
-    </h2>
-    
-  </div>
-  
-<div
-  className="
-    grid
-    grid-cols-1
-    md:grid-cols-2
-    gap-6
-    mb-8
-  "
->
-
-  <div
-    className="
-      bg-yellow-50
-      border
-      border-yellow-200
-      rounded-3xl
-      p-6
-    "
-  >
-    <p className="text-gray-500">
-      Vendor Wallet Exposure
-    </p>
-
-    <h2
-      className="
-        text-4xl
-        font-bold
-        text-yellow-600
-        mt-2
-      "
-    >
-      ₦{totalVendorExposure.toLocaleString()}
-    </h2>
-
-  </div>
-
-  <div
-    className="
-      bg-red-50
-      border
-      border-red-200
-      rounded-3xl
-      p-6
-    "
-  >
-    <p className="text-gray-500">
-      Rider Wallet Exposure
-    </p>
-
-    <h2
-      className="
-        text-4xl
-        font-bold
-        text-red-600
-        mt-2
-      "
-    >
-      ₦{totalRiderExposure.toLocaleString()}
-    </h2>
-
-  </div>
-
-</div>
-
-  <div
-  className="
-    bg-gradient-to-r
-    from-orange-50
-    to-blue-50
-    border
-    border-orange-200
-    rounded-3xl
-    p-6
-    mb-8
-  "
->
-
-  <h2
-  className="
-    text-xl
-    font-bold
-    mb-4
-  "
->
-  🔔 Live Operations Alerts
-</h2>
-
-<div
-  className="
-    grid
-    md:grid-cols-2
-    gap-4
-  "
->
-
-  <div
-    className="
-      bg-red-50
-      border
-      border-red-200
-      rounded-xl
-      p-4
-      font-medium
-      text-red-700
-    "
-  >
-    🔴 {stats.ready} orders waiting for rider assignment
-  </div>
-
-  <div
-    className="
-      bg-blue-50
-      border
-      border-blue-200
-      rounded-xl
-      p-4
-      font-medium
-      text-blue-700
-    "
-  >
-    🔵 {stats.assigned} riders currently delivering
-  </div>
-
-  <div
-    className="
-      bg-purple-50
-      border
-      border-purple-200
-      rounded-xl
-      p-4
-      font-medium
-      text-purple-700
-    "
-  >
-    🟣 {stats.pickedUp} orders picked up
-  </div>
-
-  <div
-    className="
-      bg-green-50
-      border
-      border-green-200
-      rounded-xl
-      p-4
-      font-medium
-      text-green-700
-    "
-  >
-    🟢 {stats.delivered} completed deliveries
-  </div>
-
-</div>
-
-</div>
+<ExecutiveOverview
+  revenue={kpis.revenue}
+  averageOrder={kpis.averageOrder}
+  completionRate={kpis.completionRate}
+  vendorExposure={totalVendorExposure}
+  riderExposure={totalRiderExposure}
+  readyOrders={stats.ready}
+  assignedOrders={stats.assigned}
+  pickedUpOrders={stats.pickedUp}
+  deliveredOrders={stats.delivered}
+/>
 
 </div>
 <div

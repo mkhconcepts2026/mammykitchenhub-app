@@ -157,12 +157,15 @@ export default function OrdersPage() {
     } =
       await supabase
         .from("orders")
-        .update({
+       .update({
 
-          status:
-            "cancelled"
+  status:
+    "cancelled",
 
-        })
+  cancelled_at:
+    new Date().toISOString()
+
+})
         .eq(
           "id",
           orderId
