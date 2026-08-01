@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 
 import { getOrders } from "@/lib/services/orders";
 
+import { supabase } from "@/lib/supabase";
+
+import TerritoryActivityFeed from "@/components/territory-manager/TerritoryActivityFeed";
+
 export default function LiveOperationsPage() {
 
   const [orders, setOrders] = useState<any[]>([]);
@@ -18,7 +22,7 @@ export default function LiveOperationsPage() {
 });
 
 const [alerts, setAlerts] = useState<any[]>([]);
-
+const [territoryEvents, setTerritoryEvents] = useState<any[]>([]);
   useEffect(() => {
 
     async function loadOrders() {
@@ -28,6 +32,31 @@ const [alerts, setAlerts] = useState<any[]>([]);
         const data = await getOrders();
 
         setOrders(data);
+
+const { data: events, error: eventsError } =
+  await supabase
+    .from("order_events")
+    .select(`
+      id,
+      title,
+      created_at,
+      orders(
+        order_number,
+        vendors(name)
+      )
+    `)
+    .order("created_at", {
+      ascending: false,
+    })
+    .limit(20);
+
+if (eventsError) {
+  console.error(eventsError);
+} else {
+  console.log(events);
+
+setTerritoryEvents(events ?? []);
+}
 
         const now = Date.now();
 
@@ -474,6 +503,160 @@ Recommended Action
   </div>
 
 </section>
+
+{/* Live Delivery Monitor */}
+
+<section className="mt-8 rounded-3xl border border-slate-200 bg-white shadow-sm">
+
+  <div className="flex items-center justify-between border-b border-slate-200 px-8 py-6">
+
+    <div>
+
+      <h2 className="text-2xl font-bold text-[#0F172A]">
+
+        Live Delivery Monitor
+
+      </h2>
+
+      <p className="mt-1 text-sm text-slate-500">
+
+        Orders currently on the road with riders.
+
+      </p>
+
+    </div>
+
+    <span className="rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700">
+
+      Live
+
+    </span>
+
+  </div>
+
+  <div className="overflow-x-auto">
+
+    <table className="w-full">
+
+      <thead className="bg-slate-50">
+
+        <tr>
+
+          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+            Order
+          </th>
+
+          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+            Vendor
+          </th>
+
+          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+            Customer
+          </th>
+
+          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+            Rider
+          </th>
+
+          <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+            Status
+          </th>
+
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        {orders.filter((order: any) => order.status === "picked_up").length === 0 ? (
+
+          <tr>
+
+            <td
+              colSpan={5}
+              className="px-6 py-12 text-center text-slate-500"
+            >
+
+              No active deliveries.
+
+            </td>
+
+          </tr>
+
+        ) : (
+
+          orders
+            .filter((order: any) => order.status === "picked_up")
+            .map((order: any) => (
+
+              <tr
+                key={order.id}
+                className="border-t border-slate-100 hover:bg-slate-50"
+              >
+
+                <td className="px-6 py-5 font-medium">
+
+                  #{order.id.slice(0, 8)}
+
+                </td>
+
+                <td className="px-6 py-5">
+
+                  {order.vendors?.name ?? "-"}
+
+                </td>
+
+                <td className="px-6 py-5">
+
+                  {order.profiles?.full_name ?? "-"}
+
+                </td>
+
+                <td className="px-6 py-5">
+
+                  Coming Soon
+
+                </td>
+
+                <td className="px-6 py-5">
+
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+
+                    Out for Delivery
+
+                  </span>
+
+                </td>
+
+              </tr>
+
+            ))
+
+        )}
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+</section>
+
+{/* Territory Activity Feed */}
+
+<TerritoryActivityFeed
+  events={territoryEvents.map((event: any) => ({
+    id: event.id,
+    orderNumber:
+      event.orders?.order_number ?? "N/A",
+    vendor:
+      event.orders?.vendors?.name ??
+      "Unknown Vendor",
+    event: event.title,
+    timestamp: event.created_at,
+  }))}
+/>
+
     </div>
   );
 }
