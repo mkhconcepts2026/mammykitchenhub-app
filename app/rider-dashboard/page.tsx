@@ -488,16 +488,28 @@ console.log(
 
 ){
 
-  const { error } =
-    await supabase
-      .from("orders")
-      .update({
-        status
-      })
-      .eq(
-        "id",
-        orderId
-      );
+ const updates: any = {
+  status,
+};
+
+const now = new Date().toISOString();
+
+if (status === "picked_up") {
+  updates.picked_up_at = now;
+}
+
+if (status === "delivered") {
+  updates.delivered_at = now;
+}
+
+const { error } =
+  await supabase
+    .from("orders")
+    .update(updates)
+    .eq(
+      "id",
+      orderId
+    );
 
   if(error){
 
@@ -505,6 +517,41 @@ console.log(
     return;
 
   }
+
+const eventTitles: Record<string, string> = {
+
+  picked_up: "Rider Picked Up Order",
+
+  delivered: "Order Delivered",
+
+};
+
+if (
+  status === "picked_up" ||
+  status === "delivered"
+) {
+
+  await supabase
+    .from("order_events")
+    .insert({
+
+      order_id: orderId,
+
+      event_type: status,
+
+      title: eventTitles[status],
+
+      description:
+        `Order status changed to ${status.replaceAll("_", " ")}`,
+
+      actor_type: "rider",
+
+      actor_id:
+        (await supabase.auth.getUser()).data.user?.id ?? null,
+
+    });
+
+}
 
   if(status === "delivered"){
 

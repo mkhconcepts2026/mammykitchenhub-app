@@ -60,7 +60,7 @@ export default function LiveOperationsTimeline({ order }: Props) {
 
       <div className="space-y-6 p-8">
         {timeline.map((event, index) => (
-          <div key={event.label} className="flex items-start gap-5">
+          <div key={`${event.label}-${index}`} className="flex items-start gap-5">
             <div className="flex flex-col items-center">
               <div
                 className={`h-4 w-4 rounded-full ${event.color}`}

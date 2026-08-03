@@ -54,7 +54,7 @@ export default function AuditTrail({ order }: Props) {
       <div className="divide-y divide-slate-100">
         {orderEvents.map((event) => (
           <div
-            key={event.title}
+            key={event.id}
             className="flex items-center justify-between px-8 py-5"
           >
             <div>

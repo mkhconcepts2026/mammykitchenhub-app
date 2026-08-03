@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import type { RealtimeChannel } from "@supabase/supabase-js";
+
 import { getOrders } from "@/lib/services/orders";
 
 import { supabase } from "@/lib/supabase";
@@ -22,7 +24,11 @@ export default function LiveOperationsPage() {
 });
 
 const [alerts, setAlerts] = useState<any[]>([]);
+
 const [territoryEvents, setTerritoryEvents] = useState<any[]>([]);
+
+const [channel, setChannel] =
+  useState<RealtimeChannel | null>(null);
   useEffect(() => {
 
     async function loadOrders() {
@@ -161,7 +167,33 @@ setSnapshot({
 
     loadOrders();
 
-  }, []);
+const realtimeChannel =
+  supabase
+    .channel("territory-live-feed")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "order_events",
+      },
+      () => {
+        loadOrders();
+      }
+    )
+    .subscribe();
+
+setChannel(realtimeChannel);
+
+
+
+  return () => {
+  realtimeChannel.unsubscribe();
+};
+
+}, []);
+
+
   return (
     <div className="space-y-8">
 

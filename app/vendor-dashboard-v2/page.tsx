@@ -1568,46 +1568,80 @@ useEffect(() => {
     ₦{Number(order.total).toLocaleString()}
   </p>
 
-  <select
-    value={order.status}
-    onChange={(e)=>
-      updateOrderStatus(
-        order.id,
-        e.target.value
-      )
+{order.status === "pending" && (
+
+  <button
+    onClick={() =>
+      updateOrderStatus(order.id, "accepted")
     }
-    className="
-      border
-      rounded-lg
-      px-3
-      py-2
-    "
+    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
   >
-    <option value="pending">
-      Pending
-    </option>
+    Accept Order
+  </button>
 
-    <option value="accepted">
-      Accepted
-    </option>
+)}
 
-    <option value="preparing">
-      Preparing
-    </option>
+{order.status === "accepted" && (
 
-    <option value="ready_for_pickup">
-  Ready For Pickup
-</option>
+  <button
+    onClick={() =>
+      updateOrderStatus(order.id, "preparing")
+    }
+    className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+  >
+    Start Preparing
+  </button>
 
-<option value="picked_up">
-  Picked Up
-</option>
+)}
 
-    <option value="delivered">
-      Delivered
-    </option>
+{order.status === "preparing" && (
 
-  </select>
+  <button
+    onClick={() =>
+      updateOrderStatus(order.id, "ready_for_pickup")
+    }
+    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+  >
+    Ready for Pickup
+  </button>
+
+)}
+
+{order.status === "ready_for_pickup" && (
+
+  <button
+    onClick={() =>
+      updateOrderStatus(order.id, "picked_up")
+    }
+    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+  >
+    Hand to Rider
+  </button>
+
+)}
+
+{order.status === "picked_up" && (
+
+  <button
+    onClick={() =>
+      updateOrderStatus(order.id, "delivered")
+    }
+    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+  >
+    Mark Delivered
+  </button>
+
+)}
+
+{order.status === "delivered" && (
+
+  <span className="inline-flex items-center rounded-lg bg-emerald-100 px-4 py-2 text-sm font-bold text-emerald-700">
+
+    ✓ Delivered
+
+  </span>
+
+)}
 
 </div>
         </div>
