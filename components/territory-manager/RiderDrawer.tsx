@@ -1,6 +1,15 @@
 "use client";
 
-import { X, Mail, Phone, Wallet, MapPin, Calendar } from "lucide-react";
+import {
+  X,
+  Mail,
+  Phone,
+  Wallet,
+  MapPin,
+  Calendar,
+  Package,
+} from "lucide-react";
+
 import { RiderRecord } from "@/types/rider";
 
 interface RiderDrawerProps {
@@ -9,6 +18,25 @@ interface RiderDrawerProps {
   onClose: () => void;
 }
 
+const operationalStatusConfig = {
+  available: {
+    label: "Available",
+    className: "bg-emerald-100 text-emerald-700",
+  },
+  assigned: {
+    label: "Assigned",
+    className: "bg-amber-100 text-amber-700",
+  },
+  delivering: {
+    label: "Delivering",
+    className: "bg-orange-100 text-orange-700",
+  },
+  offline: {
+    label: "Offline",
+    className: "bg-slate-200 text-slate-700",
+  },
+};
+
 export default function RiderDrawer({
   rider,
   open,
@@ -16,9 +44,13 @@ export default function RiderDrawer({
 }: RiderDrawerProps) {
   if (!open || !rider) return null;
 
+  const statusConfig =
+    operationalStatusConfig[
+      rider.operational_status
+    ];
+
   return (
     <>
-
       {/* Backdrop */}
 
       <div
@@ -55,6 +87,7 @@ export default function RiderDrawer({
             <button
               onClick={onClose}
               className="rounded-xl bg-white/20 p-2 transition hover:bg-white/30"
+              aria-label="Close rider profile"
             >
               <X size={22} />
             </button>
@@ -78,6 +111,7 @@ export default function RiderDrawer({
             <div className="space-y-4">
 
               <div>
+
                 <p className="text-xs uppercase text-slate-500">
                   Full Name
                 </p>
@@ -85,21 +119,32 @@ export default function RiderDrawer({
                 <p className="font-semibold text-slate-900">
                   {rider.full_name || "-"}
                 </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-
-                <Mail size={18} className="text-slate-400" />
-
-                <span>{rider.email || "-"}</span>
 
               </div>
 
               <div className="flex items-center gap-3">
 
-                <Phone size={18} className="text-slate-400" />
+                <Mail
+                  size={18}
+                  className="text-slate-400"
+                />
 
-                <span>{rider.phone || "-"}</span>
+                <span>
+                  {rider.email || "-"}
+                </span>
+
+              </div>
+
+              <div className="flex items-center gap-3">
+
+                <Phone
+                  size={18}
+                  className="text-slate-400"
+                />
+
+                <span>
+                  {rider.phone || "-"}
+                </span>
 
               </div>
 
@@ -107,7 +152,7 @@ export default function RiderDrawer({
 
           </section>
 
-          {/* Status */}
+          {/* Operational Status */}
 
           <section className="rounded-2xl border border-slate-200 p-6">
 
@@ -115,17 +160,113 @@ export default function RiderDrawer({
               Operational Status
             </h3>
 
-            <span
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                rider.status === "active"
-                  ? "bg-emerald-100 text-emerald-700"
-                  : rider.status === "busy"
-                  ? "bg-orange-100 text-orange-700"
-                  : "bg-slate-200 text-slate-700"
-              }`}
-            >
-              {rider.status}
-            </span>
+            <div className="flex items-center justify-between gap-4">
+
+              <span
+                className={`rounded-full px-4 py-2 text-sm font-semibold ${statusConfig.className}`}
+              >
+                {statusConfig.label}
+              </span>
+
+              <span className="text-xs text-slate-500">
+                Account:{" "}
+                <span className="font-semibold capitalize text-slate-700">
+                  {rider.status || "unknown"}
+                </span>
+              </span>
+
+            </div>
+
+          </section>
+
+          {/* Current Delivery */}
+
+          <section className="rounded-2xl border border-slate-200 p-6">
+
+            <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
+
+              <Package size={20} />
+
+              Current Delivery
+
+            </h3>
+
+            {rider.current_order ? (
+
+              <div className="space-y-4">
+
+                <div className="rounded-xl bg-orange-50 p-4">
+
+                  <p className="text-xs uppercase text-slate-500">
+                    Order
+                  </p>
+
+                  <p className="mt-2 text-xl font-black text-slate-900">
+                    {rider.current_order.order_number ||
+                      rider.current_order.id.slice(0, 8)}
+                  </p>
+
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+
+                    <p className="text-xs uppercase text-slate-500">
+                      Status
+                    </p>
+
+                    <p className="mt-2 font-semibold capitalize text-slate-900">
+                      {rider.current_order.status.replace(
+                        /_/g,
+                        " "
+                      )}
+                    </p>
+
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+
+                    <p className="text-xs uppercase text-slate-500">
+                      Order Value
+                    </p>
+
+                    <p className="mt-2 font-semibold text-slate-900">
+                      ₦
+                      {Number(
+                        rider.current_order.total ?? 0
+                      ).toLocaleString()}
+                    </p>
+
+                  </div>
+
+                </div>
+
+                <p className="text-sm text-slate-500">
+                  Created{" "}
+                  {new Date(
+                    rider.current_order.created_at
+                  ).toLocaleString()}
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div className="rounded-xl bg-slate-50 p-5">
+
+                <p className="font-semibold text-slate-700">
+                  No active delivery
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  This rider currently has no assigned
+                  or picked-up order.
+                </p>
+
+              </div>
+
+            )}
 
           </section>
 
@@ -196,29 +337,31 @@ export default function RiderDrawer({
 
           <section className="rounded-2xl border border-slate-200 p-6">
 
-            <h3 className="mb-5 flex items-center gap-2 text-lg font-bold">
+            <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
 
               <MapPin size={20} />
 
-              Last Location Update
+              Last GPS Update
 
             </h3>
 
             <p className="text-slate-700">
 
               {rider.updated_at
-                ? new Date(rider.updated_at).toLocaleString()
+                ? new Date(
+                    rider.updated_at
+                  ).toLocaleString()
                 : "No location update available."}
 
             </p>
 
           </section>
 
-          {/* Joined */}
+          {/* Account */}
 
           <section className="rounded-2xl border border-slate-200 p-6">
 
-            <h3 className="mb-5 flex items-center gap-2 text-lg font-bold">
+            <h3 className="mb-5 flex items-center gap-2 text-lg font-bold text-slate-900">
 
               <Calendar size={20} />
 
@@ -226,18 +369,23 @@ export default function RiderDrawer({
 
             </h3>
 
-            <p className="text-slate-700">
+            <div className="space-y-2 text-sm">
 
-              Rider profile available and operational.
+              <p className="text-slate-500">
+                Account Status
+              </p>
 
-            </p>
+              <p className="font-semibold capitalize text-slate-900">
+                {rider.status || "Unknown"}
+              </p>
+
+            </div>
 
           </section>
 
         </div>
 
       </aside>
-
     </>
   );
 }

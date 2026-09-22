@@ -10,6 +10,8 @@ import {
   getRiders,
   getRiderLocations,
   getRiderWallets,
+  getRiderCurrentOrders,
+  getRiderOperationalStatus,
 } from "@/lib/services/riders";
 
 import { RiderRecord } from "@/types/rider";
@@ -32,10 +34,12 @@ export default function RidersPage() {
         profiles,
         locations,
         wallets,
+        currentOrders,
       ] = await Promise.all([
         getRiders(),
         getRiderLocations(),
         getRiderWallets(),
+        getRiderCurrentOrders(),
       ]);
 
       const merged: RiderRecord[] = profiles.map((profile) => {
@@ -47,12 +51,28 @@ export default function RidersPage() {
           (l) => l.rider_id === profile.id
         );
 
+        const currentOrder =
+          currentOrders.find(
+            (order) => order.rider_id === profile.id
+          ) ?? null;
+
+        const operationalStatus =
+          getRiderOperationalStatus(
+            profile.status,
+            currentOrder
+          );
+
         return {
           id: profile.id,
           full_name: profile.full_name,
           email: profile.email,
           phone: profile.phone,
+
+          // Account status remains sourced from profiles.
           status: profile.status,
+
+          // Live operational status is derived separately.
+          operational_status: operationalStatus,
 
           available_balance:
             Number(wallet?.available_balance ?? 0),
@@ -65,12 +85,17 @@ export default function RidersPage() {
 
           updated_at:
             location?.updated_at ?? null,
+
+          current_order: currentOrder,
         };
       });
 
       setRiders(merged);
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Failed to load TRM riders:",
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -85,7 +110,8 @@ export default function RidersPage() {
   const activeRiders = useMemo(
     () =>
       riders.filter(
-        (r) => r.status === "active"
+        (rider) =>
+          rider.operational_status !== "offline"
       ).length,
     [riders]
   );
@@ -93,7 +119,8 @@ export default function RidersPage() {
   const offlineRiders = useMemo(
     () =>
       riders.filter(
-        (r) => r.status === "offline"
+        (rider) =>
+          rider.operational_status === "offline"
       ).length,
     [riders]
   );

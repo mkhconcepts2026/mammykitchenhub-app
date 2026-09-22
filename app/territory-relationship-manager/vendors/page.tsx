@@ -10,6 +10,7 @@ import {
   getVendors,
   getVendorWallets,
   getVendorApplications,
+  getVendorTransactions,
 } from "@/lib/services/vendors";
 
 import { VendorRecord } from "@/types/vendor";
@@ -17,14 +18,17 @@ import { VendorRecord } from "@/types/vendor";
 export default function VendorsPage() {
   const [loading, setLoading] = useState(true);
 
-  const [vendors, setVendors] = useState<VendorRecord[]>([]);
+  const [vendors, setVendors] =
+    useState<VendorRecord[]>([]);
 
-  const [pendingApplications, setPendingApplications] = useState(0);
+  const [pendingApplications, setPendingApplications] =
+    useState(0);
 
   const [selectedVendor, setSelectedVendor] =
     useState<VendorRecord | null>(null);
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] =
+    useState(false);
 
   async function loadData() {
     try {
@@ -34,50 +38,68 @@ export default function VendorsPage() {
         vendorRows,
         walletRows,
         applicationRows,
+        transactionRows,
       ] = await Promise.all([
         getVendors(),
         getVendorWallets(),
         getVendorApplications(),
+        getVendorTransactions(),
       ]);
 
-      const merged: VendorRecord[] = vendorRows.map((vendor) => {
-        const wallet = walletRows.find(
-          (w) => w.vendor_id === vendor.id
-        );
+      const merged: VendorRecord[] =
+        vendorRows.map((vendor) => {
+          const wallet =
+            walletRows.find(
+              (w) => w.vendor_id === vendor.id
+            );
 
-        return {
-          id: vendor.id,
-          name: vendor.name,
-          cuisine: vendor.cuisine,
-          email: vendor.email,
-          phone: vendor.phone,
-          owner_name: vendor.owner_name,
-          status: vendor.status,
-          rating: Number(vendor.rating ?? 0),
+          const transactions =
+            transactionRows.filter(
+              (transaction) =>
+                transaction.vendor_id === vendor.id
+            );
 
-          available_balance: Number(
-            wallet?.available_balance ?? 0
-          ),
+          return {
+            id: vendor.id,
+            name: vendor.name,
+            cuisine: vendor.cuisine,
+            email: vendor.email,
+            phone: vendor.phone,
+            owner_name: vendor.owner_name,
+            status: vendor.status,
+            rating: Number(
+              vendor.rating ?? 0
+            ),
 
-          pending_balance: Number(
-            wallet?.pending_balance ?? 0
-          ),
+            available_balance: Number(
+              wallet?.available_balance ?? 0
+            ),
 
-          lifetime_earnings: Number(
-            wallet?.lifetime_earnings ?? 0
-          ),
-        };
-      });
+            pending_balance: Number(
+              wallet?.accrued_balance ?? 0
+            ),
+
+            lifetime_earnings: Number(
+              wallet?.lifetime_earnings ?? 0
+            ),
+
+            transactions,
+          };
+        });
 
       setVendors(merged);
 
       setPendingApplications(
         applicationRows.filter(
-          (a) => a.status === "pending"
+          (application) =>
+            application.status === "pending"
         ).length
       );
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Failed to load TRM vendors:",
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -92,7 +114,8 @@ export default function VendorsPage() {
   const activeVendors = useMemo(
     () =>
       vendors.filter(
-        (v) => v.status === "active"
+        (vendor) =>
+          vendor.status === "active"
       ).length,
     [vendors]
   );
@@ -129,9 +152,9 @@ export default function VendorsPage() {
           </h1>
 
           <p className="mt-4 max-w-2xl text-orange-100">
-            Manage vendors, supervise operational performance,
-            monitor wallets and onboarding activities across
-            your territory.
+            Manage vendors, supervise operational
+            performance, monitor wallets and onboarding
+            activities across your territory.
           </p>
 
         </div>

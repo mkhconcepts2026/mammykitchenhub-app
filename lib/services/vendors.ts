@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { VendorTransaction } from "@/types/vendor";
 
 export async function getVendors() {
   const { data, error } = await supabase
@@ -31,13 +32,21 @@ export async function getVendorApplications() {
   return data ?? [];
 }
 
-export async function getVendorTransactions() {
-  const { data, error } = await supabase
+export async function getVendorTransactions(
+  vendorId?: string
+): Promise<VendorTransaction[]> {
+  let query = supabase
     .from("vendor_transactions")
     .select("*")
     .order("created_at", { ascending: false });
 
+  if (vendorId) {
+    query = query.eq("vendor_id", vendorId);
+  }
+
+  const { data, error } = await query;
+
   if (error) throw error;
 
-  return data ?? [];
+  return (data ?? []) as VendorTransaction[];
 }
