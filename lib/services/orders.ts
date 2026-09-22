@@ -5,12 +5,9 @@ export async function getOrders() {
     .from("orders")
     .select(`
       *,
-      vendors (
-        id,
-        name,
-        cuisine,
-        location,
-        status
+       vendors(name),
+  profiles!orders_user_id_fkey(full_name),
+  riders:profiles!orders_rider_id_fkey(full_name)
       ),
       rider:profiles!orders_rider_id_fkey (
         id,

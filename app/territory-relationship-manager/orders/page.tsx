@@ -5,116 +5,175 @@ import { supabase } from "@/lib/supabase";
 import EnterpriseOrderSidebar from "@/components/territory-manager/EnterpriseOrderSidebar";
 import EnterpriseIntelligencePanel from "@/components/territory-manager/EnterpriseIntelligencePanel";
 export default function TerritoryRelationshipManagerOrdersPage() {
-
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
-const [loading, setLoading] = useState(true);
-const selectedOrderRef = useRef<any>(null);
+  const [, setLoading] = useState(true);
 
-useEffect(() => {
-  selectedOrderRef.current = selectedOrder;
-}, [selectedOrder]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
+  const selectedOrderRef = useRef<any>(null);
 
-async function loadOrders() {
-  setLoading(true);
+  useEffect(() => {
+    selectedOrderRef.current = selectedOrder;
+  }, [selectedOrder]);
 
-  const { data, error } = await supabase
-    .from("orders")
-    .select(`
-      *,
-      vendors (
-        id,
-        name,
-        cuisine,
-        location,
-        status
-      ),
-      rider:profiles!orders_rider_id_fkey (
-        id,
-        full_name,
-        phone
-      ),
-      profiles!orders_user_id_fkey (
-        id,
-        full_name,
-        email,
-        phone
+  async function loadOrders() {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select(`
+        *,
+        vendors (
+          id,
+          name,
+          cuisine,
+          location,
+          status
+        ),
+        rider:profiles!orders_rider_id_fkey (
+          id,
+          full_name,
+          phone
+        ),
+        profiles!orders_user_id_fkey (
+          id,
+          full_name,
+          email,
+          phone
+        )
+      `)
+      .order("created_at", {
+        ascending: false,
+      });
+
+    if (error) {
+      console.error("Orders:", error);
+    } else {
+      const latestOrders = data || [];
+
+      setOrders(latestOrders);
+
+      if (selectedOrderRef.current) {
+        const updatedOrder = latestOrders.find(
+          (order) => order.id === selectedOrderRef.current.id
+        );
+
+        if (updatedOrder) {
+          selectedOrderRef.current = updatedOrder;
+          setSelectedOrder(updatedOrder);
+        }
+      }
+    }
+
+    setLoading(false);
+  }
+
+  async function refreshWorkspace() {
+    await loadOrders();
+  }
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  useEffect(() => {
+    const ordersChannel = supabase
+      .channel("orders-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+        },
+        () => {
+          console.log("ORDER EVENT RECEIVED: orders");
+          refreshWorkspace();
+        }
       )
-    `)
-    .order("created_at", {
-      ascending: false,
-    });
+      .subscribe();
 
- if (error) {
-  console.error("Orders:", error);
-} else {
-  const latestOrders = data || [];
+    const orderEventsChannel = supabase
+      .channel("order-events-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "order_events",
+        },
+        () => {
+          console.log("ORDER EVENT RECEIVED: order_events");
+          refreshWorkspace();
+        }
+      )
+      .subscribe();
 
-setOrders(latestOrders);
+    return () => {
+      supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(orderEventsChannel);
+    };
+  }, []);
 
-if (selectedOrderRef.current) {
-  const updatedOrder = latestOrders.find(
-    (order) => order.id === selectedOrderRef.current.id
+  const liveOrders = orders.filter(
+    (order) => !["delivered", "cancelled"].includes(order.status)
+  ).length;
+
+  const preparingOrders = orders.filter(
+    (order) => order.status === "preparing"
+  ).length;
+
+  const readyOrders = orders.filter(
+    (order) => order.status === "ready_for_pickup"
+  ).length;
+
+  const outForDelivery = orders.filter(
+    (order) => order.status === "picked_up"
+  ).length;
+
+  const exceptions = orders.filter((order) => {
+    const minutesOpen =
+      (Date.now() - new Date(order.created_at).getTime()) / 60000;
+
+    return (
+      minutesOpen >= 30 &&
+      !["delivered", "cancelled"].includes(order.status)
+    );
+  }).length;
+
+  const deliveredOrders = orders.filter(
+    (order) => order.accepted_at && order.delivered_at
   );
 
-  if (updatedOrder) {
-    selectedOrderRef.current = updatedOrder;
-    setSelectedOrder(updatedOrder);
-  }
-}
-}
+  const averageSLA =
+    deliveredOrders.length === 0
+      ? 0
+      : Math.round(
+          deliveredOrders.reduce((sum, order) => {
+            return (
+              sum +
+              (new Date(order.delivered_at).getTime() -
+                new Date(order.accepted_at).getTime()) /
+                60000
+            );
+          }, 0) / deliveredOrders.length
+        );
 
-setLoading(false);
+  const filteredOrders = orders.filter((order) => {
+    const search = searchTerm.toLowerCase();
 
-}
+    const matchesSearch =
+      (order.order_number ?? "").toLowerCase().includes(search) ||
+      (order.profiles?.full_name ?? "").toLowerCase().includes(search) ||
+      (order.vendors?.name ?? "").toLowerCase().includes(search);
 
-async function refreshWorkspace() {
-  await loadOrders();
-}
+    const matchesStatus =
+      statusFilter === "all" || order.status === statusFilter;
 
-useEffect(() => {
-  loadOrders();
-}, []);
-
-useEffect(() => {
-  const ordersChannel = supabase
-    .channel("orders-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "orders",
-      },
-      () => {
-        console.log("ORDER EVENT RECEIVED: orders");
-        refreshWorkspace();
-      }
-    )
-    .subscribe();
-
-  const orderEventsChannel = supabase
-    .channel("order-events-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "order_events",
-      },
-      () => {
-        console.log("ORDER EVENT RECEIVED: order_events");
-        refreshWorkspace();
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(ordersChannel);
-    supabase.removeChannel(orderEventsChannel);
-  };
-}, []);
+    return matchesSearch && matchesStatus;
+  });
 
   return (
   
@@ -159,42 +218,42 @@ useEffect(() => {
   {[
     {
       title: "Live Orders",
-      value: "--",
+      value: liveOrders,
       color: "border-orange-500",
       bg: "bg-orange-50",
       icon: "📦",
     },
     {
       title: "Preparing",
-      value: "--",
+      value: preparingOrders,
       color: "border-blue-500",
       bg: "bg-blue-50",
       icon: "👨‍🍳",
     },
     {
       title: "Ready Pickup",
-      value: "--",
+      value: readyOrders,
       color: "border-emerald-500",
       bg: "bg-emerald-50",
       icon: "🛍",
     },
     {
       title: "Out For Delivery",
-      value: "--",
+      value: outForDelivery,
       color: "border-purple-500",
       bg: "bg-purple-50",
       icon: "🏍",
     },
     {
       title: "Exceptions",
-      value: "--",
+      value: exceptions,
       color: "border-red-500",
       bg: "bg-red-50",
       icon: "🚨",
     },
     {
       title: "Avg SLA",
-      value: "-- mins",
+      value: `${averageSLA} mins`,
       color: "border-slate-500",
       bg: "bg-slate-100",
       icon: "⏱",
@@ -261,18 +320,27 @@ useEffect(() => {
     <div className="flex gap-3">
 
       <input
-        placeholder="Search orders..."
-        className="rounded-xl border border-slate-300 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
-      />
+  value={searchTerm}
+  onChange={(e) => setSearchTerm(e.target.value)}
+  placeholder="Search orders..."
+  className="rounded-xl border border-slate-300 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
+/>
+      
 
-      <select className="rounded-xl border border-slate-300 px-4 py-2 text-sm">
+      <select
+  value={statusFilter}
+  onChange={(e) => setStatusFilter(e.target.value)}
+  className="rounded-xl border border-slate-300 px-4 py-2 text-sm"
+>
 
-        <option>All Status</option>
-        <option>Pending</option>
-        <option>Preparing</option>
-        <option>Ready</option>
-        <option>Out for Delivery</option>
-        <option>Completed</option>
+       <option value="all">All Status</option>
+<option value="pending">Pending</option>
+<option value="accepted">Accepted</option>
+<option value="preparing">Preparing</option>
+<option value="ready_for_pickup">Ready for Pickup</option>
+<option value="picked_up">Out for Delivery</option>
+<option value="delivered">Delivered</option>
+<option value="cancelled">Cancelled</option>
 
       </select>
 
@@ -304,7 +372,7 @@ useEffect(() => {
 
     <tbody>
 
-     {orders.map((order) => {
+     {filteredOrders.map((order) => {
   const created = new Date(order.created_at);
   const minutesOpen = Math.floor(
     (Date.now() - created.getTime()) / 1000 / 60
@@ -335,11 +403,30 @@ useEffect(() => {
 
           <td className="px-6 py-5">
 
-            <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
-
-              {order.status}
-
-            </span>
+           <span
+  className={`rounded-full px-3 py-1 text-xs font-bold ${
+    order.status === "pending"
+      ? "bg-slate-100 text-slate-700"
+      : order.status === "accepted"
+      ? "bg-blue-100 text-blue-700"
+      : order.status === "preparing"
+      ? "bg-orange-100 text-orange-700"
+      : order.status === "ready_for_pickup"
+      ? "bg-purple-100 text-purple-700"
+      : order.status === "picked_up"
+      ? "bg-emerald-100 text-emerald-700"
+      : order.status === "delivered"
+      ? "bg-green-100 text-green-700"
+      : order.status === "cancelled"
+      ? "bg-red-100 text-red-700"
+      : "bg-slate-100 text-slate-700"
+  }
+`}
+>
+  {order.status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (c: string) => c.toUpperCase())}
+</span>
 
           </td>
 

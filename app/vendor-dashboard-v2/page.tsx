@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+
 type Tab =
   | "dashboard"
   | "orders"
@@ -497,187 +498,312 @@ async function loadOrders() {
 }
 
 async function updateOrderStatus(
-  orderId:string,
-  status:string
-){
+  orderId: string,
+  status: string
+) {
+  /*
+   * Vendor is only authorized to control
+   * the food preparation lifecycle.
+   *
+   * Vendor:
+   *
+   * pending
+   *   ↓
+   * accepted
+   *   ↓
+   * preparing
+   *   ↓
+   * ready_for_pickup
+   *
+   * Rider controls:
+   *
+   * assigned
+   * picked_up
+   * delivered
+   *
+   * Settlement is handled by the Rider
+   * delivery flow / settlement engine.
+   */
 
- const updates: any = {
-  status,
-};
+  const vendorAllowedStatuses = [
+    "accepted",
+    "preparing",
+    "ready_for_pickup",
+    "cancelled",
+  ];
 
-const now = new Date().toISOString();
+  if (
+    !vendorAllowedStatuses.includes(
+      status
+    )
+  ) {
+    console.warn(
+      "Vendor attempted unauthorized order status:",
+      status
+    );
 
-switch (status) {
-  case "accepted":
-    updates.accepted_at = now;
-    break;
+    alert(
+      "This order status is controlled by the rider or system."
+    );
 
-  case "preparing":
-    updates.preparing_at = now;
-    break;
-
-  case "ready_for_pickup":
-    updates.ready_at = now;
-    break;
-
-  case "picked_up":
-    updates.picked_up_at = now;
-    break;
-
-  case "delivered":
-    updates.delivered_at = now;
-    break;
-
-  case "cancelled":
-    updates.cancelled_at = now;
-    break;
-}
-
-const { error } =
-  await supabase
-    .from("orders")
-    .update(updates)
-    .eq("id", orderId);
-
-  if(error){
-
-    console.error(error);
     return;
-
   }
 
-  const eventTitles: Record<string, string> = {
-  accepted: "Vendor Accepted Order",
-  preparing: "Kitchen Started Preparation",
-  ready_for_pickup: "Order Ready for Pickup",
-  picked_up: "Rider Picked Up Order",
-  delivered: "Order Delivered",
-  cancelled: "Order Cancelled",
-};
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-await supabase
-  .from("order_events")
-  .insert({
+    if (!user) {
+      alert("Vendor session not found.");
+      return;
+    }
 
-    order_id: orderId,
-
-    event_type: status,
-
-    title: eventTitles[status] || status,
-
-    description: `Order status changed to ${status.replaceAll("_", " ")}`,
-
-    actor_type: "vendor",
-
-    actor_id: (await supabase.auth.getUser()).data.user?.id ?? null,
-
-  });
-
-  if(status === "delivered"){
+    /*
+     * Verify that the logged-in user actually
+     * belongs to the vendor owning this order.
+     */
 
     const {
-      data: order
-    } =
-    await supabase
+      data: profile,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq("id", user.id)
+      .single();
+
+    if (
+      profileError ||
+      !profile?.vendor_id
+    ) {
+      console.error(
+        "VENDOR PROFILE ERROR:",
+        profileError
+      );
+
+      alert(
+        "Unable to verify vendor account."
+      );
+
+      return;
+    }
+
+    /*
+     * Confirm that this order belongs
+     * to the current vendor.
+     */
+
+    const {
+      data: currentOrder,
+      error: orderLookupError,
+    } = await supabase
       .from("orders")
-      .select("*")
+      .select(
+        "id, status, vendor_id, rider_id"
+      )
+      .eq("id", orderId)
       .eq(
-        "id",
-        orderId
+        "vendor_id",
+        profile.vendor_id
       )
       .single();
 
-    if(order){
+    if (
+      orderLookupError ||
+      !currentOrder
+    ) {
+      console.error(
+        "VENDOR ORDER LOOKUP ERROR:",
+        orderLookupError
+      );
 
-      const {
-        data: existingTransaction
-      } =
-      await supabase
-        .from(
-          "wallet_transactions"
-        )
-        .select("id")
-        .eq(
-          "order_id",
-          orderId
-        )
-        .maybeSingle();
+      alert(
+        "Unable to verify this order."
+      );
 
-      if(!existingTransaction){
-
-        const vendorShare =
-          Number(order.total) * 0.9;
-
-        await supabase
-          .from(
-            "wallet_transactions"
-          )
-          .insert({
-
-            vendor_id:
-              order.vendor_id,
-
-            order_id:
-              orderId,
-
-            amount:
-              vendorShare,
-
-            transaction_type:
-              "order_earning"
-
-          });
-
-        const {
-          data: wallet
-        } =
-        await supabase
-          .from(
-            "vendor_wallets"
-          )
-          .select("*")
-          .eq(
-            "vendor_id",
-            order.vendor_id
-          )
-          .single();
-
-        if(wallet){
-
-          await supabase
-            .from(
-              "vendor_wallets"
-            )
-            .update({
-
-              accrued_balance:
-                Number(
-                  wallet.accrued_balance || 0
-                ) +
-                vendorShare,
-
-              lifetime_earnings:
-                Number(
-                  wallet.lifetime_earnings || 0
-                ) +
-                vendorShare
-
-            })
-            .eq(
-              "vendor_id",
-              order.vendor_id
-            );
-
-        }
-
-      }
-
+      return;
     }
 
+    /*
+     * Vendor lifecycle transition protection.
+     */
+
+    const validTransitions: Record<
+      string,
+      string[]
+    > = {
+      pending: ["accepted", "cancelled"],
+
+      accepted: [
+        "preparing",
+        "cancelled",
+      ],
+
+      preparing: [
+        "ready_for_pickup",
+        "cancelled",
+      ],
+
+      ready_for_pickup: [],
+      assigned: [],
+      picked_up: [],
+      delivered: [],
+      cancelled: [],
+    };
+
+    const allowedNextStatuses =
+      validTransitions[
+        currentOrder.status
+      ] || [];
+
+    if (
+      !allowedNextStatuses.includes(
+        status
+      )
+    ) {
+      console.warn(
+        "INVALID VENDOR TRANSITION:",
+        {
+          currentStatus:
+            currentOrder.status,
+          requestedStatus: status,
+        }
+      );
+
+      alert(
+        `Vendor cannot change this order from "${currentOrder.status.replaceAll(
+          "_",
+          " "
+        )}" to "${status.replaceAll(
+          "_",
+          " "
+        )}".`
+      );
+
+      return;
+    }
+
+    const updates: any = {
+      status,
+    };
+
+    const now =
+      new Date().toISOString();
+
+    switch (status) {
+      case "accepted":
+        updates.accepted_at = now;
+        break;
+
+      case "preparing":
+        updates.preparing_at = now;
+        break;
+
+      case "ready_for_pickup":
+        updates.ready_at = now;
+        break;
+
+      case "cancelled":
+        updates.cancelled_at = now;
+        break;
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * Vendor can no longer write:
+     *
+     * picked_up
+     * delivered
+     *
+     * Therefore this function can never
+     * trigger settlement.
+     */
+
+    const {
+      error: updateError,
+    } = await supabase
+      .from("orders")
+      .update(updates)
+      .eq("id", orderId)
+      .eq(
+        "vendor_id",
+        profile.vendor_id
+      );
+
+    if (updateError) {
+      console.error(
+        "VENDOR ORDER UPDATE ERROR:",
+        updateError
+      );
+
+      alert(
+        updateError.message
+      );
+
+      return;
+    }
+
+    /*
+     * Record vendor order event.
+     */
+
+    const eventTitles: Record<
+      string,
+      string
+    > = {
+      accepted:
+        "Vendor Accepted Order",
+
+      preparing:
+        "Kitchen Started Preparation",
+
+      ready_for_pickup:
+        "Order Ready for Pickup",
+
+      cancelled:
+        "Order Cancelled",
+    };
+
+    const {
+      error: eventError,
+    } = await supabase
+      .from("order_events")
+      .insert({
+        order_id: orderId,
+        event_type: status,
+        title:
+          eventTitles[status] ||
+          status,
+        description:
+          `Order status changed to ${status.replaceAll(
+            "_",
+            " "
+          )}`,
+        actor_type: "vendor",
+        actor_id: user.id,
+      });
+
+    if (eventError) {
+      console.error(
+        "VENDOR ORDER EVENT ERROR:",
+        eventError
+      );
+    }
+
+    await loadOrders();
+
+  } catch (error) {
+    console.error(
+      "UPDATE ORDER STATUS ERROR:",
+      error
+    );
+
+    alert(
+      "Unable to update order status."
+    );
   }
-
-  await loadOrders();
-
 }
 async function saveMenuItem(){
 
@@ -1572,9 +1698,21 @@ useEffect(() => {
 
   <button
     onClick={() =>
-      updateOrderStatus(order.id, "accepted")
+      updateOrderStatus(
+        order.id,
+        "accepted"
+      )
     }
-    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+    className="
+      rounded-lg
+      bg-blue-600
+      px-4
+      py-2
+      text-sm
+      font-semibold
+      text-white
+      hover:bg-blue-700
+    "
   >
     Accept Order
   </button>
@@ -1585,9 +1723,21 @@ useEffect(() => {
 
   <button
     onClick={() =>
-      updateOrderStatus(order.id, "preparing")
+      updateOrderStatus(
+        order.id,
+        "preparing"
+      )
     }
-    className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+    className="
+      rounded-lg
+      bg-orange-500
+      px-4
+      py-2
+      text-sm
+      font-semibold
+      text-white
+      hover:bg-orange-600
+    "
   >
     Start Preparing
   </button>
@@ -1598,9 +1748,21 @@ useEffect(() => {
 
   <button
     onClick={() =>
-      updateOrderStatus(order.id, "ready_for_pickup")
+      updateOrderStatus(
+        order.id,
+        "ready_for_pickup"
+      )
     }
-    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+    className="
+      rounded-lg
+      bg-purple-600
+      px-4
+      py-2
+      text-sm
+      font-semibold
+      text-white
+      hover:bg-purple-700
+    "
   >
     Ready for Pickup
   </button>
@@ -1609,36 +1771,100 @@ useEffect(() => {
 
 {order.status === "ready_for_pickup" && (
 
-  <button
-    onClick={() =>
-      updateOrderStatus(order.id, "picked_up")
-    }
-    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-orange-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-orange-700
+    "
   >
-    Hand to Rider
-  </button>
+    Waiting for Rider
+  </span>
+
+)}
+
+{order.status === "assigned" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-blue-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-blue-700
+    "
+  >
+    ✓ Rider Assigned
+  </span>
 
 )}
 
 {order.status === "picked_up" && (
 
-  <button
-    onClick={() =>
-      updateOrderStatus(order.id, "delivered")
-    }
-    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-indigo-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-indigo-700
+    "
   >
-    Mark Delivered
-  </button>
+    ✓ Picked Up by Rider
+  </span>
 
 )}
 
 {order.status === "delivered" && (
 
-  <span className="inline-flex items-center rounded-lg bg-emerald-100 px-4 py-2 text-sm font-bold text-emerald-700">
-
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-emerald-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-emerald-700
+    "
+  >
     ✓ Delivered
+  </span>
 
+)}
+
+{order.status === "cancelled" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-red-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-red-700
+    "
+  >
+    Cancelled
   </span>
 
 )}

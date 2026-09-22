@@ -81,10 +81,26 @@ const generatedAlerts = data
 
   const alerts = [];
 
-  if (waitingMinutes >= 30) {
-      alerts.push({
-  severity: "CRITICAL",
-  colour: "bg-red-100 text-red-700",
+ let severity = "NORMAL";
+let colour = "bg-emerald-100 text-emerald-700";
+
+if (waitingMinutes >= 30) {
+
+  severity = "CRITICAL";
+  colour = "bg-red-100 text-red-700";
+
+} else if (waitingMinutes >= 15) {
+
+  severity = "ATTENTION";
+  colour = "bg-amber-100 text-amber-700";
+
+}
+
+alerts.push({
+
+  severity,
+
+  colour,
 
   vendor: order.vendors?.name ?? "Unknown Vendor",
 
@@ -96,47 +112,28 @@ const generatedAlerts = data
 
   action:
     order.status === "pending"
-      ? "Contact Vendor"
+      ? "Monitor Vendor"
       : order.status === "accepted"
       ? "Monitor Kitchen"
       : order.status === "preparing"
       ? "Follow Up"
       : order.status === "ready_for_pickup"
       ? "Assign Rider"
-      : "Review",
+      : "Monitor",
+
 });
-  } else if (waitingMinutes >= 15) {
-    alerts.push({
-  severity: "CRITICAL",
-  colour: "bg-red-100 text-red-700",
 
-  vendor: order.vendors?.name ?? "Unknown Vendor",
+return alerts;
 
-  stage: order.status
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (c: string) => c.toUpperCase()),
-
-  waiting: `${waitingMinutes} mins`,
-
-  action:
-    order.status === "pending"
-      ? "Contact Vendor"
-      : order.status === "accepted"
-      ? "Monitor Kitchen"
-      : order.status === "preparing"
-      ? "Follow Up"
-      : order.status === "ready_for_pickup"
-      ? "Assign Rider"
-      : "Review",
-});
-  }
-
-  return alerts;
 });
 
 setAlerts(generatedAlerts);
 
-const ridersOnline = 0; // Live query will replace this
+const { count: ridersOnline } = await supabase
+  .from("profiles")
+  .select("*", { count: "exact", head: true })
+  .eq("role", "rider")
+  .eq("status", "active");
 const activeDeliveries = data.filter(
   (order: any) => order.status === "picked_up"
 ).length;
@@ -146,7 +143,7 @@ const readyOrders = data.filter(
 ).length;
 
 setSnapshot({
-  ridersOnline,
+  ridersOnline: ridersOnline ?? 0,
   activeDeliveries,
   readyOrders,
   operationalHealth: "Healthy",
@@ -185,10 +182,28 @@ const realtimeChannel =
 
 setChannel(realtimeChannel);
 
+const ordersChannel =
+  supabase
+    .channel("territory-orders-live")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "orders",
+      },
+      () => {
+        loadOrders();
+      }
+    )
+    .subscribe();
 
+ return () => {
 
-  return () => {
   realtimeChannel.unsubscribe();
+
+  ordersChannel.unsubscribe();
+
 };
 
 }, []);
@@ -646,7 +661,7 @@ Recommended Action
 
                 <td className="px-6 py-5">
 
-                  Coming Soon
+                  {order.riders?.full_name ?? "Unassigned"}
 
                 </td>
 
