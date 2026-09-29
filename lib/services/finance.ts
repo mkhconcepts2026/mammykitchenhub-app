@@ -18,14 +18,19 @@ export async function getVendorWallets() {
   return data ?? [];
 }
 
-export async function getVendorTransactions() {
+export async function getFinancialLedger() {
   const { data, error } = await supabase
-    .from("vendor_transactions")
+    .from("financial_ledger")
     .select(`
       *,
-      vendors!vendor_transactions_vendor_id_fkey (
+      vendors:vendor_id (
         id,
         name,
+        status
+      ),
+      profiles:rider_id (
+        id,
+        full_name,
         status
       )
     `)

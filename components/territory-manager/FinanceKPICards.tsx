@@ -3,63 +3,65 @@
 interface Props {
   vendorWallets: any[];
   riderWallets: any[];
-  vendorTransactions: any[];
+  financialLedger: any[];
   riderEarnings: any[];
 }
 
 export default function FinanceKPICards({
   vendorWallets,
   riderWallets,
-  vendorTransactions,
+  financialLedger,
   riderEarnings,
 }: Props) {
-  const vendorBalance = vendorWallets.reduce(
+  const vendorAvailableBalance = vendorWallets.reduce(
     (sum, wallet) => sum + Number(wallet.available_balance ?? 0),
     0
   );
 
-  const riderBalance = riderWallets.reduce(
-    (sum, wallet) => sum + Number(wallet.available_balance ?? 0),
+  const vendorAccruedBalance = vendorWallets.reduce(
+    (sum, wallet) => sum + Number(wallet.accrued_balance ?? 0),
     0
   );
 
-  const pendingSettlements = vendorTransactions
-    .filter((transaction) => transaction.status !== "paid")
+  const riderPendingBalance = riderWallets.reduce(
+    (sum, wallet) => sum + Number(wallet.pending_balance ?? 0),
+    0
+  );
+
+  const platformRevenue = financialLedger
+    .filter(
+      (entry) => entry.entry_type === "platform_revenue"
+    )
     .reduce(
-      (sum, transaction) => sum + Number(transaction.net_amount ?? 0),
+      (sum, entry) => sum + Number(entry.amount ?? 0),
       0
     );
 
-  const totalRiderEarnings = riderEarnings.reduce(
-    (sum, earning) => sum + Number(earning.amount ?? 0),
-    0
-  );
-
   const cards = [
     {
-      title: "Vendor Wallets",
-      value: `₦${vendorBalance.toLocaleString()}`,
+      title: "Vendor Available",
+      value: `₦${vendorAvailableBalance.toLocaleString()}`,
       color: "border-emerald-500",
       bg: "bg-emerald-50",
       icon: "🏦",
     },
     {
-      title: "Rider Wallets",
-      value: `₦${riderBalance.toLocaleString()}`,
-      color: "border-blue-500",
-      bg: "bg-blue-50",
-      icon: "🏍",
-    },
-    {
-      title: "Pending Settlements",
-      value: `₦${pendingSettlements.toLocaleString()}`,
+      title: "Vendor Accrued",
+      value: `₦${vendorAccruedBalance.toLocaleString()}`,
       color: "border-orange-500",
       bg: "bg-orange-50",
       icon: "💳",
     },
     {
-      title: "Rider Earnings",
-      value: `₦${totalRiderEarnings.toLocaleString()}`,
+      title: "Rider Pending",
+      value: `₦${riderPendingBalance.toLocaleString()}`,
+      color: "border-blue-500",
+      bg: "bg-blue-50",
+      icon: "🏍",
+    },
+    {
+      title: "Platform Revenue",
+      value: `₦${platformRevenue.toLocaleString()}`,
       color: "border-purple-500",
       bg: "bg-purple-50",
       icon: "💰",

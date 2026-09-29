@@ -9,14 +9,14 @@ import TransactionFeed from "@/components/territory-manager/TransactionFeed";
 
 import {
   getVendorWallets,
-  getVendorTransactions,
+  getFinancialLedger,
   getRiderWallets,
   getRiderEarnings,
 } from "@/lib/services/finance";
 
 export default function TerritoryRelationshipManagerFinancePage() {
   const [vendorWallets, setVendorWallets] = useState<any[]>([]);
-  const [vendorTransactions, setVendorTransactions] = useState<any[]>([]);
+  const [financialLedger, setFinancialLedger] = useState<any[]>([]);
   const [riderWallets, setRiderWallets] = useState<any[]>([]);
   const [riderEarnings, setRiderEarnings] = useState<any[]>([]);
 
@@ -25,18 +25,18 @@ export default function TerritoryRelationshipManagerFinancePage() {
       try {
         const [
           wallets,
-          transactions,
+          ledger,
           riderWalletData,
           riderEarningData,
         ] = await Promise.all([
           getVendorWallets(),
-          getVendorTransactions(),
+          getFinancialLedger(),
           getRiderWallets(),
           getRiderEarnings(),
         ]);
 
         setVendorWallets(wallets);
-        setVendorTransactions(transactions);
+        setFinancialLedger(ledger);
         setRiderWallets(riderWalletData);
         setRiderEarnings(riderEarningData);
       } catch (error) {
@@ -53,11 +53,7 @@ export default function TerritoryRelationshipManagerFinancePage() {
 
   return (
     <div className="space-y-8">
-
-      {/* Hero */}
-
       <section className="rounded-3xl bg-[#0F172A] px-10 py-8 text-white shadow-xl">
-
         <p className="text-sm uppercase tracking-[0.35em] text-orange-400">
           MAMMY KITCHEN HUB
         </p>
@@ -67,21 +63,20 @@ export default function TerritoryRelationshipManagerFinancePage() {
         </h1>
 
         <p className="mt-4 max-w-3xl text-slate-300">
-          Monitor vendor settlements, rider earnings,
-          wallet balances and financial activity across your territory.
+          Monitor vendor settlements, rider earnings, wallet balances
+          and financial activity across your territory.
         </p>
-
       </section>
 
       <FinanceKPICards
         vendorWallets={vendorWallets}
         riderWallets={riderWallets}
-        vendorTransactions={vendorTransactions}
+        financialLedger={financialLedger}
         riderEarnings={riderEarnings}
       />
 
       <VendorSettlementTable
-        transactions={vendorTransactions}
+        ledger={financialLedger}
       />
 
       <RiderEarningsTable
@@ -89,9 +84,8 @@ export default function TerritoryRelationshipManagerFinancePage() {
       />
 
       <TransactionFeed
-        transactions={vendorTransactions}
+        ledger={financialLedger}
       />
-
     </div>
   );
 }
