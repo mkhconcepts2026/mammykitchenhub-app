@@ -196,7 +196,7 @@ switch (role) {
   case "TERRITORY":
 
   await delay(700);
-    router.push("/manager-v3");
+    router.push("territory-relationship-manager");
     break;
 
   case "SUPPORT":

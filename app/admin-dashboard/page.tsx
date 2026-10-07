@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   LayoutDashboard,
@@ -13,12 +14,59 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
-import EmployeeManagement from "./EmployeeManagement";
-
 
 export default function AdminDashboard() {
- const [activeTab, setActiveTab] =
+ const router = useRouter();
+  const [activeTab, setActiveTab] =
   useState("dashboard");
+
+ useEffect(() => {
+
+   async function verifyAdminAccess() {
+
+     const {
+       data: { user },
+     } = await supabase.auth.getUser();
+
+     if (!user) {
+       router.replace("/login");
+       return;
+     }
+
+     const { data: profile, error } = await supabase
+       .from("profiles")
+       .select("role")
+       .eq("id", user.id)
+       .single();
+     
+
+    const role = String(
+  profile?.role || ""
+).toUpperCase();
+
+const allowedAdminRoles = [
+  "ADMIN",
+  "COO",
+];
+
+if (
+  error ||
+  !allowedAdminRoles.includes(role)
+) {
+  router.replace("/login");
+  return;
+}
+
+   }
+
+   verifyAdminAccess();
+
+ }, [router]);
+
+ async function handleLogout() {
+  await supabase.auth.signOut();
+  router.push("/login");
+}
 
 const [applications, setApplications] =
   useState<any[]>([]);
@@ -28,6 +76,468 @@ const [selectedApplication, setSelectedApplication] =
 
 const [selectedVendor, setSelectedVendor] =
   useState<any>(null);
+
+  const loadZonesForTerritory = async (
+  territoryId: string
+) => {
+  setSelectedTerritoryId(territoryId);
+  setSelectedZoneId("");
+  setZones([]);
+
+  if (!territoryId) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("zones")
+    .select(`
+      id,
+      name,
+      code,
+      territory_id,
+      is_active
+    `)
+    .eq("territory_id", territoryId)
+    .eq("is_active", true)
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Zones load error:",
+      error
+    );
+    alert("Unable to load Zones");
+    return;
+  }
+
+  setZones(data || []);
+};
+
+const loadTerritoryStates = async () => {
+
+  const { data, error } = await supabase
+    .from("states")
+    .select("id, name")
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Territory States load error:",
+      error
+    );
+
+    alert("Unable to load States");
+    return;
+  }
+
+  setTerritoryStates(data || []);
+};
+
+
+const loadTerritoryLgas = async (
+  stateId: string
+) => {
+
+  setSelectedTerritoryStateId(stateId);
+  setSelectedTerritoryLgaId("");
+  setTerritoryLgas([]);
+
+  if (!stateId) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("local_governments")
+    .select("id, name, state_id")
+    .eq("state_id", stateId)
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Territory LGAs load error:",
+      error
+    );
+
+    alert("Unable to load Local Government Areas");
+    return;
+  }
+
+  setTerritoryLgas(data || []);
+};
+
+
+const openTerritoryModal = async () => {
+
+  setTerritoryForm({
+    name: "",
+    description: "",
+    maxVendors: "10",
+    maxRiders: "30",
+    isActive: true,
+  });
+
+  setSelectedTerritoryStateId("");
+  setSelectedTerritoryLgaId("");
+  setTerritoryLgas([]);
+
+  await loadTerritoryStates();
+
+  setShowTerritoryModal(true);
+};
+
+
+const saveTerritory = async () => {
+
+  const name = territoryForm.name.trim();
+
+  if (!selectedTerritoryStateId) {
+    alert("Please select a State.");
+    return;
+  }
+
+  if (!selectedTerritoryLgaId) {
+    alert("Please select a Local Government Area.");
+    return;
+  }
+
+  if (!name) {
+    alert("Please enter a Territory name.");
+    return;
+  }
+
+  const maxVendors =
+    Number(territoryForm.maxVendors);
+
+  const maxRiders =
+    Number(territoryForm.maxRiders);
+
+  if (
+    !Number.isInteger(maxVendors) ||
+    maxVendors < 1
+  ) {
+    alert("Maximum Vendors must be a valid positive number.");
+    return;
+  }
+
+  if (
+    !Number.isInteger(maxRiders) ||
+    maxRiders < 1
+  ) {
+    alert("Maximum Riders must be a valid positive number.");
+    return;
+  }
+
+  setSavingTerritory(true);
+
+  try {
+
+    const { data: existing } = await supabase
+      .from("territories")
+      .select("id")
+      .eq("lga_id", selectedTerritoryLgaId)
+      .ilike("name", name)
+      .maybeSingle();
+
+    if (existing) {
+      alert(
+        "A Territory with this name already exists in the selected LGA."
+      );
+
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("territories")
+      .insert({
+        lga_id: selectedTerritoryLgaId,
+        name,
+        description:
+          territoryForm.description.trim() || null,
+        max_vendors: maxVendors,
+        max_riders: maxRiders,
+        is_active: territoryForm.isActive,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(
+        "Territory creation error:",
+        error
+      );
+
+      alert(
+        error.message ||
+        "Unable to create Territory."
+      );
+
+      return;
+    }
+
+// Refresh Territories from Supabase
+await loadTerritories();
+
+setShowTerritoryModal(false);
+
+alert(
+  "Territory created successfully."
+);
+
+  } finally {
+
+    setSavingTerritory(false);
+
+  }
+};
+
+const loadManagedZones = async () => {
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("zones")
+    .select(`
+      id,
+      name,
+      code,
+      description,
+      territory_id,
+      is_active,
+      created_at
+    `)
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Zones load error:",
+      error
+    );
+
+    alert(
+      "Unable to load Zones."
+    );
+
+    return;
+  }
+
+  setManagedZones(data || []);
+};
+
+
+const openZoneModal = () => {
+
+  setZoneTerritoryId("");
+
+  setZoneForm({
+    name: "",
+    code: "",
+    description: "",
+    isActive: true,
+  });
+
+  setShowZoneModal(true);
+};
+
+
+const saveZone = async () => {
+
+  const name = zoneForm.name.trim();
+  const code = zoneForm.code.trim();
+
+  if (!zoneTerritoryId) {
+    alert(
+      "Please select a Territory."
+    );
+    return;
+  }
+
+  if (!name) {
+    alert(
+      "Please enter a Zone name."
+    );
+    return;
+  }
+
+  setSavingZone(true);
+
+  try {
+
+    const {
+      data: existing,
+      error: existingError,
+    } = await supabase
+      .from("zones")
+      .select("id")
+      .eq(
+        "territory_id",
+        zoneTerritoryId
+      )
+      .ilike("name", name)
+      .maybeSingle();
+
+    if (existingError) {
+      console.error(
+        "Zone duplicate check error:",
+        existingError
+      );
+
+      alert(
+        "Unable to validate Zone."
+      );
+
+      return;
+    }
+
+    if (existing) {
+      alert(
+        "A Zone with this name already exists in this Territory."
+      );
+
+      return;
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("zones")
+      .insert({
+        territory_id:
+          zoneTerritoryId,
+        name,
+        code: code || null,
+        description:
+          zoneForm.description.trim() ||
+          null,
+        is_active:
+          zoneForm.isActive,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(
+        "Zone creation error:",
+        error
+      );
+
+      alert(
+        error.message ||
+        "Unable to create Zone."
+      );
+
+      return;
+    }
+
+    await loadManagedZones();
+
+    setShowZoneModal(false);
+
+    alert(
+      "Zone created successfully."
+    );
+
+  } finally {
+
+    setSavingZone(false);
+
+  }
+};
+
+const [territories, setTerritories] = useState<any[]>([]);
+
+const loadTerritories = async () => {
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("territories")
+    .select(`
+      id,
+      name,
+      lga_id,
+      description,
+      max_vendors,
+      max_riders,
+      is_active,
+      created_at,
+      local_governments (
+        id,
+        name
+      )
+    `)
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Territories load error:",
+      error
+    );
+
+    alert(
+      "Unable to load Territories."
+    );
+
+    return;
+  }
+
+  setTerritories(data || []);
+};
+
+const [zones, setZones] = useState<any[]>([]);
+
+const [territoryStates, setTerritoryStates] =
+  useState<any[]>([]);
+
+const [territoryLgas, setTerritoryLgas] =
+  useState<any[]>([]);
+
+const [selectedTerritoryStateId, setSelectedTerritoryStateId] =
+  useState("");
+
+const [selectedTerritoryLgaId, setSelectedTerritoryLgaId] =
+  useState("");
+
+const [showTerritoryModal, setShowTerritoryModal] =
+  useState(false);
+
+const [territoryForm, setTerritoryForm] = useState({
+  name: "",
+  description: "",
+  maxVendors: "10",
+  maxRiders: "30",
+  isActive: true,
+});
+
+const [savingTerritory, setSavingTerritory] =
+  useState(false);
+
+  const [managedZones, setManagedZones] =
+  useState<any[]>([]);
+
+const [zoneTerritoryId, setZoneTerritoryId] =
+  useState("");
+
+const [showZoneModal, setShowZoneModal] =
+  useState(false);
+
+const [savingZone, setSavingZone] =
+  useState(false);
+
+const [zoneForm, setZoneForm] = useState({
+  name: "",
+  code: "",
+  description: "",
+  isActive: true,
+});
+
+const [selectedTerritoryId, setSelectedTerritoryId] = useState("");
+const [selectedZoneId, setSelectedZoneId] = useState("");
+const [currentVendorZone, setCurrentVendorZone] = useState<any>(null);
+const [showAssignZone, setShowAssignZone] = useState(false);
+const [loadingZoneAssignment, setLoadingZoneAssignment] = useState(false);
 
   const [selectedRider, setSelectedRider] =
   useState<any>(null);
@@ -140,6 +650,242 @@ const [stats, setStats] = useState({
 
   loadDashboardStats();
 };
+
+const openVendorDetails = async (vendorApplication: any) => {
+  try {
+    setSelectedVendor(vendorApplication);
+    setCurrentVendorZone(null);
+    setSelectedTerritoryId("");
+    setSelectedZoneId("");
+
+    // Resolve the real vendor record.
+    const { data: vendor, error: vendorError } =
+      await supabase
+        .from("vendors")
+        .select("*")
+        .eq("email", vendorApplication.email)
+        .maybeSingle();
+
+    if (vendorError) {
+      console.error("Vendor lookup error:", vendorError);
+      return;
+    }
+
+    if (!vendor) {
+      console.error(
+        "Approved application has no matching vendor record:",
+        vendorApplication.email
+      );
+      return;
+    }
+
+    setSelectedVendor({
+      ...vendorApplication,
+      vendor_id: vendor.id,
+      vendor_record: vendor,
+    });
+
+    // Load the vendor's current active Zone assignment.
+    const { data: assignment, error: assignmentError } =
+      await supabase
+        .from("zone_vendors")
+        .select(`
+          id,
+          vendor_id,
+          zone_id,
+          status,
+          assigned_at,
+          zones (
+            id,
+            name,
+            territory_id,
+            territories (
+              id,
+              name
+            )
+          )
+        `)
+        .eq("vendor_id", vendor.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+    if (assignmentError) {
+      console.error(
+        "Vendor Zone lookup error:",
+        assignmentError
+      );
+      return;
+    }
+
+    setCurrentVendorZone(assignment || null);
+  } catch (error) {
+    console.error(
+      "Open Vendor Details error:",
+      error
+    );
+  }
+};
+
+const openAssignZone = async () => {
+  setLoadingZoneAssignment(true);
+
+  const { data, error } = await supabase
+    .from("territories")
+    .select(`
+      id,
+      name,
+      lga_id,
+      is_active
+    `)
+    .eq("is_active", true)
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Territories load error:",
+      error
+    );
+    alert("Unable to load Territories");
+    setLoadingZoneAssignment(false);
+    return;
+
+  }
+
+  console.log(
+  "ADMIN ASSIGN ZONE - TERRITORIES LOADED:",
+  data?.length,
+  data
+);
+
+  setTerritories(data || []);
+
+const existingTerritoryId =
+  currentVendorZone?.zones?.territory_id || "";
+
+const existingZoneId =
+  currentVendorZone?.zone_id || "";
+
+setSelectedTerritoryId(existingTerritoryId);
+setSelectedZoneId(existingZoneId);
+
+if (existingTerritoryId) {
+  const { data: existingZones, error: zonesError } =
+    await supabase
+      .from("zones")
+      .select(`
+        id,
+        name,
+        code,
+        territory_id,
+        is_active
+      `)
+      .eq("territory_id", existingTerritoryId)
+      .eq("is_active", true)
+      .order("name");
+
+  if (zonesError) {
+    console.error(
+      "Existing Zones load error:",
+      zonesError
+    );
+    alert("Unable to load existing Zones");
+    setLoadingZoneAssignment(false);
+    return;
+  }
+
+  setZones(existingZones || []);
+} else {
+  setZones([]);
+}
+
+setShowAssignZone(true);
+
+  setLoadingZoneAssignment(false);
+};
+
+const saveVendorZone = async () => {
+  if (!selectedVendor?.vendor_id) {
+    alert("Vendor record not found.");
+    return;
+  }
+
+  if (!selectedTerritoryId || !selectedZoneId) {
+    alert("Please select a Territory and Zone.");
+    return;
+  }
+
+  setLoadingZoneAssignment(true);
+
+  try {
+    // Verify the selected Zone belongs to the selected Territory
+    const { data: zone, error: zoneError } = await supabase
+      .from("zones")
+      .select("id, territory_id, is_active")
+      .eq("id", selectedZoneId)
+      .eq("territory_id", selectedTerritoryId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (zoneError) throw zoneError;
+
+    if (!zone) {
+      alert("Invalid or inactive Zone selected.");
+      return;
+    }
+
+    // Deactivate existing active Vendor → Zone assignment
+    if (currentVendorZone?.id) {
+      const { error: deactivateError } = await supabase
+        .from("zone_vendors")
+        .update({
+          status: "inactive",
+          unassigned_at: new Date().toISOString(),
+        })
+        .eq("id", currentVendorZone.id);
+
+      if (deactivateError) throw deactivateError;
+    }
+
+    // Create the new active assignment
+    const { data: newAssignment, error: insertError } = await supabase
+      .from("zone_vendors")
+      .insert({
+        vendor_id: selectedVendor.vendor_id,
+        zone_id: selectedZoneId,
+        status: "active",
+        assigned_at: new Date().toISOString(),
+      })
+      .select(`
+        id,
+        vendor_id,
+        zone_id,
+        status,
+        assigned_at,
+        zones (
+          id,
+          name,
+          territory_id,
+          territories (
+            id,
+            name
+          )
+        )
+      `)
+      .single();
+
+    if (insertError) throw insertError;
+
+    setCurrentVendorZone(newAssignment);
+    setShowAssignZone(false);
+
+    alert("Vendor Zone assignment saved successfully.");
+  } catch (error: any) {
+    console.error("saveVendorZone error:", error);
+    alert(error?.message || "Failed to save Vendor Zone assignment.");
+  } finally {
+    setLoadingZoneAssignment(false);
+  }
+};
   const assignRider = async () => {
 
   if (!selectedRiderId) {
@@ -190,6 +936,8 @@ const [stats, setStats] = useState({
 useEffect(() => {
 
   loadDashboardStats();
+  loadTerritories();
+  loadManagedZones();
 
 }, []);
 
@@ -620,7 +1368,7 @@ console.log(
 
 <button
   onClick={() =>
-    setActiveTab("employees")
+    setActiveTab("territories")
   }
   className={`
     w-full
@@ -633,13 +1381,14 @@ console.log(
     transition-all
 
     ${
-      activeTab === "employees"
+      activeTab === "territories"
         ? "bg-orange-500 text-white shadow-md"
         : "hover:bg-gray-100"
     }
   `}
 >
-  👥 Employees
+  <span className="text-lg">🌍</span>
+  Territories
 </button>
 
   </div>
@@ -679,10 +1428,280 @@ console.log(
 
   </div>
 
+  <button
+    onClick={handleLogout}
+    className="
+      mt-4
+      w-full
+      rounded-2xl
+      border
+      border-red-200
+      bg-red-50
+      px-4
+      py-3
+      font-semibold
+      text-red-600
+      transition-all
+      hover:bg-red-100
+    "
+  >
+    Logout
+  </button>
+
 </div>
+
+
+
         {/* Content */}
 
         <div className="flex-1 p-8">
+
+
+          {activeTab === "territories" && (
+
+  <div>
+
+    <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between mb-8">
+
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-widest text-orange-500">
+          Geographic Operations
+        </p>
+
+        <h2 className="text-3xl font-bold mt-1">
+          Territory Management
+        </h2>
+
+        <p className="text-gray-500 mt-2">
+          Create and manage MKH operational Territories by State and LGA.
+        </p>
+      </div>
+
+      <button
+        onClick={openTerritoryModal}
+        className="
+          inline-flex
+          items-center
+          justify-center
+          gap-2
+          rounded-2xl
+          bg-orange-500
+          px-6
+          py-4
+          font-semibold
+          text-white
+          shadow-lg
+          transition-all
+          hover:bg-orange-600
+          hover:shadow-xl
+          active:scale-[0.98]
+        "
+      >
+        <span className="text-xl">+</span>
+        Create Territory
+      </button>
+
+    </div>
+
+
+    <div className="grid gap-6 md:grid-cols-3 mb-8">
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm border border-gray-100">
+        <p className="text-sm text-gray-500">
+          Total Territories
+        </p>
+
+        <h3 className="mt-2 text-4xl font-bold">
+          {territories.length}
+        </h3>
+      </div>
+
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm border-l-4 border-green-500">
+        <p className="text-sm text-gray-500">
+          Active Territories
+        </p>
+
+        <h3 className="mt-2 text-4xl font-bold">
+          {
+            territories.filter(
+              (territory) =>
+                territory.is_active === true
+            ).length
+          }
+        </h3>
+      </div>
+
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm border-l-4 border-gray-400">
+        <p className="text-sm text-gray-500">
+          Inactive Territories
+        </p>
+
+        <h3 className="mt-2 text-4xl font-bold">
+          {
+            territories.filter(
+              (territory) =>
+                territory.is_active === false
+            ).length
+          }
+        </h3>
+      </div>
+
+    </div>
+
+
+    <div className="rounded-3xl bg-white shadow-sm border border-gray-100 overflow-hidden">
+
+      <div className="border-b px-6 py-5">
+        <h3 className="text-xl font-bold">
+          Operational Territories
+        </h3>
+
+        <p className="text-sm text-gray-500 mt-1">
+          Territories currently configured for MKH operations.
+        </p>
+      </div>
+
+
+      {territories.length === 0 ? (
+
+        <div className="px-6 py-16 text-center">
+
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-3xl">
+            🌍
+          </div>
+
+          <h4 className="text-lg font-bold">
+            No Territories configured
+          </h4>
+
+          <p className="mt-2 text-sm text-gray-500">
+            Create the first operational Territory to begin geographic setup.
+          </p>
+
+        </div>
+
+      ) : (
+
+        <div className="overflow-x-auto">
+
+          <table className="w-full">
+
+            <thead className="bg-gray-50 text-left text-sm text-gray-500">
+
+              <tr>
+                <th className="px-6 py-4">
+                  Territory
+                </th>
+
+                <th className="px-6 py-4">
+                  LGA
+                </th>
+
+                <th className="px-6 py-4">
+                  Vendor Capacity
+                </th>
+
+                <th className="px-6 py-4">
+                  Rider Capacity
+                </th>
+
+                <th className="px-6 py-4">
+                  Status
+                </th>
+              </tr>
+
+            </thead>
+
+
+            <tbody className="divide-y">
+
+              {territories
+                .slice()
+                .sort((a, b) =>
+                  String(a.name).localeCompare(
+                    String(b.name)
+                  )
+                )
+                .map((territory) => (
+
+                  <tr
+                    key={territory.id}
+                    className="hover:bg-orange-50/40"
+                  >
+
+                    <td className="px-6 py-5">
+                      <p className="font-semibold">
+                        {territory.name}
+                      </p>
+
+                      {territory.description && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          {territory.description}
+                        </p>
+                      )}
+                    </td>
+
+
+                   <td className="px-6 py-5 text-gray-600">
+  {territory.local_governments?.name ||
+    "LGA unavailable"}
+</td>
+
+
+                    <td className="px-6 py-5 font-semibold">
+                      {territory.max_vendors}
+                    </td>
+
+
+                    <td className="px-6 py-5 font-semibold">
+                      {territory.max_riders}
+                    </td>
+
+
+                    <td className="px-6 py-5">
+
+                      <span
+                        className={`
+                          inline-flex
+                          rounded-full
+                          px-3
+                          py-1
+                          text-xs
+                          font-semibold
+
+                          ${
+                            territory.is_active
+                              ? "bg-green-100 text-green-700"
+                              : "bg-gray-100 text-gray-600"
+                          }
+                        `}
+                      >
+                        {territory.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
+
+                    </td>
+
+                  </tr>
+
+                ))}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      )}
+
+    </div>
+
+  </div>
+
+)}
 
          {activeTab === "dashboard" && (
 
@@ -1387,7 +2406,8 @@ console.log(
 
              <button
   onClick={() =>
-    setSelectedVendor(vendor)
+  openVendorDetails(vendor)
+
   }
   className="
     bg-blue-500
@@ -1864,12 +2884,6 @@ setSelectedOrder(order);
 
 )}
 
-{activeTab === "employees" && (
-
-  <EmployeeManagement />
-
-)}
-
         </div>
 
       </div>
@@ -2223,41 +3237,760 @@ setSelectedOrder(order);
 
 </div>
 
-            <div className="flex gap-4 mt-8">
+          <div className="flex flex-wrap gap-4 mt-8">
 
-              <button
-                className="
-                  bg-blue-500
-                  text-white
-                  px-6
-                  py-3
-                  rounded-xl
-                  font-medium
-                "
-              >
-                Edit Vendor
-              </button>
+  <button
+    className="
+      bg-blue-500
+      text-white
+      px-6
+      py-3
+      rounded-xl
+      font-medium
+    "
+  >
+    Edit Vendor
+  </button>
 
-              <button
-                className="
-                  bg-red-500
-                  text-white
-                  px-6
-                  py-3
-                  rounded-xl
-                  font-medium
-                "
-              >
-                Suspend Vendor
-              </button>
+  <button
+    onClick={openAssignZone}
+    disabled={loadingZoneAssignment}
+    className="
+      bg-orange-500
+      text-white
+      px-6
+      py-3
+      rounded-xl
+      font-medium
+      disabled:opacity-50
+    "
+  >
+    {loadingZoneAssignment
+      ? "Loading..."
+      : currentVendorZone
+        ? "Change Zone"
+        : "Assign Zone"}
+  </button>
 
-            </div>
+  <button
+    className="
+      bg-red-500
+      text-white
+      px-6
+      py-3
+      rounded-xl
+      font-medium
+    "
+  >
+    Suspend Vendor
+  </button>
+
+<div className="bg-orange-50 border border-orange-200 rounded-2xl p-6">
+
+  <p className="text-gray-500 text-sm">
+    Operational Zone
+  </p>
+
+  {currentVendorZone ? (
+    <>
+      <p className="font-bold text-lg text-orange-700 mt-1">
+        {currentVendorZone.zones?.name || "Assigned Zone"}
+      </p>
+
+      <p className="text-sm text-gray-500 mt-1">
+        Territory:{" "}
+        {currentVendorZone.zones?.territories?.name ||
+          "Unknown"}
+      </p>
+    </>
+  ) : (
+    <p className="font-semibold text-gray-500 mt-1">
+      No Zone assigned
+    </p>
+  )}
+
+</div>
+
+</div>
 
           </div>
 
         </div>
 
       )}
+
+{showTerritoryModal && (
+
+  <div
+    className="
+      fixed
+      inset-0
+      z-[100]
+      flex
+      items-center
+      justify-center
+      bg-black/60
+      p-4
+      backdrop-blur-sm
+    "
+  >
+
+   <div
+  className="
+    flex
+    w-full
+    max-w-2xl
+    max-h-[90vh]
+    flex-col
+    overflow-hidden
+    rounded-[2rem]
+    bg-white
+    shadow-2xl
+  "
+>
+
+      {/* Header */}
+
+      <div
+        className="
+          relative
+          overflow-hidden
+          bg-gradient-to-br
+          from-orange-500
+          via-orange-500
+          to-orange-600
+          px-7
+          py-7
+          text-white
+        "
+      >
+
+        <div className="relative z-10">
+
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-100">
+            MKH Geographic Control
+          </p>
+
+          <h2 className="mt-2 text-2xl font-bold">
+            Create Territory
+          </h2>
+
+          <p className="mt-2 max-w-lg text-sm text-orange-50">
+            Establish a new operational Territory under a specific State and LGA.
+          </p>
+
+        </div>
+
+        <button
+          onClick={() =>
+            setShowTerritoryModal(false)
+          }
+          className="
+            absolute
+            right-5
+            top-5
+            flex
+            h-10
+            w-10
+            items-center
+            justify-center
+            rounded-full
+            bg-white/15
+            text-xl
+            transition
+            hover:bg-white/25
+          "
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      {/* Form */}
+
+      <div className="flex-1 overflow-y-auto p-7">
+  <div className="space-y-6">
+
+          <div>
+
+            <label className="mb-2 block text-sm font-semibold text-gray-700">
+              State
+            </label>
+
+            <select
+              value={selectedTerritoryStateId}
+              onChange={(e) =>
+                loadTerritoryLgas(
+                  e.target.value
+                )
+              }
+              className="
+                w-full
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                px-4
+                py-3.5
+                outline-none
+                transition
+                focus:border-orange-500
+                focus:bg-white
+                focus:ring-4
+                focus:ring-orange-100
+              "
+            >
+
+              <option value="">
+                Select State
+              </option>
+
+              {territoryStates.map(
+                (state) => (
+
+                  <option
+                    key={state.id}
+                    value={state.id}
+                  >
+                    {state.name}
+                  </option>
+
+                )
+              )}
+
+            </select>
+
+          </div>
+
+
+          <div>
+
+            <label className="mb-2 block text-sm font-semibold text-gray-700">
+              Local Government Area
+            </label>
+
+            <select
+              value={selectedTerritoryLgaId}
+              onChange={(e) =>
+                setSelectedTerritoryLgaId(
+                  e.target.value
+                )
+              }
+              disabled={
+                !selectedTerritoryStateId
+              }
+              className="
+                w-full
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                px-4
+                py-3.5
+                outline-none
+                transition
+                disabled:cursor-not-allowed
+                disabled:opacity-50
+                focus:border-orange-500
+                focus:bg-white
+                focus:ring-4
+                focus:ring-orange-100
+              "
+            >
+
+              <option value="">
+                {
+                  selectedTerritoryStateId
+                    ? "Select LGA"
+                    : "Select State first"
+                }
+              </option>
+
+              {territoryLgas.map(
+                (lga) => (
+
+                  <option
+                    key={lga.id}
+                    value={lga.id}
+                  >
+                    {lga.name}
+                  </option>
+
+                )
+              )}
+
+            </select>
+
+          </div>
+
+        </div>
+
+
+        <div>
+
+          <label className="mb-2 block text-sm font-semibold text-gray-700">
+            Territory Name
+          </label>
+
+          <input
+            value={territoryForm.name}
+            onChange={(e) =>
+              setTerritoryForm((prev) => ({
+                ...prev,
+                name: e.target.value,
+              }))
+            }
+            placeholder="e.g. Lekki Central"
+            className="
+              w-full
+              rounded-2xl
+              border
+              border-gray-200
+              bg-gray-50
+              px-4
+              py-3.5
+              outline-none
+              transition
+              focus:border-orange-500
+              focus:bg-white
+              focus:ring-4
+              focus:ring-orange-100
+            "
+          />
+
+        </div>
+
+
+        <div>
+
+          <label className="mb-2 block text-sm font-semibold text-gray-700">
+            Description
+          </label>
+
+          <textarea
+            value={territoryForm.description}
+            onChange={(e) =>
+              setTerritoryForm((prev) => ({
+                ...prev,
+                description: e.target.value,
+              }))
+            }
+            rows={3}
+            placeholder="Describe the operational responsibility of this Territory..."
+            className="
+              w-full
+              resize-none
+              rounded-2xl
+              border
+              border-gray-200
+              bg-gray-50
+              px-4
+              py-3.5
+              outline-none
+              transition
+              focus:border-orange-500
+              focus:bg-white
+              focus:ring-4
+              focus:ring-orange-100
+            "
+          />
+
+        </div>
+
+
+        <div className="grid gap-5 md:grid-cols-2">
+
+          <div>
+
+            <label className="mb-2 block text-sm font-semibold text-gray-700">
+              Maximum Vendors
+            </label>
+
+            <input
+              type="number"
+              min="1"
+              value={territoryForm.maxVendors}
+              onChange={(e) =>
+                setTerritoryForm((prev) => ({
+                  ...prev,
+                  maxVendors: e.target.value,
+                }))
+              }
+              className="
+                w-full
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                px-4
+                py-3.5
+                outline-none
+                focus:border-orange-500
+                focus:bg-white
+                focus:ring-4
+                focus:ring-orange-100
+              "
+            />
+
+          </div>
+
+
+          <div>
+
+            <label className="mb-2 block text-sm font-semibold text-gray-700">
+              Maximum Riders
+            </label>
+
+            <input
+              type="number"
+              min="1"
+              value={territoryForm.maxRiders}
+              onChange={(e) =>
+                setTerritoryForm((prev) => ({
+                  ...prev,
+                  maxRiders: e.target.value,
+                }))
+              }
+              className="
+                w-full
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                px-4
+                py-3.5
+                outline-none
+                focus:border-orange-500
+                focus:bg-white
+                focus:ring-4
+                focus:ring-orange-100
+              "
+            />
+
+          </div>
+
+        </div>
+
+
+        <div
+          className="
+            flex
+            items-center
+            justify-between
+            rounded-2xl
+            border
+            border-orange-100
+            bg-orange-50
+            px-5
+            py-4
+          "
+        >
+
+          <div>
+
+            <p className="font-semibold text-gray-800">
+              Territory Status
+            </p>
+
+            <p className="text-sm text-gray-500">
+              Activate this Territory immediately after creation.
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setTerritoryForm((prev) => ({
+                ...prev,
+                isActive: !prev.isActive,
+              }))
+            }
+            className={`
+              relative
+              h-7
+              w-12
+              rounded-full
+              transition
+              ${
+                territoryForm.isActive
+                  ? "bg-orange-500"
+                  : "bg-gray-300"
+              }
+            `}
+          >
+
+            <span
+              className={`
+                absolute
+                top-1
+                h-5
+                w-5
+                rounded-full
+                bg-white
+                shadow
+                transition
+                ${
+                  territoryForm.isActive
+                    ? "left-6"
+                    : "left-1"
+                }
+              `}
+            />
+
+          </button>
+
+        </div>
+
+
+             <div
+          className="
+            sticky
+            bottom-0
+            -mx-7
+            mt-2
+            flex
+            flex-col-reverse
+            gap-3
+            border-t
+            border-gray-100
+            bg-white
+            px-7
+            py-5
+            sm:flex-row
+            sm:justify-end
+          "
+        >
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowTerritoryModal(false)
+            }
+            className="
+              rounded-2xl
+              border
+              border-gray-200
+              px-6
+              py-3.5
+              font-semibold
+              text-gray-600
+              transition
+              hover:bg-gray-50
+            "
+          >
+            Cancel
+          </button>
+
+
+          <button
+            type="button"
+            onClick={saveTerritory}
+            disabled={savingTerritory}
+            className="
+              rounded-2xl
+              bg-orange-500
+              px-7
+              py-3.5
+              font-semibold
+              text-white
+              shadow-lg
+              transition
+              hover:bg-orange-600
+              disabled:cursor-not-allowed
+              disabled:opacity-60
+            "
+          >
+            {savingTerritory
+              ? "Creating Territory..."
+              : "Create Territory"}
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+)}
+
+{showAssignZone && selectedVendor && (
+  <div
+    className="
+      fixed
+      inset-0
+      bg-black/50
+      flex
+      items-center
+      justify-center
+      z-[60]
+      p-6
+    "
+  >
+    <div
+      className="
+        bg-white
+        rounded-3xl
+        w-full
+        max-w-xl
+        p-8
+        shadow-2xl
+      "
+    >
+
+      <div className="flex justify-between items-center mb-8">
+
+        <div>
+          <h2 className="text-2xl font-bold">
+            Assign Vendor Zone
+          </h2>
+
+          <p className="text-gray-500 mt-1">
+            {selectedVendor.kitchen_name}
+          </p>
+        </div>
+
+        <button
+          onClick={() =>
+            setShowAssignZone(false)
+          }
+          className="text-2xl"
+        >
+          ✕
+        </button>
+
+      </div>
+
+      <div className="space-y-6">
+
+        <div>
+
+          <label className="block font-medium mb-2">
+            Territory
+          </label>
+
+          <select
+            value={selectedTerritoryId}
+            onChange={(e) =>
+              loadZonesForTerritory(
+                e.target.value
+              )
+            }
+            className="w-full rounded-2xl border p-4"
+          >
+
+            <option value="">
+              Select Territory
+            </option>
+
+            {territories.map((territory) => (
+              <option
+                key={territory.id}
+                value={territory.id}
+              >
+                {territory.name}
+              </option>
+            ))}
+
+          </select>
+
+        </div>
+
+        <div>
+
+          <label className="block font-medium mb-2">
+            Zone
+          </label>
+
+          <select
+            value={selectedZoneId}
+            onChange={(e) =>
+              setSelectedZoneId(
+                e.target.value
+              )
+            }
+            disabled={
+              !selectedTerritoryId
+            }
+            className="w-full rounded-2xl border p-4 disabled:bg-gray-100"
+          >
+
+            <option value="">
+              {selectedTerritoryId
+                ? "Select Zone"
+                : "Select Territory first"}
+            </option>
+
+            {zones.map((zone) => (
+              <option
+                key={zone.id}
+                value={zone.id}
+              >
+                {zone.name}
+                {zone.code
+                  ? ` (${zone.code})`
+                  : ""}
+              </option>
+            ))}
+
+          </select>
+
+        </div>
+
+        {selectedTerritoryId &&
+          zones.length === 0 && (
+            <div className="rounded-2xl bg-yellow-50 border border-yellow-200 p-4 text-yellow-800">
+              No active Zones currently exist
+              in this Territory.
+            </div>
+          )}
+
+        <div className="flex gap-4 pt-4">
+
+          <button
+            onClick={() =>
+              setShowAssignZone(false)
+            }
+            className="
+              flex-1
+              border
+              py-3
+              rounded-xl
+              font-medium
+            "
+          >
+            Cancel
+          </button>
+
+          <button
+            onClick={saveVendorZone}
+            disabled={
+              !selectedTerritoryId ||
+              !selectedZoneId
+            }
+            className="
+              flex-1
+              bg-orange-500
+              text-white
+              py-3
+              rounded-xl
+              font-medium
+              disabled:opacity-50
+            "
+          >
+            Save Assignment
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+)}
 
       {selectedRider && (
 

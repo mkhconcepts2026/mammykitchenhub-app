@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
 import { prepareEmployee } from "@/lib/employees/provisioning";
 
@@ -6,6 +7,64 @@ export async function POST(request: Request) {
   let authUserId: string | null = null;
 
   try {
+    // ---------------------------------------
+    // AUTHENTICATE REQUEST
+    // ---------------------------------------
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized.",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // ---------------------------------------
+    // AUTHORIZE HR / ADMIN
+    // ---------------------------------------
+
+    const {
+      data: callerProfile,
+      error: callerProfileError,
+    } = await adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (
+      callerProfileError ||
+      !callerProfile ||
+      !["HR", "ADMIN"].includes(
+        String(callerProfile.role).toUpperCase()
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden.",
+        },
+        {
+          status: 403,
+        }
+      );
+    }
+
+    // ---------------------------------------
+    // REQUEST BODY
+    // ---------------------------------------
+
     const body = await request.json();
 
     const employee = await prepareEmployee(body);
@@ -14,15 +73,17 @@ export async function POST(request: Request) {
     // Get Role Name
     // ---------------------------------------
 
-    const { data: role, error: roleError } =
-await adminClient
-  .from("employee_roles")
-  .select("name, system_role")
-  .eq("id", employee.roleId)
-  .single();
+    const {
+      data: role,
+      error: roleError,
+    } = await adminClient
+      .from("employee_roles")
+      .select("name, system_role")
+      .eq("id", employee.roleId)
+      .single();
 
-  console.log("ROLE RECORD:", role);
-console.log("SYSTEM ROLE:", role?.system_role);
+    console.log("ROLE RECORD:", role);
+    console.log("SYSTEM ROLE:", role?.system_role);
 
     if (roleError) {
       return NextResponse.json(
@@ -30,7 +91,9 @@ console.log("SYSTEM ROLE:", role?.system_role);
           success: false,
           message: "Employee role could not be found.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -60,7 +123,9 @@ console.log("SYSTEM ROLE:", role?.system_role);
           success: false,
           message: authError?.message,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -70,25 +135,36 @@ console.log("SYSTEM ROLE:", role?.system_role);
     // Create Profile FIRST
     // ---------------------------------------
 
-    const { error: profileError } = await adminClient
-      .from("profiles")
-      .insert({
-        id: authUserId,
+    const { error: profileError } =
+      await adminClient
+        .from("profiles")
+        .insert({
+          id: authUserId,
 
-        full_name: `${employee.firstName} ${employee.lastName}`,
+          full_name:
+            `${employee.firstName} ${employee.lastName}`,
 
-        email: employee.email,
+          email:
+            employee.email,
 
-        //phone: employee.phone,
+          //phone: employee.phone,
 
-        username: employee.username,
+          username:
+            employee.username,
 
-        role: role.system_role,
+          role:
+            role.system_role,
 
-        status: "active",
+          // NEW: Link profile to operational territory
+          territory_id:
+            employee.territoryId || null,
 
-        must_change_password: true,
-      });
+          status:
+            "active",
+
+          must_change_password:
+            true,
+        });
 
     if (profileError) {
       await adminClient.auth.admin.deleteUser(authUserId);
@@ -98,7 +174,9 @@ console.log("SYSTEM ROLE:", role?.system_role);
           success: false,
           message: profileError.message,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -114,23 +192,34 @@ console.log("SYSTEM ROLE:", role?.system_role);
       .insert({
         profile_id: authUserId,
 
-        employee_number: employee.employeeNumber,
+        employee_number:
+          employee.employeeNumber,
 
-        first_name: employee.firstName,
-        last_name: employee.lastName,
+        first_name:
+          employee.firstName,
 
-        gender: employee.gender,
-        nationality: employee.nationality,
+        last_name:
+          employee.lastName,
 
-        address: employee.address,
+        gender:
+          employee.gender,
+
+        nationality:
+          employee.nationality,
+
+        address:
+          employee.address,
 
         //phone: employee.phone,
 
-        photo_url: employee.photoUrl,
+        photo_url:
+          employee.photoUrl,
 
-        department_id: employee.departmentId,
+        department_id:
+          employee.departmentId,
 
-        role_id: employee.roleId,
+        role_id:
+          employee.roleId,
 
         reports_to:
           employee.reportsTo || null,
@@ -162,27 +251,31 @@ console.log("SYSTEM ROLE:", role?.system_role);
         username:
           employee.username,
 
+        // SECURITY: use authenticated user, not browser-supplied createdBy
         created_by:
-          body.createdBy || null,
+          user.id,
       })
       .select()
       .single();
 
     if (employeeError) {
-
       await adminClient
         .from("profiles")
         .delete()
         .eq("id", authUserId);
 
-      await adminClient.auth.admin.deleteUser(authUserId);
+      await adminClient.auth.admin.deleteUser(
+        authUserId
+      );
 
       return NextResponse.json(
         {
           success: false,
           message: employeeError.message,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
@@ -190,13 +283,11 @@ console.log("SYSTEM ROLE:", role?.system_role);
     // Delete Draft
     // ---------------------------------------
 
-    if (body.createdBy) {
-      await adminClient
-        .from("employee_drafts")
-        .delete()
-        .eq("created_by", body.createdBy)
-        .eq("status", "draft");
-    }
+    await adminClient
+      .from("employee_drafts")
+      .delete()
+      .eq("created_by", user.id)
+      .eq("status", "draft");
 
     // ---------------------------------------
     // Success
@@ -208,7 +299,8 @@ console.log("SYSTEM ROLE:", role?.system_role);
       employee: data,
 
       credentials: {
-        employeeNumber: employee.employeeNumber,
+        employeeNumber:
+          employee.employeeNumber,
 
         fullName:
           `${employee.firstName} ${employee.lastName}`,
@@ -232,8 +324,9 @@ console.log("SYSTEM ROLE:", role?.system_role);
         .delete()
         .eq("id", authUserId);
 
-      await adminClient.auth.admin.deleteUser(authUserId);
-
+      await adminClient.auth.admin.deleteUser(
+        authUserId
+      );
     }
 
     console.error(error);
@@ -242,7 +335,8 @@ console.log("SYSTEM ROLE:", role?.system_role);
       {
         success: false,
         message:
-          error.message || "Employee creation failed.",
+          error.message ||
+          "Employee creation failed.",
       },
       {
         status: 500,
