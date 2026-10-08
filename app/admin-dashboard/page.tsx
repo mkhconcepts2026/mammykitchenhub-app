@@ -9,7 +9,10 @@ import {
   Bike,
   ShoppingBag,
   Wallet,
-  ClipboardCheck
+  ClipboardCheck,
+  ChevronRight,
+  ShieldCheck,
+  LogOut
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -545,6 +548,15 @@ const [loadingZoneAssignment, setLoadingZoneAssignment] = useState(false);
 const [riders, setRiders] =
   useState<any[]>([]);
 
+  const [riderDeliveries, setRiderDeliveries] =
+  useState(0);
+
+const [riderEarnings, setRiderEarnings] =
+  useState(0);
+
+const [loadingRiderDetails, setLoadingRiderDetails] =
+  useState(false);
+
   const [orders, setOrders] =
   useState<any[]>([]);
 
@@ -571,9 +583,6 @@ const [stats, setStats] = useState({
   
   const approveVendor = async (app: any) => {
 
-  console.log("========== APPROVE START ==========");
-  console.log("Application:", app);
-
   const { error: vendorError } =
     await supabase
       .from("vendors")
@@ -592,8 +601,6 @@ const [stats, setStats] = useState({
         }
       ]);
 
-  console.log("Vendor Insert Error:", vendorError);
-
   if (vendorError) {
     return;
   }
@@ -609,16 +616,6 @@ const [stats, setStats] = useState({
       })
       .eq("id", app.id)
       .select();
-
-  console.log(
-    "Update Data:",
-    updateData
-  );
-
-  console.log(
-    "Update Error:",
-    updateError
-  );
 
   if (updateError) {
     alert("Status update failed");
@@ -751,13 +748,7 @@ const openAssignZone = async () => {
 
   }
 
-  console.log(
-  "ADMIN ASSIGN ZONE - TERRITORIES LOADED:",
-  data?.length,
-  data
-);
-
-  setTerritories(data || []);
+    setTerritories(data || []);
 
 const existingTerritoryId =
   currentVendorZone?.zones?.territory_id || "";
@@ -886,22 +877,99 @@ const saveVendorZone = async () => {
     setLoadingZoneAssignment(false);
   }
 };
-  const assignRider = async () => {
 
+const openRiderDetails = async (rider: any) => {
+  setSelectedRider(rider);
+
+  setRiderDeliveries(0);
+  setRiderEarnings(0);
+  setLoadingRiderDetails(true);
+
+  try {
+
+    // =========================================================
+    // LOAD RIDER DELIVERED ORDERS
+    // orders is the financial source of truth
+    // =========================================================
+
+    const {
+      data: riderOrders,
+      error: riderOrdersError,
+    } = await supabase
+      .from("orders")
+      .select("id, rider_amount")
+      .eq("rider_id", rider.id)
+      .eq("status", "delivered");
+
+    if (riderOrdersError) {
+      console.error(
+        "Rider orders load error:",
+        riderOrdersError
+      );
+
+      setRiderDeliveries(0);
+      setRiderEarnings(0);
+
+      return;
+    }
+
+    // Number of completed deliveries
+    const deliveryCount =
+      riderOrders?.length || 0;
+
+    setRiderDeliveries(
+      deliveryCount
+    );
+
+    // =========================================================
+    // CALCULATE RIDER EARNINGS
+    // Sum rider_amount from delivered orders
+    // =========================================================
+
+    const totalEarnings =
+      (riderOrders || []).reduce(
+        (sum, order) =>
+          sum +
+          Number(
+            order.rider_amount || 0
+          ),
+        0
+      );
+
+    setRiderEarnings(
+      totalEarnings
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Open Rider Details error:",
+      error
+    );
+
+    setRiderDeliveries(0);
+    setRiderEarnings(0);
+
+  } finally {
+
+    setLoadingRiderDetails(false);
+
+  }
+};
+
+ const assignRider = async () => {
+
+  // Prevent reassignment of delivered orders
+  if (selectedOrder?.status === "delivered") {
+    alert("A delivered order cannot be assigned to another rider.");
+    return;
+  }
+
+  // Make sure a rider has been selected
   if (!selectedRiderId) {
     alert("Select a rider first");
     return;
   }
-
-  console.log(
-    "SELECTED RIDER ID:",
-    selectedRiderId
-  );
-
-  console.log(
-    "SELECTED ORDER:",
-    selectedOrder
-  );
 
   const { error } = await supabase
     .from("orders")
@@ -909,15 +977,7 @@ const saveVendorZone = async () => {
       rider_id: selectedRiderId,
       status: "assigned"
     })
-    .eq(
-      "id",
-      selectedOrder.id
-    );
-
-  console.log(
-    "UPDATE ERROR:",
-    error
-  );
+    .eq("id", selectedOrder.id);
 
   if (error) {
     console.error(error);
@@ -931,8 +991,9 @@ const saveVendorZone = async () => {
   setSelectedOrder(null);
 
   loadDashboardStats();
-
 };
+
+
 useEffect(() => {
 
   loadDashboardStats();
@@ -1066,11 +1127,6 @@ const {
 
 setRiders(ridersData || []);
 
-console.log(
-  "RIDERS LOADED:",
-  ridersData
-);
-
 const {
   data: ordersData,
   error: ordersError
@@ -1116,20 +1172,6 @@ if (ordersData) {
     order.id
   );
 
-console.log(
-  "ORDER ID:",
-  order.id
-);
-
-console.log(
-  "FOUND ITEMS:",
-  items
-);
-
-console.log(
-  "ITEM ERROR:",
-  itemsError
-);
           return {
             ...order,
             order_items:
@@ -1144,320 +1186,211 @@ console.log(
   setOrders(
     ordersWithItems
   );
-console.log(
-  "ORDERS WITH ITEMS:",
-  ordersWithItems
-);
 }
  
 };
 
   return (
-    <main className="min-h-screen bg-gray-100">
+    <main className="min-h-screen bg-slate-100 text-slate-900">
+      <div className="flex min-h-screen">
 
-      <div className="flex">
+        {/* =========================================================
+            MKH ADMIN SIDEBAR
+            ========================================================= */}
+        <aside className="hidden lg:flex lg:w-72 xl:w-80 shrink-0 flex-col bg-[#0b1220] text-white">
 
-        {/* Sidebar */}
+          <div className="border-b border-white/10 px-6 py-7">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white px-1 shadow-lg">
+                <Image
+                  src="/logo.png"
+                  alt="MKH Logo"
+                  width={180}
+                  height={52}
+                  priority
+                />
+              </div>
 
-       <div
-  className="
-    w-72
-    bg-white
-    border-r
-    min-h-screen
-    p-6
-    flex
-    flex-col
-  "
->
+              <div>
+                <p className="text-xl font-black tracking-tight">MKH</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-400">
+                  Mammy Kitchen Hub
+                </p>
+              </div>
+            </div>
 
- <div
-  className="
-    mb-10
-    flex
-    flex-col
-    items-center
-    text-center
-  "
->
+            <div className="mt-7">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-400">
+                Administration
+              </p>
+              <h1 className="mt-1 text-lg font-bold">
+                Platform Control Center
+              </h1>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                System Active
+              </div>
+            </div>
+          </div>
 
- <Image
-  src="/logo.png"
-  alt="MKH Logo"
-  width={180}
-  height={52}
-  priority
-  style={{
-    width: "180px",
-    height: "auto"
-  }}
-/>
+          <nav className="flex-1 overflow-y-auto px-4 py-6">
+            <p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Control Modules
+            </p>
 
-  <h2
-    className="
-      text-2xl
-      font-bold
-      mt-3
-    "
-  >
-    Admin Panel
-  </h2>
+            <div className="space-y-1.5">
+              {[
+                ["dashboard", "Dashboard", LayoutDashboard],
+                ["applications", "Applications", ClipboardCheck],
+                ["vendors", "Vendors", Store],
+                ["riders", "Riders", Bike],
+                ["orders", "Orders", ShoppingBag],
+                ["revenue", "Revenue", Wallet],
+              ].map(([key, label, Icon]: any) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition-all ${
+                    activeTab === key
+                      ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <Icon size={19} />
+                  <span>{label}</span>
+                  {activeTab === key && (
+                    <ChevronRight size={16} className="ml-auto" />
+                  )}
+                </button>
+              ))}
 
-  <p
-    className="
-      text-gray-500
-      text-sm
-    "
-  >
-    Platform Control
-  </p>
+              <div className="my-4 border-t border-white/10" />
 
-</div>
+              <button
+                onClick={() => setActiveTab("territories")}
+                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition-all ${
+                  activeTab === "territories"
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <span className="text-base">🌍</span>
+                <span>Territories</span>
+                {activeTab === "territories" && (
+                  <ChevronRight size={16} className="ml-auto" />
+                )}
+              </button>
 
-  <div className="space-y-2">
+              <button
+                onClick={() => setActiveTab("zones")}
+                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition-all ${
+                  activeTab === "zones"
+                    ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                }`}
+              >
+                <span className="text-base">📍</span>
+                <span>Zones</span>
+                {activeTab === "zones" && (
+                  <ChevronRight size={16} className="ml-auto" />
+                )}
+              </button>
+            </div>
+          </nav>
 
-    <button
-      onClick={() =>
-        setActiveTab("dashboard")
-      }
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-4
-        py-3
-        rounded-2xl
-        transition-all
+          <div className="border-t border-white/10 p-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400">
+                  <ShieldCheck size={20} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">Admin Access</p>
+                  <p className="text-xs text-slate-400">COO / Administrator</p>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Pending Reviews</span>
+                <span className="rounded-full bg-orange-500/15 px-2.5 py-1 font-bold text-orange-300">
+                  {stats.pending}
+                </span>
+              </div>
+            </div>
 
-        ${
-          activeTab === "dashboard"
-            ? "bg-orange-500 text-white shadow-md"
-            : "hover:bg-gray-100"
-        }
-      `}
-    >
-      <LayoutDashboard size={20} />
-      Dashboard
-    </button>
+            <button
+              onClick={handleLogout}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300 transition hover:bg-red-500/20"
+            >
+              <LogOut size={17} />
+              Logout
+            </button>
+          </div>
+        </aside>
 
-    <button
-      onClick={() =>
-        setActiveTab("applications")
-      }
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-4
-        py-3
-        rounded-2xl
-        transition-all
+        {/* =========================================================
+            MAIN WORKSPACE
+            ========================================================= */}
+        <div className="min-w-0 flex-1">
 
-        ${
-          activeTab === "applications"
-            ? "bg-orange-500 text-white shadow-md"
-            : "hover:bg-gray-100"
-        }
-      `}
-    >
-      <ClipboardCheck size={20} />
-      Applications
-    </button>
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur">
+            <div className="px-4 py-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-orange-500">
+                    Mammy Kitchen Hub
+                  </p>
+                  <div className="mt-1 flex items-center gap-3">
+                    <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                      Admin Control Center
+                    </h2>
+                    <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 sm:inline-flex">
+                      Platform Operations
+                    </span>
+                  </div>
+                </div>
 
-    <button
-      onClick={() =>
-        setActiveTab("vendors")
-      }
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-4
-        py-3
-        rounded-2xl
-        transition-all
+                <div className="flex items-center gap-3">
+                  <div className="hidden items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 md:flex">
+                    <ShieldCheck size={17} className="text-orange-500" />
+                    Secure Admin Access
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white shadow-sm">
+                    AD
+                  </div>
+                </div>
+              </div>
 
-        ${
-          activeTab === "vendors"
-            ? "bg-orange-500 text-white shadow-md"
-            : "hover:bg-gray-100"
-        }
-      `}
-    >
-      <Store size={20} />
-      Vendors
-    </button>
+              {/* Mobile module navigation */}
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+                {[
+                  ["dashboard", "Dashboard"],
+                  ["applications", "Applications"],
+                  ["vendors", "Vendors"],
+                  ["riders", "Riders"],
+                  ["orders", "Orders"],
+                  ["revenue", "Revenue"],
+                  ["territories", "Territories"],
+                  ["zones", "Zones"],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    className={`whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+                      activeTab === key
+                        ? "bg-orange-500 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </header>
 
-    <button
-      onClick={() =>
-        setActiveTab("riders")
-      }
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-4
-        py-3
-        rounded-2xl
-        transition-all
-
-        ${
-          activeTab === "riders"
-            ? "bg-orange-500 text-white shadow-md"
-            : "hover:bg-gray-100"
-        }
-      `}
-    >
-      <Bike size={20} />
-      Riders
-    </button>
-
-    <button
-      onClick={() =>
-        setActiveTab("orders")
-      }
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-4
-        py-3
-        rounded-2xl
-        transition-all
-
-        ${
-          activeTab === "orders"
-            ? "bg-orange-500 text-white shadow-md"
-            : "hover:bg-gray-100"
-        }
-      `}
-    >
-      <ShoppingBag size={20} />
-      Orders
-    </button>
-
-    <button
-      onClick={() =>
-        setActiveTab("revenue")
-      }
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-4
-        py-3
-        rounded-2xl
-        transition-all
-
-        ${
-          activeTab === "revenue"
-            ? "bg-orange-500 text-white shadow-md"
-            : "hover:bg-gray-100"
-        }
-      `}
-    >
-      <Wallet size={20} />
-      Revenue
-    </button>
-
-<button
-  onClick={() =>
-    setActiveTab("territories")
-  }
-  className={`
-    w-full
-    flex
-    items-center
-    gap-3
-    px-4
-    py-3
-    rounded-2xl
-    transition-all
-
-    ${
-      activeTab === "territories"
-        ? "bg-orange-500 text-white shadow-md"
-        : "hover:bg-gray-100"
-    }
-  `}
->
-  <span className="text-lg">🌍</span>
-  Territories
-</button>
-
-  </div>
-
-  <div className="mt-auto pt-10">
-
-    <div
-      className="
-        bg-orange-50
-        border
-        border-orange-200
-        rounded-2xl
-        p-4
-      "
-    >
-
-      <p
-        className="
-          text-sm
-          text-gray-500
-        "
-      >
-        Pending Reviews
-      </p>
-
-      <h3
-        className="
-          text-3xl
-          font-bold
-          text-orange-500
-        "
-      >
-        {stats.pending}
-      </h3>
-
-    </div>
-
-  </div>
-
-  <button
-    onClick={handleLogout}
-    className="
-      mt-4
-      w-full
-      rounded-2xl
-      border
-      border-red-200
-      bg-red-50
-      px-4
-      py-3
-      font-semibold
-      text-red-600
-      transition-all
-      hover:bg-red-100
-    "
-  >
-    Logout
-  </button>
-
-</div>
-
-
-
-        {/* Content */}
-
-        <div className="flex-1 p-8">
-
-
+          <div className="p-4 sm:p-6 lg:p-8">
           {activeTab === "territories" && (
+
 
   <div>
 
@@ -1703,467 +1636,508 @@ console.log(
 
 )}
 
-         {activeTab === "dashboard" && (
+{activeTab === "zones" && (
 
   <div>
 
-    <h2
-      className="
-        text-3xl
-        font-bold
-        mb-8
-      "
-    >
-      Admin Dashboard
-    </h2>
+    {/* Zone Management Header */}
+    <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between mb-8">
 
-   <div
-  className="
-    grid
-    md:grid-cols-2
-    lg:grid-cols-5
-    gap-6
-  "
->
+      <div>
 
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border-l-4
-      border-orange-500
-    "
-  >
-    <p className="text-gray-500">
-      Applications
-    </p>
+        <p className="text-sm font-semibold uppercase tracking-widest text-orange-500">
+          Geographic Operations
+        </p>
 
-    <h3 className="text-5xl font-bold mt-2">
-      {stats.applications}
-    </h3>
-  </div>
+        <h2 className="text-3xl font-bold mt-1">
+          Zone Management
+        </h2>
 
-  <div
-    className="
-      bg-orange-500
-      text-white
-      rounded-3xl
-      p-6
-      shadow-sm
-    "
-  >
-    <p className="opacity-80">
-      Pending Review
-    </p>
+        <p className="text-gray-500 mt-2">
+          Create and manage operational Zones within MKH Territories.
+        </p>
 
-    <h3 className="text-5xl font-bold mt-2">
-      {stats.pending}
-    </h3>
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border-l-4
-      border-green-500
-    "
-  >
-    <p className="text-gray-500">
-      Vendors
-    </p>
-
-    <h3 className="text-5xl font-bold mt-2">
-      {stats.vendors}
-    </h3>
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border-l-4
-      border-blue-500
-    "
-  >
-    <p className="text-gray-500">
-      Riders
-    </p>
-
-    <h3 className="text-5xl font-bold mt-2">
-      {stats.riders}
-    </h3>
-  </div>
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-      border-l-4
-      border-purple-500
-    "
-  >
-    <p className="text-gray-500">
-      Orders
-    </p>
-
-    <h3 className="text-5xl font-bold mt-2">
-      {stats.orders}
-    </h3>
-
-
-    
-  </div>
-
-       </div>
-
-    <div className="mt-10">
-
-      <h3
-        className="
-          text-2xl
-          font-bold
-          mb-6
-        "
-      >
-        Admin Action Center
-      </h3>
-
-      <div
-        className="
-          grid
-          md:grid-cols-3
-          gap-6
-        "
-      >
-
-        <div
-          className="
-            bg-white
-            rounded-3xl
-            p-6
-            shadow-sm
-            border-l-4
-            border-orange-500
-          "
-        >
-
-          <p className="text-gray-500">
-            Pending Applications
-          </p>
-
-          <h3
-            className="
-              text-4xl
-              font-bold
-              mt-2
-            "
-          >
-            {stats.pending}
-          </h3>
-
-          <button
-            onClick={() =>
-              setActiveTab(
-                "applications"
-              )
-            }
-            className="
-              mt-4
-              text-orange-500
-              font-medium
-            "
-          >
-            Review Queue →
-          </button>
-
-        </div>
-
-        <div
-          className="
-            bg-white
-            rounded-3xl
-            p-6
-            shadow-sm
-            border-l-4
-            border-blue-500
-          "
-        >
-
-          <p className="text-gray-500">
-            Pending KYC
-          </p>
-
-          <h3
-            className="
-              text-4xl
-              font-bold
-              mt-2
-            "
-          >
-            0
-          </h3>
-
-          <p
-            className="
-              text-gray-400
-              mt-4
-            "
-          >
-            Coming Soon
-          </p>
-
-        </div>
-
-        <div
-          className="
-            bg-white
-            rounded-3xl
-            p-6
-            shadow-sm
-            border-l-4
-            border-green-500
-          "
-        >
-
-          <p className="text-gray-500">
-            Active Vendors
-          </p>
-
-          <h3
-            className="
-              text-4xl
-              font-bold
-              mt-2
-            "
-          >
-            {stats.vendors}
-          </h3>
-
-          <p
-            className="
-              text-green-500
-              mt-4
-            "
-          >
-            Marketplace Growing
-          </p>
-
-        </div>
-
-<div
-  className="
-    mt-8
-    grid
-    lg:grid-cols-2
-    gap-6
-  "
->
-
-  {/* Recent Applications */}
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-    "
-  >
-
-    <div
-      className="
-        flex
-        justify-between
-        items-center
-        mb-6
-      "
-    >
-
-      <h3
-        className="
-          text-2xl
-          font-bold
-        "
-      >
-        Recent Applications
-      </h3>
+      </div>
 
       <button
-        onClick={() =>
-          setActiveTab("applications")
-        }
+        onClick={openZoneModal}
         className="
-          text-orange-500
-          font-medium
-        "
-      >
-        View All →
-      </button>
-
-    </div>
-
-    <div className="space-y-4">
-
-      {applications
-        .slice(0, 5)
-        .map((app) => (
-
-          <div
-            key={app.id}
-            className="
-              flex
-              justify-between
-              items-center
-              border-b
-              pb-4
-            "
-          >
-
-            <div>
-
-              <h4 className="font-semibold">
-                {app.kitchen_name}
-              </h4>
-
-              <p className="text-gray-500 text-sm">
-                {app.vendor_type}
-              </p>
-
-            </div>
-
-            <span
-              className={`
-                px-3
-                py-1
-                rounded-full
-                text-xs
-                font-medium
-
-                ${
-                  app.status === "approved"
-                    ? "bg-green-100 text-green-700"
-                    : app.status === "rejected"
-                    ? "bg-red-100 text-red-700"
-                    : "bg-yellow-100 text-yellow-700"
-                }
-              `}
-            >
-              {app.status}
-            </span>
-
-          </div>
-
-        ))}
-
-    </div>
-
-  </div>
-
-  {/* Quick Actions */}
-
-  <div
-    className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-    "
-  >
-
-    <h3
-      className="
-        text-2xl
-        font-bold
-        mb-6
-      "
-    >
-      Quick Actions
-    </h3>
-
-    <div className="space-y-4">
-
-      <button
-        onClick={() =>
-          setActiveTab("applications")
-        }
-        className="
-          w-full
+          inline-flex
+          items-center
+          justify-center
+          gap-2
+          rounded-2xl
           bg-orange-500
-          text-white
+          px-6
           py-4
-          rounded-2xl
-          font-medium
+          font-semibold
+          text-white
+          shadow-lg
+          transition-all
+          hover:bg-orange-600
+          hover:shadow-xl
+          active:scale-[0.98]
         "
       >
-        Review Applications
-      </button>
-
-      <button
-        onClick={() =>
-          setActiveTab("vendors")
-        }
-        className="
-          w-full
-          bg-green-500
-          text-white
-          py-4
-          rounded-2xl
-          font-medium
-        "
-      >
-        Manage Vendors
-      </button>
-
-      <button
-        onClick={() =>
-          setActiveTab("riders")
-        }
-        className="
-          w-full
-          bg-blue-500
-          text-white
-          py-4
-          rounded-2xl
-          font-medium
-        "
-      >
-        Manage Riders
-      </button>
-
-      <button
-        onClick={() =>
-          setActiveTab("orders")
-        }
-        className="
-          w-full
-          bg-purple-500
-          text-white
-          py-4
-          rounded-2xl
-          font-medium
-        "
-      >
-        View Orders
+        <span className="text-xl">+</span>
+        Create Zone
       </button>
 
     </div>
 
-  </div>
 
-</div>
+    {/* Zone KPI Cards */}
+    <div className="grid gap-6 md:grid-cols-3 mb-8">
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm border border-gray-100">
+
+        <p className="text-sm text-gray-500">
+          Total Zones
+        </p>
+
+        <h3 className="mt-2 text-4xl font-bold">
+          {managedZones.length}
+        </h3>
+
+      </div>
+
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm border-l-4 border-green-500">
+
+        <p className="text-sm text-gray-500">
+          Active Zones
+        </p>
+
+        <h3 className="mt-2 text-4xl font-bold">
+          {
+            managedZones.filter(
+              (zone) =>
+                zone.is_active === true
+            ).length
+          }
+        </h3>
+
+      </div>
+
+
+      <div className="rounded-3xl bg-white p-6 shadow-sm border-l-4 border-gray-400">
+
+        <p className="text-sm text-gray-500">
+          Inactive Zones
+        </p>
+
+        <h3 className="mt-2 text-4xl font-bold">
+          {
+            managedZones.filter(
+              (zone) =>
+                zone.is_active === false
+            ).length
+          }
+        </h3>
 
       </div>
 
     </div>
+
+
+    {/* Zone Table */}
+    <div className="rounded-3xl bg-white shadow-sm border border-gray-100 overflow-hidden">
+
+      <div className="border-b px-6 py-5">
+
+        <h3 className="text-xl font-bold">
+          Operational Zones
+        </h3>
+
+        <p className="text-sm text-gray-500 mt-1">
+          Zones currently configured within MKH Territories.
+        </p>
+
+      </div>
+
+
+      {managedZones.length === 0 ? (
+
+        <div className="px-6 py-16 text-center">
+
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-3xl">
+            📍
+          </div>
+
+          <h4 className="text-lg font-bold">
+            No Zones configured
+          </h4>
+
+          <p className="mt-2 text-sm text-gray-500">
+            Create the first operational Zone to begin Territory-level service management.
+          </p>
+
+        </div>
+
+      ) : (
+
+        <div className="overflow-x-auto">
+
+          <table className="w-full">
+
+            <thead className="bg-gray-50 text-left text-sm text-gray-500">
+
+              <tr>
+
+                <th className="px-6 py-4">
+                  Zone
+                </th>
+
+                <th className="px-6 py-4">
+                  Code
+                </th>
+
+                <th className="px-6 py-4">
+                  Territory
+                </th>
+
+                <th className="px-6 py-4">
+                  Description
+                </th>
+
+                <th className="px-6 py-4">
+                  Status
+                </th>
+
+              </tr>
+
+            </thead>
+
+
+            <tbody className="divide-y">
+
+              {managedZones.map((zone) => {
+
+                const territory =
+                  territories.find(
+                    (item) =>
+                      item.id ===
+                      zone.territory_id
+                  );
+
+                return (
+
+                  <tr
+                    key={zone.id}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+
+                    <td className="px-6 py-5">
+
+                      <div className="font-semibold text-gray-900">
+                        {zone.name}
+                      </div>
+
+                    </td>
+
+
+                    <td className="px-6 py-5">
+
+                      <span className="inline-flex rounded-xl bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700">
+                        {zone.code || "—"}
+                      </span>
+
+                    </td>
+
+
+                    <td className="px-6 py-5">
+
+                      <div className="font-medium text-gray-800">
+                        {territory?.name ||
+                          "Territory unavailable"}
+                      </div>
+
+                    </td>
+
+
+                    <td className="px-6 py-5">
+
+                      <div className="max-w-xs text-sm text-gray-500">
+                        {zone.description ||
+                          "No description"}
+                      </div>
+
+                    </td>
+
+
+                    <td className="px-6 py-5">
+
+                      <span
+                        className={`
+                          inline-flex
+                          rounded-full
+                          px-3
+                          py-1
+                          text-xs
+                          font-semibold
+                          ${
+                            zone.is_active
+                              ? "bg-green-100 text-green-700"
+                              : "bg-gray-100 text-gray-600"
+                          }
+                        `}
+                      >
+                        {zone.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
+
+                    </td>
+
+                  </tr>
+
+                );
+
+              })}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      )}
+
+    </div>
+
+  </div>
+
+)}
+
+         {activeTab === "dashboard" && (
+
+  <div className="space-y-8">
+
+    {/* Dashboard hero */}
+    <section className="overflow-hidden rounded-[2rem] bg-[#0b1220] p-6 text-white shadow-xl sm:p-8 lg:p-10">
+      <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-400">
+            Platform Administration
+          </p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+            Executive Admin Dashboard
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+            Central control for marketplace applications, vendors, riders, orders,
+            revenue, territories and operational zones across MKH.
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
+          <span className="h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_0_5px_rgba(52,211,153,0.10)]" />
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+              System Status
+            </p>
+            <p className="mt-0.5 text-sm font-bold text-white">
+              Operational
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Core KPIs */}
+    <section>
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-500">
+            At a Glance
+          </p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">
+            Marketplace Overview
+          </h2>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Applications</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{stats.applications}</p>
+          <div className="mt-4 h-1.5 rounded-full bg-orange-100">
+            <div className="h-full w-full rounded-full bg-orange-500" />
+          </div>
+        </div>
+
+        <div className="rounded-3xl bg-orange-500 p-5 text-white shadow-lg shadow-orange-500/20">
+          <p className="text-sm font-semibold text-orange-100">Pending Review</p>
+          <p className="mt-3 text-4xl font-black">{stats.pending}</p>
+          <p className="mt-4 text-xs font-semibold text-orange-100">Requires attention</p>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Vendors</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{stats.vendors}</p>
+          <div className="mt-4 h-1.5 rounded-full bg-emerald-100">
+            <div className="h-full w-full rounded-full bg-emerald-500" />
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Riders</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{stats.riders}</p>
+          <div className="mt-4 h-1.5 rounded-full bg-orange-100">
+            <div className="h-full w-full rounded-full bg-orange-500" />
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Orders</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{stats.orders}</p>
+          <div className="mt-4 h-1.5 rounded-full bg-orange-100">
+            <div className="h-full w-full rounded-full bg-orange-500" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Administrative priorities */}
+    <section>
+      <div className="mb-4">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-500">
+          Administrative Priorities
+        </p>
+        <h2 className="mt-1 text-2xl font-black text-slate-950">
+          Command Overview
+        </h2>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5">
+          <p className="text-sm font-semibold text-orange-700">Pending Applications</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{stats.pending}</p>
+          <button
+            onClick={() => setActiveTab("applications")}
+            className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-orange-600 transition hover:text-orange-700"
+          >
+            Open review queue <ChevronRight size={16} />
+          </button>
+        </div>
+
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+          <p className="text-sm font-semibold text-emerald-700">Active Vendors</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{stats.vendors}</p>
+          <p className="mt-4 text-xs font-semibold text-emerald-700">Marketplace operations</p>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Territories</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{territories.length}</p>
+          <button
+            onClick={() => setActiveTab("territories")}
+            className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-orange-600 transition hover:text-orange-700"
+          >
+            Manage territories <ChevronRight size={16} />
+          </button>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-500">Zones</p>
+          <p className="mt-3 text-4xl font-black text-slate-950">{managedZones.length}</p>
+          <button
+            onClick={() => setActiveTab("zones")}
+            className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-orange-600 transition hover:text-orange-700"
+          >
+            Manage zones <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    </section>
+
+    {/* Recent applications */}
+    <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-500">Applications</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">Recent Vendor Applications</h2>
+        </div>
+        <button
+          onClick={() => setActiveTab("applications")}
+          className="inline-flex items-center gap-2 self-start rounded-xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-bold text-orange-600 transition hover:bg-orange-100 sm:self-auto"
+        >
+          View all <ChevronRight size={16} />
+        </button>
+      </div>
+
+      <div className="mt-6 divide-y divide-slate-100">
+        {applications.slice(0, 5).map((app) => (
+          <div key={app.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h4 className="truncate font-bold text-slate-950">{app.kitchen_name}</h4>
+              <p className="mt-1 text-sm text-slate-500">{app.vendor_type}</p>
+            </div>
+            <span
+              className={`inline-flex w-fit rounded-full px-3 py-1.5 text-xs font-bold ${
+                app.status === "approved"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : app.status === "rejected"
+                  ? "bg-red-100 text-red-700"
+                  : "bg-amber-100 text-amber-700"
+              }`}
+            >
+              {app.status}
+            </span>
+          </div>
+        ))}
+
+        {applications.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-medium text-slate-500">
+            No recent vendor applications.
+          </div>
+        )}
+      </div>
+    </section>
+
+    {/* Quick actions — intentionally full-width, not cramped beside applications */}
+    <section className="rounded-[2rem] bg-[#0b1220] p-5 text-white shadow-xl sm:p-7">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-400">Operations</p>
+        <h2 className="mt-1 text-2xl font-black">Quick Actions</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          Jump directly into the areas that require administrative attention.
+        </p>
+      </div>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <button
+          onClick={() => setActiveTab("applications")}
+          className="rounded-2xl border border-orange-400/20 bg-orange-500 px-5 py-4 text-left font-bold text-white shadow-lg shadow-orange-500/10 transition hover:bg-orange-600"
+        >
+          <span className="block text-sm text-orange-100">01</span>
+          <span className="mt-1 block">Review Applications</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("vendors")}
+          className="rounded-2xl border border-emerald-400/20 bg-emerald-500 px-5 py-4 text-left font-bold text-white transition hover:bg-emerald-600"
+        >
+          <span className="block text-sm text-emerald-100">02</span>
+          <span className="mt-1 block">Manage Vendors</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("riders")}
+          className="rounded-2xl border border-orange-400/20 bg-orange-500 px-5 py-4 text-left font-bold text-white transition hover:bg-orange-600"
+        >
+          <span className="block text-sm text-orange-100">03</span>
+          <span className="mt-1 block">Manage Riders</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("orders")}
+          className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-left font-bold text-white transition hover:bg-white/15"
+        >
+          <span className="block text-sm text-slate-400">04</span>
+          <span className="mt-1 block">View Orders</span>
+        </button>
+      </div>
+    </section>
 
   </div>
 
@@ -2410,7 +2384,7 @@ console.log(
 
   }
   className="
-    bg-blue-500
+    bg-orange-500
     text-white
     px-4
     py-2
@@ -2421,18 +2395,6 @@ console.log(
   View
 </button>
 
-              <button
-                className="
-                  bg-red-500
-                  text-white
-                  px-4
-                  py-2
-                  rounded-lg
-                  text-sm
-                "
-              >
-                Suspend
-              </button>
 
             </div>
 
@@ -2568,12 +2530,10 @@ console.log(
 
                   <button
                     onClick={() =>
-                      setSelectedRider(
-                        rider
-                      )
-                    }
+  openRiderDetails(rider)
+}
                     className="
-                      bg-blue-500
+                      bg-orange-500
                       text-white
                       px-4
                       py-2
@@ -2583,17 +2543,6 @@ console.log(
                     View
                   </button>
 
-                  <button
-                    className="
-                      bg-red-500
-                      text-white
-                      px-4
-                      py-2
-                      rounded-lg
-                    "
-                  >
-                    Suspend
-                  </button>
 
                 </div>
 
@@ -2738,19 +2687,15 @@ console.log(
 
                 <button
                   onClick={() => {
-  console.log(
-  "FULL ORDER OBJECT",
-  JSON.stringify(order, null, 2)
-);
-
-setSelectedOrder(order);
+  setSelectedOrder(order);
 }}
                   className="
-                    bg-blue-500
+                    bg-orange-500
                     text-white
                     px-4
                     py-2
                     rounded-lg
+                    hover:bg-orange-600
                   "
                 >
                   View
@@ -2894,7 +2839,7 @@ setSelectedOrder(order);
           className="
             fixed
             inset-0
-            bg-black/50
+            bg-black/60 backdrop-blur-sm
             flex
             items-center
             justify-center
@@ -2914,17 +2859,22 @@ setSelectedOrder(order);
 "
           >
 
-            <div className="flex justify-between items-center mb-8">
+            <div className="-mx-8 -mt-8 mb-8 flex items-center justify-between rounded-t-3xl bg-gradient-to-r from-orange-500 to-orange-600 px-8 py-6 text-white">
 
-              <h2 className="text-3xl font-bold">
-                Vendor Application Review
-              </h2>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-100">
+                  Vendor Operations
+                </p>
+                <h2 className="mt-1 text-2xl font-black">
+                  Vendor Application Review
+                </h2>
+              </div>
 
               <button
                 onClick={() =>
                   setSelectedApplication(null)
                 }
-                className="text-2xl"
+                className="rounded-xl bg-white/10 px-3 py-2 text-2xl transition hover:bg-white/20"
               >
                 ✕
               </button>
@@ -2985,52 +2935,36 @@ setSelectedOrder(order);
 
             </div>
 
-          <div
-  className="
-    grid
-    grid-cols-3
-    gap-4
-    mt-8
-  "
->
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
 
-  <button
-    className="
-      bg-blue-500
-      text-white
-      py-3
-      rounded-xl
-      font-semibold
-    "
-  >
-    Edit Vendor
-  </button>
+            <button
+              onClick={async () => {
+                await approveVendor(selectedApplication);
+                setSelectedApplication(null);
+              }}
+              className="rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white transition hover:bg-orange-600"
+            >
+              Approve Application
+            </button>
 
-  <button
-    className="
-      bg-yellow-500
-      text-white
-      py-3
-      rounded-xl
-      font-semibold
-    "
-  >
-    View Orders
-  </button>
+            <button
+              onClick={async () => {
+                await rejectVendor(selectedApplication.id);
+                setSelectedApplication(null);
+              }}
+              className="rounded-xl bg-red-500 px-4 py-3 font-semibold text-white transition hover:bg-red-600"
+            >
+              Reject Application
+            </button>
 
-  <button
-    className="
-      bg-red-500
-      text-white
-      py-3
-      rounded-xl
-      font-semibold
-    "
-  >
-    Suspend Vendor
-  </button>
+            <button
+              onClick={() => setSelectedApplication(null)}
+              className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-200"
+            >
+              Close
+            </button>
 
-</div>
+          </div>
 
           </div>
 
@@ -3044,7 +2978,7 @@ setSelectedOrder(order);
           className="
             fixed
             inset-0
-            bg-black/50
+            bg-black/60 backdrop-blur-sm
             flex
             items-center
             justify-center
@@ -3240,19 +3174,6 @@ setSelectedOrder(order);
           <div className="flex flex-wrap gap-4 mt-8">
 
   <button
-    className="
-      bg-blue-500
-      text-white
-      px-6
-      py-3
-      rounded-xl
-      font-medium
-    "
-  >
-    Edit Vendor
-  </button>
-
-  <button
     onClick={openAssignZone}
     disabled={loadingZoneAssignment}
     className="
@@ -3270,19 +3191,6 @@ setSelectedOrder(order);
       : currentVendorZone
         ? "Change Zone"
         : "Assign Zone"}
-  </button>
-
-  <button
-    className="
-      bg-red-500
-      text-white
-      px-6
-      py-3
-      rounded-xl
-      font-medium
-    "
-  >
-    Suspend Vendor
   </button>
 
 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-6">
@@ -3318,6 +3226,553 @@ setSelectedOrder(order);
         </div>
 
       )}
+
+{showZoneModal && (
+
+  <div
+    className="
+      fixed
+      inset-0
+      z-[100]
+      flex
+      items-center
+      justify-center
+      bg-black/60
+      p-4
+      backdrop-blur-sm
+      sm:p-6
+    "
+  >
+
+    <div
+      className="
+        flex
+        w-full
+        max-w-2xl
+        max-h-[92vh]
+        flex-col
+        overflow-hidden
+        rounded-[2rem]
+        bg-white
+        shadow-2xl
+      "
+    >
+
+      {/* Modal Header */}
+
+      <div
+        className="
+          relative
+          overflow-hidden
+          bg-gradient-to-br
+          from-orange-500
+          via-orange-500
+          to-orange-600
+          px-6
+          py-6
+          text-white
+          sm:px-8
+        "
+      >
+
+        <div
+          className="
+            absolute
+            -right-10
+            -top-10
+            h-32
+            w-32
+            rounded-full
+            bg-white/10
+          "
+        />
+
+        <div
+          className="
+            absolute
+            -bottom-16
+            -left-10
+            h-36
+            w-36
+            rounded-full
+            bg-white/10
+          "
+        />
+
+        <div className="relative flex items-start justify-between gap-4">
+
+          <div>
+
+            <div
+              className="
+                mb-3
+                flex
+                h-12
+                w-12
+                items-center
+                justify-center
+                rounded-2xl
+                bg-white/15
+                text-2xl
+                shadow-inner
+              "
+            >
+              📍
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-100">
+              Geographic Operations
+            </p>
+
+            <h2 className="mt-1 text-2xl font-bold sm:text-3xl">
+              Create Zone
+            </h2>
+
+            <p className="mt-2 max-w-lg text-sm text-orange-50">
+              Define a new operational service area within an existing MKH Territory.
+            </p>
+
+          </div>
+
+
+          <button
+            type="button"
+            onClick={() =>
+              setShowZoneModal(false)
+            }
+            className="
+              relative
+              flex
+              h-10
+              w-10
+              shrink-0
+              items-center
+              justify-center
+              rounded-full
+              bg-white/15
+              text-xl
+              text-white
+              transition
+              hover:bg-white/25
+              focus:outline-none
+              focus:ring-2
+              focus:ring-white/60
+            "
+            aria-label="Close Create Zone modal"
+          >
+            ×
+          </button>
+
+        </div>
+
+      </div>
+
+
+      {/* Modal Body */}
+
+      <div className="flex-1 overflow-y-auto px-6 py-7 sm:px-8">
+
+        <div className="space-y-6">
+
+          {/* Territory */}
+
+          <div>
+
+            <label
+              htmlFor="zone-territory"
+              className="
+                mb-2
+                block
+                text-sm
+                font-semibold
+                text-gray-800
+              "
+            >
+              Territory
+              <span className="ml-1 text-orange-500">
+                *
+              </span>
+            </label>
+
+            <select
+              id="zone-territory"
+              value={zoneTerritoryId}
+              onChange={(e) =>
+                setZoneTerritoryId(
+                  e.target.value
+                )
+              }
+              className="
+                w-full
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                px-4
+                py-4
+                text-sm
+                font-medium
+                text-gray-900
+                outline-none
+                transition
+                focus:border-orange-400
+                focus:bg-white
+                focus:ring-4
+                focus:ring-orange-100
+              "
+            >
+
+              <option value="">
+                Select Territory
+              </option>
+
+              {territories
+                .filter(
+                  (territory) =>
+                    territory.is_active === true
+                )
+                .sort((a, b) =>
+                  a.name.localeCompare(
+                    b.name
+                  )
+                )
+                .map((territory) => (
+
+                  <option
+                    key={territory.id}
+                    value={territory.id}
+                  >
+                    {territory.name}
+                  </option>
+
+                ))}
+
+            </select>
+
+            <p className="mt-2 text-xs text-gray-500">
+              The Zone must belong to an active Territory.
+            </p>
+
+          </div>
+
+
+          {/* Zone Name + Code */}
+
+          <div className="grid gap-5 md:grid-cols-2">
+
+            <div>
+
+              <label
+                htmlFor="zone-name"
+                className="
+                  mb-2
+                  block
+                  text-sm
+                  font-semibold
+                  text-gray-800
+                "
+              >
+                Zone Name
+                <span className="ml-1 text-orange-500">
+                  *
+                </span>
+              </label>
+
+              <input
+                id="zone-name"
+                type="text"
+                value={zoneForm.name}
+                onChange={(e) =>
+                  setZoneForm({
+                    ...zoneForm,
+                    name: e.target.value,
+                  })
+                }
+                placeholder="e.g. Anthony Central"
+                className="
+                  w-full
+                  rounded-2xl
+                  border
+                  border-gray-200
+                  bg-gray-50
+                  px-4
+                  py-4
+                  text-sm
+                  font-medium
+                  text-gray-900
+                  outline-none
+                  transition
+                  placeholder:text-gray-400
+                  focus:border-orange-400
+                  focus:bg-white
+                  focus:ring-4
+                  focus:ring-orange-100
+                "
+              />
+
+            </div>
+
+
+            <div>
+
+              <label
+                htmlFor="zone-code"
+                className="
+                  mb-2
+                  block
+                  text-sm
+                  font-semibold
+                  text-gray-800
+                "
+              >
+                Zone Code
+              </label>
+
+              <input
+                id="zone-code"
+                type="text"
+                value={zoneForm.code}
+                onChange={(e) =>
+                  setZoneForm({
+                    ...zoneForm,
+                    code:
+                      e.target.value.toUpperCase(),
+                  })
+                }
+                placeholder="e.g. ANC-01"
+                className="
+                  w-full
+                  rounded-2xl
+                  border
+                  border-gray-200
+                  bg-gray-50
+                  px-4
+                  py-4
+                  text-sm
+                  font-medium
+                  uppercase
+                  text-gray-900
+                  outline-none
+                  transition
+                  placeholder:normal-case
+                  placeholder:text-gray-400
+                  focus:border-orange-400
+                  focus:bg-white
+                  focus:ring-4
+                  focus:ring-orange-100
+                "
+              />
+
+            </div>
+
+          </div>
+
+
+          {/* Description */}
+
+          <div>
+
+            <label
+              htmlFor="zone-description"
+              className="
+                mb-2
+                block
+                text-sm
+                font-semibold
+                text-gray-800
+              "
+            >
+              Description
+            </label>
+
+            <textarea
+              id="zone-description"
+              value={zoneForm.description}
+              onChange={(e) =>
+                setZoneForm({
+                  ...zoneForm,
+                  description:
+                    e.target.value,
+                })
+              }
+              rows={4}
+              placeholder="Briefly describe the operational coverage of this Zone..."
+              className="
+                w-full
+                resize-none
+                rounded-2xl
+                border
+                border-gray-200
+                bg-gray-50
+                px-4
+                py-4
+                text-sm
+                font-medium
+                text-gray-900
+                outline-none
+                transition
+                placeholder:text-gray-400
+                focus:border-orange-400
+                focus:bg-white
+                focus:ring-4
+                focus:ring-orange-100
+              "
+            />
+
+          </div>
+
+
+          {/* Active Status */}
+
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              gap-4
+              rounded-2xl
+              border
+              border-orange-100
+              bg-orange-50/70
+              p-4
+            "
+          >
+
+            <div>
+
+              <p className="font-semibold text-gray-900">
+                Zone Status
+              </p>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Active Zones can be used for operational assignments.
+              </p>
+
+            </div>
+
+
+            <button
+              type="button"
+              onClick={() =>
+                setZoneForm({
+                  ...zoneForm,
+                  isActive:
+                    !zoneForm.isActive,
+                })
+              }
+              className={`
+                relative
+                h-7
+                w-12
+                shrink-0
+                rounded-full
+                transition-colors
+                ${
+                  zoneForm.isActive
+                    ? "bg-green-500"
+                    : "bg-gray-300"
+                }
+              `}
+              aria-label="Toggle Zone status"
+            >
+
+              <span
+                className={`
+                  absolute
+                  top-1
+                  h-5
+                  w-5
+                  rounded-full
+                  bg-white
+                  shadow
+                  transition-transform
+                  ${
+                    zoneForm.isActive
+                      ? "translate-x-6"
+                      : "translate-x-1"
+                  }
+                `}
+              />
+
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      {/* Sticky Footer */}
+
+      <div
+        className="
+          flex
+          flex-col-reverse
+          gap-3
+          border-t
+          bg-white
+          px-6
+          py-5
+          sm:flex-row
+          sm:justify-end
+          sm:px-8
+        "
+      >
+
+        <button
+          type="button"
+          onClick={() =>
+            setShowZoneModal(false)
+          }
+          className="
+            rounded-2xl
+            border
+            border-gray-200
+            bg-white
+            px-6
+            py-3
+            font-semibold
+            text-gray-700
+            transition
+            hover:bg-gray-50
+          "
+        >
+          Cancel
+        </button>
+
+
+        <button
+          type="button"
+          onClick={saveZone}
+          disabled={savingZone}
+          className="
+            rounded-2xl
+            bg-orange-500
+            px-7
+            py-3
+            font-semibold
+            text-white
+            shadow-lg
+            transition
+            hover:bg-orange-600
+            hover:shadow-xl
+            disabled:cursor-not-allowed
+            disabled:opacity-60
+          "
+        >
+          {savingZone
+            ? "Creating Zone..."
+            : "Create Zone"}
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+)}
 
 {showTerritoryModal && (
 
@@ -3822,7 +4277,7 @@ setSelectedOrder(order);
     className="
       fixed
       inset-0
-      bg-black/50
+      bg-black/60 backdrop-blur-sm
       flex
       items-center
       justify-center
@@ -3998,7 +4453,7 @@ setSelectedOrder(order);
     className="
       fixed
       inset-0
-      bg-black/50
+      bg-black/60 backdrop-blur-sm
       flex
       items-center
       justify-center
@@ -4038,7 +4493,7 @@ setSelectedOrder(order);
       <div
         className="
           mt-8
-          bg-blue-500
+          bg-orange-500
           text-white
           rounded-3xl
           p-8
@@ -4101,8 +4556,10 @@ setSelectedOrder(order);
           </p>
 
           <h3 className="text-4xl font-bold">
-            0
-          </h3>
+  {loadingRiderDetails
+    ? "..."
+    : riderDeliveries}
+</h3>
         </div>
 
         <div
@@ -4117,8 +4574,10 @@ setSelectedOrder(order);
           </p>
 
           <h3 className="text-4xl font-bold">
-            ₦0
-          </h3>
+  {loadingRiderDetails
+    ? "..."
+    : `₦${riderEarnings.toLocaleString()}`}
+</h3>
         </div>
 
         <div
@@ -4192,52 +4651,7 @@ setSelectedOrder(order);
 
       </div>
 
-      <div
-        className="
-          grid
-          grid-cols-3
-          gap-4
-          mt-8
-        "
-      >
 
-        <button
-          className="
-            bg-blue-500
-            text-white
-            py-3
-            rounded-xl
-            font-semibold
-          "
-        >
-          Edit Rider
-        </button>
-
-        <button
-          className="
-            bg-orange-500
-            text-white
-            py-3
-            rounded-xl
-            font-semibold
-          "
-        >
-          Coming Soon
-        </button>
-
-        <button
-          className="
-            bg-red-500
-            text-white
-            py-3
-            rounded-xl
-            font-semibold
-          "
-        >
-          Suspend Rider
-        </button>
-
-      </div>
 
     </div>
 
@@ -4250,7 +4664,7 @@ setSelectedOrder(order);
     className="
       fixed
       inset-0
-      bg-black/50
+      bg-black/60 backdrop-blur-sm
       flex
       items-center
       justify-center
@@ -4292,7 +4706,7 @@ setSelectedOrder(order);
       <div
         className="
           mt-8
-          bg-purple-500
+          bg-orange-500
           text-white
           rounded-3xl
           p-8
@@ -4593,32 +5007,27 @@ setSelectedOrder(order);
         "
       >
 
-       <button
-  onClick={() =>
-    setShowAssignRider(true)
-  }
-  className="
-    bg-blue-500
-    text-white
+     <button
+  onClick={() => {
+    if (selectedOrder?.status === "delivered") return;
+    setShowAssignRider(true);
+  }}
+  disabled={selectedOrder?.status === "delivered"}
+  className={`
     py-3
     rounded-xl
     font-semibold
-  "
+    ${
+      selectedOrder?.status === "delivered"
+        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+        : "bg-orange-500 text-white hover:bg-orange-600"
+    }
+  `}
 >
-  Assign Rider
+  {selectedOrder?.status === "delivered"
+    ? "Rider Assigned"
+    : "Assign Rider"}
 </button>
-
-        <button
-          className="
-            bg-orange-500
-            text-white
-            py-3
-            rounded-xl
-            font-semibold
-          "
-        >
-          Update Status
-        </button>
 
         <button
           onClick={() =>
@@ -4648,7 +5057,7 @@ setSelectedOrder(order);
     className="
       fixed
       inset-0
-      bg-black/50
+      bg-black/60 backdrop-blur-sm
       flex
       items-center
       justify-center
@@ -4711,7 +5120,7 @@ setSelectedOrder(order);
           onClick={assignRider}
           className="
             flex-1
-            bg-blue-500
+            bg-orange-500
             text-white
             py-3
             rounded-xl
@@ -4742,6 +5151,8 @@ setSelectedOrder(order);
   </div>
 
 )}
-   </main>
+
+          </div>
+    </main>
   );
 }
