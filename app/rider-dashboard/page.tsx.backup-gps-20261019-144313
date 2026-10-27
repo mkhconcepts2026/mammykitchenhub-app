@@ -1,0 +1,1511 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+
+import {
+  Bike,
+  Wallet,
+  Clock,
+  LogOut,
+} from "lucide-react";
+
+type RiderPage =
+  | "active"
+  | "earnings";
+
+type Order = {
+  id: string;
+  status: string;
+  total: number;
+  food_amount: number;
+  delivery_fee: number;
+  platform_fee: number;
+  vendor_amount: number;
+  rider_amount: number;
+  mkh_amount: number;
+  created_at: string;
+  vendor_id: string;
+  rider_id: string | null;
+  delivery_address: string | null;
+  customer_notes?: string | null;
+  delivery_otp?: string | null;
+  otp_verified?: boolean;
+
+  vendors?: {
+    name: string;
+    location: string;
+  };
+
+  profiles?: {
+    full_name: string;
+    email: string;
+    phone: string | null;
+  } | null;
+
+  order_items?: {
+    id: string;
+    name: string;
+    quantity: number;
+    price: number;
+  }[];
+};
+
+export default function RiderDashboardPage() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  const [currentPage, setCurrentPage] =
+    useState<RiderPage>("active");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [availableOrders, setAvailableOrders] =
+    useState<Order[]>([]);
+
+  const [myOrders, setMyOrders] =
+    useState<Order[]>([]);
+
+  const [completedOrders, setCompletedOrders] =
+    useState<Order[]>([]);
+
+  const [otpInputs, setOtpInputs] =
+    useState<Record<string, string>>({});
+
+
+async function loadDashboard() {
+  try {
+    setLoading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .single();
+
+    console.log("PROFILE:", profile);
+
+    const orderFields = `
+      id,
+      user_id,
+      vendor_id,
+      rider_id,
+      status,
+      total,
+      food_amount,
+      delivery_fee,
+      platform_fee,
+      mkh_amount,
+      vendor_amount,
+      rider_amount,
+      created_at,
+      delivery_address,
+      customer_notes,
+      payment_status,
+      otp_verified,
+      picked_up_at,
+      delivered_at,
+      order_items!order_items_order_id_fkey(
+        id,
+        name,
+        quantity,
+        price
+      ),
+      vendors:vendors!orders_vendor_id_fkey(
+        name,
+        location
+      ),
+      profiles:profiles!orders_user_id_fkey(
+        full_name,
+        email,
+        phone
+      )
+    `;
+
+    /* AVAILABLE PICKUPS */
+
+    const {
+      data: queue,
+      error: queueError,
+    } = await supabase
+      .from("orders")
+      .select(orderFields)
+      .eq("status", "ready_for_pickup")
+      .is("rider_id", null)
+      .order("created_at", {
+        ascending: false,
+      });
+
+    if (queueError) {
+      console.error("AVAILABLE ORDERS ERROR:", queueError);
+    }
+
+    /* RIDER ACTIVE JOBS */
+
+    const {
+      data: active,
+      error: activeError,
+    } = await supabase
+      .from("orders")
+      .select(orderFields)
+      .eq("rider_id", user.id)
+      .neq("status", "delivered")
+      .order("created_at", {
+        ascending: false,
+      });
+
+    if (activeError) {
+      console.error("ACTIVE ORDERS ERROR:", activeError);
+    }
+
+    setAvailableOrders(
+  (queue || []).map((order) => ({
+    ...order,
+    vendors: Array.isArray(order.vendors)
+      ? order.vendors[0] ?? undefined
+      : order.vendors,
+    profiles: Array.isArray(order.profiles)
+      ? order.profiles[0] ?? null
+      : order.profiles,
+  }))
+);
+
+setMyOrders(
+  (active || []).map((order) => ({
+    ...order,
+    vendors: Array.isArray(order.vendors)
+      ? order.vendors[0] ?? undefined
+      : order.vendors,
+    profiles: Array.isArray(order.profiles)
+      ? order.profiles[0] ?? null
+      : order.profiles,
+  }))
+);
+
+    /* COMPLETED DELIVERIES */
+
+    const {
+      data: completed,
+      error: completedError,
+    } = await supabase
+      .from("orders")
+      .select(`
+        id,
+        user_id,
+        vendor_id,
+        rider_id,
+        status,
+        total,
+        food_amount,
+        delivery_fee,
+        platform_fee,
+        mkh_amount,
+        vendor_amount,
+        rider_amount,
+        created_at,
+        delivery_address,
+        customer_notes,
+        payment_status,
+        otp_verified,
+        picked_up_at,
+        delivered_at,
+        vendors:vendors!orders_vendor_id_fkey(
+          name,
+          location
+        )
+      `)
+      .eq("rider_id", user.id)
+      .eq("status", "delivered")
+      .order("delivered_at", {
+        ascending: false,
+      });
+
+    if (completedError) {
+      console.error("COMPLETED ORDERS ERROR:", completedError);
+    }
+
+    setCompletedOrders(
+  (completed || []).map((order) => ({
+    ...order,
+    vendors: Array.isArray(order.vendors)
+      ? order.vendors[0] ?? undefined
+      : order.vendors,
+  }))
+);
+  } catch (err) {
+    console.error("RIDER DASHBOARD ERROR:", err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+
+  useEffect(() => {
+    loadDashboard();
+    checkCurrentLocation();
+
+    const interval = setInterval(() => {
+      checkCurrentLocation();
+    }, 5000);
+
+    const channel = supabase
+      .channel("rider-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+        },
+        () => {
+          loadDashboard();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  /* ----------------------------------
+   ACCEPT DELIVERY
+----------------------------------- */
+
+
+async function acceptDelivery(orderId: string) {
+  try {
+    const { data, error } = await supabase.rpc(
+      "accept_delivery_order",
+      { p_order_id: orderId }
+    );
+
+    if (error) {
+      console.error("ACCEPT DELIVERY ERROR:", error);
+      alert(error.message);
+      return;
+    }
+
+    if (!data?.success) {
+      alert("Unable to accept this delivery.");
+      return;
+    }
+
+    await loadDashboard();
+    alert("Delivery accepted successfully.");
+  } catch (err) {
+    console.error("ACCEPT DELIVERY ERROR:", err);
+    alert("Unable to accept this delivery.");
+  }
+}
+
+
+  /* ----------------------------------
+     UPDATE RIDER DELIVERY STATUS
+  ----------------------------------- */
+
+  async function updateStatus(
+    orderId: string,
+    status: string
+  ) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Rider session not found.");
+        return;
+      }
+
+      /* ----------------------------------
+         PICKUP
+      ----------------------------------- */
+
+   
+      if (status === "picked_up") {
+        const { data, error } = await supabase.rpc(
+          "pick_up_delivery_order",
+          { p_order_id: orderId }
+        );
+
+        if (error) {
+          console.error("PICKUP ERROR:", error);
+          alert(error.message || "Unable to record pickup.");
+          return;
+        }
+
+        if (!data?.success) {
+          alert(data?.message || "Pickup could not be recorded.");
+          return;
+        }
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          const { error: eventError } = await supabase
+            .from("order_events")
+            .insert({
+              order_id: orderId,
+              event_type: "picked_up",
+              title: "Rider Picked Up Order",
+              description: "Order picked up by rider.",
+              actor_type: "rider",
+              actor_id: user.id,
+            });
+
+          if (eventError) {
+            console.error("PICKUP EVENT ERROR:", eventError);
+          }
+        }
+
+        await loadDashboard();
+        return;
+      }
+
+
+      /* ----------------------------------
+         DELIVERY
+         ----------------------------------- */
+
+      
+      if (status === "delivered") {
+        const { data, error } = await supabase.rpc(
+          "complete_my_delivery",
+          { p_order_id: orderId }
+        );
+
+        if (error) {
+          console.error("DELIVERY COMPLETION ERROR:", error);
+          alert(error.message || "Unable to complete delivery.");
+          return;
+        }
+
+        if (!data?.success) {
+          alert(data?.message || "Delivery completion failed.");
+          return;
+        }
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          const { error: eventError } = await supabase
+            .from("order_events")
+            .insert({
+              order_id: orderId,
+              event_type: "delivered",
+              title: "Order Delivered",
+              description:
+                "Delivery completed after customer OTP verification.",
+              actor_type: "rider",
+              actor_id: user.id,
+            });
+
+          if (eventError) {
+            console.error("DELIVERY EVENT ERROR:", eventError);
+          }
+        }
+
+        alert("Delivery completed successfully.");
+        await loadDashboard();
+        return;
+      }
+
+
+      console.warn(
+        "Unsupported rider status:",
+        status
+      );
+    } catch (err) {
+      console.error(
+        "UPDATE STATUS ERROR:",
+        err
+      );
+    }
+  }
+
+  /* ----------------------------------
+     VERIFY CUSTOMER OTP
+  ----------------------------------- */
+
+ 
+async function verifyOtp(orderId: string) {
+  const enteredOtp = (otpInputs[orderId] || "").trim();
+
+  if (!/^\d{4}$/.test(enteredOtp)) {
+    alert("Enter the customer's four-digit OTP.");
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "verify_my_delivery_otp",
+      {
+        p_order_id: orderId,
+        p_otp: enteredOtp,
+      }
+    );
+
+    if (error) {
+      console.error("OTP VERIFICATION ERROR:", error);
+      alert(error.message);
+      return;
+    }
+
+    if (!data?.success) {
+      alert(data?.message || "OTP verification failed.");
+      return;
+    }
+
+    setOtpInputs((current) => ({
+      ...current,
+      [orderId]: "",
+    }));
+
+    alert("OTP verified. You can now complete the delivery.");
+    await loadDashboard();
+  } catch (err) {
+    console.error("OTP VERIFICATION ERROR:", err);
+    alert("Unable to verify the OTP.");
+  }
+}
+
+
+  /* ----------------------------------
+     GPS LOCATION
+  ----------------------------------- */
+
+  async function checkCurrentLocation() {
+    if (!navigator.geolocation) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          return;
+        }
+
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        if (
+          profileError ||
+          profile?.role !== "rider"
+        ) {
+          console.warn(
+            "GPS update blocked. User is not a rider."
+          );
+
+          return;
+        }
+
+        const {
+          latitude,
+          longitude,
+          accuracy,
+          heading,
+          speed,
+        } = position.coords;
+
+        console.log(
+          "SENDING LOCATION:",
+          latitude,
+          longitude,
+          new Date().toLocaleTimeString()
+        );
+
+      console.log("GPS DIAGNOSTICS:", {
+  authenticatedUserId: user.id,
+  profileRole: profile?.role,
+  timestamp: new Date().toISOString(),
+});
+
+        const {
+          error,
+        } = await supabase
+          .from("rider_locations")
+          .upsert(
+            {
+              rider_id: user.id,
+              latitude,
+              longitude,
+              accuracy:
+                accuracy || 0,
+              heading:
+                heading || 0,
+              speed:
+                speed || 0,
+              location:
+                `POINT(${longitude} ${latitude})`,
+              updated_at:
+                new Date(),
+            },
+            {
+              onConflict:
+                "rider_id",
+            }
+          );
+
+    if (error) {
+  console.error("LOCATION ERROR DETAILS:", {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+    authenticatedUserId: user.id,
+  });
+} else {
+  console.log("LOCATION SAVED SUCCESSFULLY", {
+    authenticatedUserId: user.id,
+  });
+
+}
+      },
+      (error) => {
+        console.error(
+          "GPS ERROR:",
+          error
+        );
+
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            console.error(
+              "Permission denied."
+            );
+            break;
+
+          case error.POSITION_UNAVAILABLE:
+            console.error(
+              "Location unavailable."
+            );
+            break;
+
+          case error.TIMEOUT:
+            console.error(
+              "Location request timed out."
+            );
+            break;
+
+          default:
+            console.error(
+              "Unknown GPS error."
+            );
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000,
+      }
+    );
+  }
+
+  /* ----------------------------------
+     LOGOUT
+  ----------------------------------- */
+
+  async function logout() {
+    await supabase.auth.signOut();
+
+    router.push("/login");
+  }
+
+  /* ----------------------------------
+     DASHBOARD METRICS
+  ----------------------------------- */
+
+  const deliveredCount =
+    useMemo(() => {
+      return completedOrders.length;
+    }, [completedOrders]);
+
+  const earnings =
+    useMemo(() => {
+      return completedOrders.reduce(
+        (sum, order) =>
+          sum +
+          Number(
+            order.rider_amount || 0
+          ),
+        0
+      );
+    }, [completedOrders]);
+
+  if (loading) {
+    return (
+      <main
+        className="
+          min-h-screen
+          flex
+          items-center
+          justify-center
+        "
+      >
+        <h1
+          className="
+            text-3xl
+            font-bold
+          "
+        >
+          Loading Rider Dashboard...
+        </h1>
+      </main>
+    );
+  }
+
+  return (
+    <div
+      className="
+        min-h-screen
+        bg-gray-100
+        p-6
+      "
+    >
+      <div
+        className="
+          max-w-6xl
+          mx-auto
+        "
+      >
+        {/* ----------------------------------
+            HEADER
+        ----------------------------------- */}
+
+        <div
+          className="
+            flex
+            justify-between
+            items-center
+            mb-10
+          "
+        >
+          <div>
+            <h1
+              className="
+                text-4xl
+                font-bold
+              "
+            >
+              Rider Dashboard
+            </h1>
+
+            <p
+              className="
+                text-gray-500
+                mt-2
+              "
+            >
+              Manage deliveries & earnings
+            </p>
+          </div>
+
+          <button
+            onClick={logout}
+            className="
+              bg-red-500
+              text-white
+              px-5
+              py-3
+              rounded-xl
+              flex
+              items-center
+              gap-2
+            "
+          >
+            <LogOut className="w-5 h-5" />
+            Logout
+          </button>
+        </div>
+
+        {/* ----------------------------------
+            NAVIGATION
+        ----------------------------------- */}
+
+        <div
+          className="
+            flex
+            gap-4
+            mb-8
+          "
+        >
+          <button
+            onClick={() =>
+              setCurrentPage("active")
+            }
+            className={`
+              px-6
+              py-3
+              rounded-xl
+              font-semibold
+              ${
+                currentPage === "active"
+                  ? "bg-orange-500 text-white"
+                  : "bg-white"
+              }
+            `}
+          >
+            Active
+          </button>
+
+          <button
+            onClick={() =>
+              setCurrentPage("earnings")
+            }
+            className={`
+              px-6
+              py-3
+              rounded-xl
+              font-semibold
+              ${
+                currentPage === "earnings"
+                  ? "bg-orange-500 text-white"
+                  : "bg-white"
+              }
+            `}
+          >
+            Earnings
+          </button>
+        </div>
+
+        {/* ----------------------------------
+            EARNINGS PAGE
+        ----------------------------------- */}
+
+        {currentPage === "earnings" ? (
+          <div
+            className="
+              grid
+              md:grid-cols-2
+              gap-6
+            "
+          >
+            <div
+              className="
+                bg-white
+                p-8
+                rounded-3xl
+                shadow-sm
+              "
+            >
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-4
+                  mb-5
+                "
+              >
+                <Wallet
+                  className="
+                    w-10
+                    h-10
+                    text-green-500
+                  "
+                />
+
+                <h2
+                  className="
+                    text-3xl
+                    font-bold
+                  "
+                >
+                  Earnings
+                </h2>
+              </div>
+
+              <p
+                className="
+                  text-5xl
+                  font-bold
+                  text-green-600
+                "
+              >
+                ₦
+                {earnings.toLocaleString()}
+              </p>
+            </div>
+
+            <div
+              className="
+                bg-white
+                p-8
+                rounded-3xl
+                shadow-sm
+              "
+            >
+              <div
+                className="
+                  flex
+                  items-center
+                  gap-4
+                  mb-5
+                "
+              >
+                <Bike
+                  className="
+                    w-10
+                    h-10
+                    text-orange-500
+                  "
+                />
+
+                <h2
+                  className="
+                    text-3xl
+                    font-bold
+                  "
+                >
+                  Deliveries
+                </h2>
+              </div>
+
+              <p
+                className="
+                  text-5xl
+                  font-bold
+                "
+              >
+                {deliveredCount}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="
+              space-y-10
+            "
+          >
+            {/* ----------------------------------
+                AVAILABLE PICKUPS
+            ----------------------------------- */}
+
+            <section>
+              <h2
+                className="
+                  text-2xl
+                  font-bold
+                  mb-5
+                "
+              >
+                Available Pickups
+              </h2>
+
+              <div
+                className="
+                  space-y-5
+                "
+              >
+                {availableOrders.length ===
+                0 ? (
+                  <div
+                    className="
+                      bg-white
+                      p-8
+                      rounded-2xl
+                      text-center
+                    "
+                  >
+                    No deliveries waiting.
+                  </div>
+                ) : (
+                  availableOrders.map(
+                    (order) => (
+                      <div
+                        key={order.id}
+                        className="
+                          bg-white
+                          p-6
+                          rounded-3xl
+                          shadow-sm
+                        "
+                      >
+                        <div
+                          className="
+                            flex
+                            justify-between
+                            items-start
+                            mb-5
+                          "
+                        >
+                          <div>
+                            <h3
+                              className="
+                                font-bold
+                                text-xl
+                              "
+                            >
+                              {
+                                order.vendors
+                                  ?.name
+                              }
+                            </h3>
+
+                            <p
+                              className="
+                                text-gray-500
+                              "
+                            >
+                              {
+                                order.vendors
+                                  ?.location
+                              }
+                            </p>
+
+                            <p
+                              className="
+                                text-sm
+                                text-blue-600
+                                mt-1
+                              "
+                            >
+                              Customer:{" "}
+                              {
+                                order
+                                  .profiles
+                                  ?.full_name
+                              }
+                            </p>
+
+                            <a
+                              href={`tel:${order.profiles?.phone}`}
+                              className="
+                                block
+                                text-sm
+                                text-green-600
+                                font-medium
+                              "
+                            >
+                              📞{" "}
+                              {
+                                order.profiles
+                                  ?.phone
+                              }
+                            </a>
+
+                            <p
+                              className="
+                                text-sm
+                                text-gray-600
+                              "
+                            >
+                              📍{" "}
+                              {
+                                order.delivery_address
+                              }
+                            </p>
+
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                order.delivery_address ||
+                                  ""
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="
+                                inline-block
+                                text-sm
+                                text-blue-600
+                                font-medium
+                                mt-1
+                              "
+                            >
+                              Open in Google Maps →
+                            </a>
+
+                            {order.customer_notes && (
+                              <p
+                                className="
+                                  text-sm
+                                  text-orange-700
+                                  mt-1
+                                "
+                              >
+                                📝{" "}
+                                {
+                                  order.customer_notes
+                                }
+                              </p>
+                            )}
+
+                            <p
+                              className="
+                                text-lg
+                                font-semibold
+                                text-green-600
+                                mt-2
+                              "
+                            >
+                              ₦
+                              {Number(
+                                order.total
+                              ).toLocaleString()}
+                            </p>
+
+                            <p
+                              className="
+                                text-sm
+                                text-gray-500
+                                mt-1
+                              "
+                            >
+                              Rider earns approximately ₦
+                              {Number(
+                                order.rider_amount ||
+                                  0
+                              ).toLocaleString()}
+                            </p>
+
+                            <p
+                              className="
+                                text-sm
+                                text-orange-600
+                                mt-2
+                              "
+                            >
+                              Ordered:{" "}
+                              {new Date(
+                                order.created_at
+                              ).toLocaleString()}
+                            </p>
+                          </div>
+
+                          <div
+                            className="
+                              text-right
+                            "
+                          >
+                            <Clock
+                              className="
+                                text-orange-500
+                                ml-auto
+                                mb-2
+                              "
+                            />
+
+                            <p
+                              className="
+                                text-sm
+                                text-gray-500
+                              "
+                            >
+                              Ready
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() =>
+                            acceptDelivery(
+                              order.id
+                            )
+                          }
+                          className="
+                            bg-orange-500
+                            text-white
+                            px-6
+                            py-3
+                            rounded-xl
+                            font-bold
+                          "
+                        >
+                          Accept Delivery
+                        </button>
+                      </div>
+                    )
+                  )
+                )}
+              </div>
+            </section>
+
+            {/* ----------------------------------
+                MY DELIVERIES
+            ----------------------------------- */}
+
+            <section>
+              <h2
+                className="
+                  text-2xl
+                  font-bold
+                  mb-5
+                "
+              >
+                My Deliveries
+              </h2>
+
+              <div
+                className="
+                  space-y-6
+                "
+              >
+                {myOrders.map(
+                  (order) => (
+                    <div
+                      key={order.id}
+                      className="
+                        bg-white
+                        rounded-3xl
+                        p-6
+                        shadow-sm
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          justify-between
+                          mb-6
+                        "
+                      >
+                        <div>
+                          <h3
+                            className="
+                              font-bold
+                              text-xl
+                            "
+                          >
+                            {
+                              order.vendors
+                                ?.name
+                            }
+                          </h3>
+
+                          <p
+                            className="
+                              text-gray-500
+                            "
+                          >
+                            {
+                              order.vendors
+                                ?.location
+                            }
+                          </p>
+
+                          <p
+                            className="
+                              text-sm
+                              text-blue-600
+                              mt-1
+                            "
+                          >
+                            Customer:{" "}
+                            {
+                              order.profiles
+                                ?.full_name
+                            }
+                          </p>
+
+                          <a
+                            href={`tel:${order.profiles?.phone}`}
+                            className="
+                              block
+                              text-sm
+                              text-green-600
+                              font-medium
+                            "
+                          >
+                            📞{" "}
+                            {
+                              order.profiles
+                                ?.phone
+                            }
+                          </a>
+
+                          <p
+                            className="
+                              text-sm
+                              text-gray-600
+                            "
+                          >
+                            📍{" "}
+                            {
+                              order.delivery_address
+                            }
+                          </p>
+
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                              order.delivery_address ||
+                                ""
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="
+                              inline-block
+                              text-sm
+                              text-blue-600
+                              font-medium
+                              mt-1
+                            "
+                          >
+                            Open in Google Maps →
+                          </a>
+
+                          {order.customer_notes && (
+                            <p
+                              className="
+                                text-sm
+                                text-orange-700
+                                mt-1
+                              "
+                            >
+                              📝{" "}
+                              {
+                                order.customer_notes
+                              }
+                            </p>
+                          )}
+
+                          <p
+                            className="
+                              capitalize
+                              text-orange-600
+                              text-sm
+                              mt-1
+                            "
+                          >
+                            {order.status}
+                          </p>
+
+                          <p
+                            className="
+                              text-sm
+                              text-gray-500
+                              mt-2
+                            "
+                          >
+                            Order Value: ₦
+                            {Number(
+                              order.total
+                            ).toLocaleString()}
+                          </p>
+
+                          <p
+                            className="
+                              text-sm
+                              text-green-600
+                            "
+                          >
+                            Rider Earnings: ₦
+                            {Number(
+                              order.rider_amount ||
+                                0
+                            ).toLocaleString()}
+                          </p>
+
+                          <p
+                            className="
+                              text-sm
+                              text-gray-500
+                            "
+                          >
+                            Ordered:{" "}
+                            {new Date(
+                              order.created_at
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <p
+                          className="
+                            text-2xl
+                            font-bold
+                            text-green-600
+                          "
+                        >
+                          ₦
+                          {Number(
+                            order.rider_amount ||
+                              0
+                          ).toLocaleString()}
+                        </p>
+                      </div>
+
+                      {/* ----------------------------------
+                          ORDER ITEMS
+                      ----------------------------------- */}
+
+                      <div
+                        className="
+                          space-y-2
+                          mb-6
+                        "
+                      >
+                        {order.order_items?.map(
+                          (item) => (
+                            <div
+                              key={item.id}
+                              className="
+                                flex
+                                justify-between
+                              "
+                            >
+                              <span>
+                                {item.quantity}x{" "}
+                                {item.name}
+                              </span>
+
+                              <span>
+                                ₦
+                                {Number(
+                                  item.price
+                                ).toLocaleString()}
+                              </span>
+                            </div>
+                          )
+                        )}
+                      </div>
+
+                      {/* ----------------------------------
+                          OTP VERIFICATION
+                      ----------------------------------- */}
+
+                      {order.status ===
+                        "picked_up" &&
+                        !order.otp_verified && (
+                          <div
+                            className="
+                              mb-4
+                            "
+                          >
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={4}
+                              placeholder="Enter customer OTP"
+                              value={
+                                otpInputs[
+                                  order.id
+                                ] || ""
+                              }
+                              onChange={(e) =>
+                                setOtpInputs(
+                                  {
+                                    ...otpInputs,
+                                    [order.id]:
+                                      e.target
+                                        .value
+                                        .replace(
+                                          /\D/g,
+                                          ""
+                                        ),
+                                  }
+                                )
+                              }
+                              className="
+                                border
+                                p-3
+                                rounded-xl
+                                w-full
+                                mb-2
+                              "
+                            />
+
+                            <button
+                              onClick={() =>
+                                verifyOtp(order.id)
+                              }
+                              className="
+                                bg-orange-500
+                                text-white
+                                px-5
+                                py-2
+                                rounded-xl
+                              "
+                            >
+                              Verify OTP
+                            </button>
+                          </div>
+                        )}
+
+                      {/* ----------------------------------
+                          PICKUP
+                      ----------------------------------- */}
+
+                      {(order.status ===
+                        "accepted" ||
+                        order.status ===
+                          "assigned") && (
+                        <button
+                          onClick={() =>
+                            updateStatus(
+                              order.id,
+                              "picked_up"
+                            )
+                          }
+                          className="
+                            bg-blue-500
+                            text-white
+                            px-6
+                            py-3
+                            rounded-xl
+                            font-bold
+                          "
+                        >
+                          Confirm Pickup
+                        </button>
+                      )}
+
+                      {/* ----------------------------------
+                          COMPLETE DELIVERY
+                      ----------------------------------- */}
+
+                      {order.status ===
+                        "picked_up" &&
+                        order.otp_verified && (
+                          <button
+                            onClick={() =>
+                              updateStatus(
+                                order.id,
+                                "delivered"
+                              )
+                            }
+                            className="
+                              bg-green-500
+                              text-white
+                              px-6
+                              py-3
+                              rounded-xl
+                              font-bold
+                            "
+                          >
+                            Complete Delivery
+                          </button>
+                        )}
+                    </div>
+                  )
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

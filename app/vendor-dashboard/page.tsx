@@ -76,6 +76,8 @@ export default function VendorDashboardPage() {
     setOrders] =
     useState<Order[]>([]);
 
+  const [pageError, setPageError] = useState("");
+
   const [loading,
     setLoading] =
     useState(true);
@@ -335,26 +337,71 @@ async function loadOrders() {
 
   },[]);
 
-  async function updateStatus(
+  async function updateStatus(orderId: string, status: string) {
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    orderId:string,
+      if (authError || !user) {
+        setPageError("Please sign in again.");
+        router.push("/login");
+        return;
+      }
 
-    status:string
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("vendor_id, role, status")
+        .eq("id", user.id)
+        .single();
 
-  ) {
+      if (
+        profileError ||
+        !profile?.vendor_id ||
+        profile.role?.toLowerCase() !== "vendor" ||
+        profile.status?.toLowerCase() !== "active"
+      ) {
+        setPageError("Your account is not authorized to manage these orders.");
+        return;
+      }
 
-    await supabase
-      .from("orders")
-      .update({
-        status
-      })
-      .eq(
-        "id",
-        orderId
-      );
+      const allowedStatuses = [
+        "accepted",
+        "preparing",
+        "ready_for_pickup",
+        "cancelled",
+      ];
 
-    loadOrders();
+      if (!allowedStatuses.includes(status)) {
+        setPageError("Invalid order status.");
+        return;
+      }
 
+      const { data, error } = await supabase
+        .from("orders")
+        .update({ status })
+        .eq("id", orderId)
+        .eq("vendor_id", profile.vendor_id)
+        .select("id");
+
+      if (error) {
+        console.error("Vendor order status update failed:", error);
+        setPageError("Could not update the order. Please try again.");
+        return;
+      }
+
+      if (!data?.length) {
+        setPageError("Order not found or you are not authorized to update it.");
+        return;
+      }
+
+      setPageError("");
+      await loadOrders();
+    } catch (error) {
+      console.error("Vendor order status update failed:", error);
+      setPageError("An unexpected error occurred while updating the order.");
+    }
   }
 
   async function handleLogout() {

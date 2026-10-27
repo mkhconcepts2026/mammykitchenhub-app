@@ -1,0 +1,142 @@
+"use client";
+
+type DashboardOrder = {
+  status?: string | null;
+};
+
+type VendorDashboardTabProps = {
+  vendorName: string;
+  orders: DashboardOrder[];
+};
+
+/**
+ * Extracted from the existing Vendor Dashboard V2 Overview JSX.
+ * Presentation is kept as provided; no data or business operations are added here.
+ */
+export default function VendorDashboardTab({
+  vendorName,
+  orders,
+}: VendorDashboardTabProps) {
+  return (
+      <div>
+
+        <h1 className="text-5xl font-bold mb-2">
+          Dashboard
+        </h1>
+
+        <p className="text-gray-500 text-lg mb-8">
+          Welcome back, {vendorName}
+        </p>
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            md:grid-cols-2
+            xl:grid-cols-4
+            gap-4
+            mb-8
+          "
+        >
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Today's Revenue
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              ₦127,500
+            </h2>
+
+            <p className="text-green-600 mt-2">
+              +12.5% from yesterday
+            </p>
+          </div>
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Total Orders
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              {orders.length}
+            </h2>
+
+            <p className="text-green-600 mt-2">
+              Active Orders
+            </p>
+          </div>
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Pending Orders
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              {
+                orders.filter(
+                  o => o.status === "pending"
+                ).length
+              }
+            </h2>
+
+            <p className="text-orange-500 mt-2">
+              Requires attention
+            </p>
+          </div>
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Average Rating
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              4.8
+            </h2>
+
+            <p className="text-green-600 mt-2">
+              +0.2 this week
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+  );
+}

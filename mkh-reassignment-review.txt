@@ -1,0 +1,2682 @@
+MKH ORDER REASSIGNMENT DIAGNOSTIC
+Project root: C:\MKH\mkh-app
+Generated: 2026-10-20 01:13:13
+READ-ONLY: This script does not modify application source files.
+
+====================================================================================================
+FILE: app\admin-dashboard\page.tsx
+Matching lines: 18
+
+--- lines 558-578 (match at 566) ---
+  558:   useState(false);
+  559: 
+  560:   const [orders, setOrders] =
+  561:   useState<any[]>([]);
+  562: 
+  563:   const [selectedOrder, setSelectedOrder] =
+  564:   useState<any>(null);
+  565: 
+  566:   const [showAssignRider, setShowAssignRider] =
+  567:   useState(false);
+  568: 
+  569: const [selectedRiderId, setSelectedRiderId] =
+  570:   useState("");
+  571: 
+  572: const [stats, setStats] = useState({
+  573:   applications: 0,
+  574:   pending: 0,
+  575:   vendors: 0,
+  576:   riders: 0,
+  577:   orders: 0,
+  578:   mkhRevenue: 0,
+
+--- lines 893-913 (match at 901) ---
+  893:     // =========================================================
+  894: 
+  895:     const {
+  896:       data: riderOrders,
+  897:       error: riderOrdersError,
+  898:     } = await supabase
+  899:       .from("orders")
+  900:       .select("id, rider_amount")
+  901:       .eq("rider_id", rider.id)
+  902:       .eq("status", "delivered");
+  903: 
+  904:     if (riderOrdersError) {
+  905:       console.error(
+  906:         "Rider orders load error:",
+  907:         riderOrdersError
+  908:       );
+  909: 
+  910:       setRiderDeliveries(0);
+  911:       setRiderEarnings(0);
+  912: 
+  913:       return;
+
+--- lines 953-973 (match at 961) ---
+  953:   } finally {
+  954: 
+  955:     setLoadingRiderDetails(false);
+  956: 
+  957:   }
+  958: };
+  959: 
+  960:  
+  961: const assignRider = async () => {
+  962:   if (!selectedOrder?.id) {
+  963:     alert("Select an order first.");
+  964:     return;
+  965:   }
+  966: 
+  967:   if (!selectedRiderId) {
+  968:     alert("Select a rider first.");
+  969:     return;
+  970:   }
+  971: 
+  972:   if (
+  973:     selectedOrder.status !== "ready_for_pickup" ||
+
+--- lines 976-996 (match at 984) ---
+  976:     alert(
+  977:       "Only an unassigned order that is ready for pickup can be assigned."
+  978:     );
+  979:     return;
+  980:   }
+  981: 
+  982:   try {
+  983:     const { data, error } = await supabase.rpc(
+  984:       "admin_assign_rider",
+  985:       {
+  986:         p_order_id: selectedOrder.id,
+  987:         p_rider_id: selectedRiderId,
+  988:       }
+  989:     );
+  990: 
+  991:     if (error) {
+  992:       console.error("ADMIN RIDER ASSIGNMENT ERROR:", error);
+  993:       alert(error.message || "Rider assignment failed.");
+  994:       return;
+  995:     }
+  996: 
+
+--- lines 997-1017 (match at 1005) ---
+  997:     if (!data?.success) {
+  998:       console.error("ASSIGNMENT NOT CONFIRMED:", data);
+  999:       alert("The assignment could not be confirmed.");
+ 1000:       return;
+ 1001:     }
+ 1002: 
+ 1003:     alert("Rider assigned successfully.");
+ 1004: 
+ 1005:     setShowAssignRider(false);
+ 1006:     setSelectedOrder(null);
+ 1007:     setSelectedRiderId("");
+ 1008: 
+ 1009:     await loadDashboardStats();
+ 1010:   } catch (error) {
+ 1011:     console.error("ADMIN RIDER ASSIGNMENT ERROR:", error);
+ 1012:     alert("Unable to assign this rider. Please try again.");
+ 1013:   }
+ 1014: };
+ 1015: 
+ 1016: 
+ 1017: 
+
+--- lines 5020-5040 (match at 5028) ---
+ 5020:           gap-4
+ 5021:           mt-8
+ 5022:         "
+ 5023:       >
+ 5024: 
+ 5025:      <button
+ 5026:   onClick={() => {
+ 5027:     if (selectedOrder?.status === "delivered") return;
+ 5028:     setShowAssignRider(true);
+ 5029:   }}
+ 5030:   disabled={selectedOrder?.status === "delivered"}
+ 5031:   className={`
+ 5032:     py-3
+ 5033:     rounded-xl
+ 5034:     font-semibold
+ 5035:     ${
+ 5036:       selectedOrder?.status === "delivered"
+ 5037:         ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+ 5038:         : "bg-orange-500 text-white hover:bg-orange-600"
+ 5039:     }
+ 5040:   `}
+
+--- lines 5061-5081 (match at 5069) ---
+ 5061: 
+ 5062:       </div>
+ 5063: 
+ 5064:     </div>
+ 5065: 
+ 5066:   </div>
+ 5067: 
+ 5068: )}
+ 5069: {showAssignRider && (
+ 5070: 
+ 5071:   <div
+ 5072:     className="
+ 5073:       fixed
+ 5074:       inset-0
+ 5075:       bg-black/60 backdrop-blur-sm
+ 5076:       flex
+ 5077:       items-center
+ 5078:       justify-center
+ 5079:       z-50
+ 5080:     "
+ 5081:   >
+
+--- lines 5090-5110 (match at 5098) ---
+ 5090:       "
+ 5091:     >
+ 5092: 
+ 5093:       <h2 className="text-2xl font-bold mb-6">
+ 5094:         Assign Rider
+ 5095:       </h2>
+ 5096: 
+ 5097:       <select
+ 5098:         value={selectedRiderId}
+ 5099:         onChange={(e) =>
+ 5100:           setSelectedRiderId(
+ 5101:             e.target.value
+ 5102:           )
+ 5103:         }
+ 5104:         className="
+ 5105:           w-full
+ 5106:           border
+ 5107:           p-3
+ 5108:           rounded-xl
+ 5109:           mb-6
+ 5110:         "
+
+--- lines 5127-5147 (match at 5135) ---
+ 5127:           )
+ 5128:         )}
+ 5129: 
+ 5130:       </select>
+ 5131: 
+ 5132:       <div className="flex gap-3">
+ 5133: 
+ 5134:         <button
+ 5135:           onClick={assignRider}
+ 5136:           className="
+ 5137:             flex-1
+ 5138:             bg-orange-500
+ 5139:             text-white
+ 5140:             py-3
+ 5141:             rounded-xl
+ 5142:           "
+ 5143:         >
+ 5144:           Assign
+ 5145:         </button>
+ 5146: 
+ 5147:         <button
+
+====================================================================================================
+FILE: app\manager\page.tsx
+Matching lines: 8
+
+--- lines 82-102 (match at 90) ---
+   82:     await supabase
+   83:       .from("orders")
+   84:       .select("*", {
+   85:         count: "exact",
+   86:         head: true
+   87:       })
+   88:       .eq(
+   89:         "status",
+   90:         "ready_for_pickup"
+   91:       );
+   92: 
+   93:     const {
+   94:       count: deliveries
+   95:     } =
+   96:     await supabase
+   97:       .from("orders")
+   98:       .select("*", {
+   99:         count: "exact",
+  100:         head: true
+  101:       })
+  102:       .eq(
+
+--- lines 131-151 (match at 139) ---
+  131:       .select(`
+  132:         *,
+  133:         vendors (
+  134:           name
+  135:         )
+  136:       `)
+  137:       .eq(
+  138:         "status",
+  139:         "ready_for_pickup"
+  140:       )
+  141:       .order(
+  142:         "created_at",
+  143:         {
+  144:           ascending:false
+  145:         }
+  146:       );
+  147: 
+  148:     if(error){
+  149: 
+  150:       console.error(error);
+  151:       return;
+
+--- lines 180-200 (match at 188) ---
+  180:     }
+  181: 
+  182:     setRiders(
+  183:       data || []
+  184:     );
+  185: 
+  186:   }
+  187: 
+  188:   async function assignRider(
+  189:     riderId:string
+  190:   ) {
+  191: 
+  192:     if(
+  193:       !selectedOrder
+  194:     ) return;
+  195: 
+  196:     const {
+  197:       error
+  198:     } =
+  199:     await supabase
+  200:       .from("orders")
+
+--- lines 385-405 (match at 393) ---
+  385: 
+  386:           <h2
+  387:             className="
+  388:               text-2xl
+  389:               font-bold
+  390:               mb-6
+  391:             "
+  392:           >
+  393:             Orders Waiting Assignment
+  394:           </h2>
+  395: 
+  396:           {readyOrdersList.length === 0 && (
+  397: 
+  398:             <p className="text-gray-500">
+  399:               No orders waiting
+  400:             </p>
+  401: 
+  402:           )}
+  403: 
+  404:           {readyOrdersList.map(
+  405:             (order) => (
+
+--- lines 549-569 (match at 557) ---
+  549:                         {rider.phone ||
+  550:                           "No Phone"}
+  551:                       </p>
+  552: 
+  553:                     </div>
+  554: 
+  555:                     <button
+  556:                       onClick={() =>
+  557:                         assignRider(
+  558:                           rider.id
+  559:                         )
+  560:                       }
+  561:                       className="
+  562:                         bg-orange-500
+  563:                         text-white
+  564:                         px-4
+  565:                         py-2
+  566:                         rounded-xl
+  567:                       "
+  568:                     >
+  569:                       Assign
+
+====================================================================================================
+FILE: app\manager-v3\page.tsx
+Matching lines: 44
+
+--- lines 20-40 (match at 28) ---
+   20: const supabase = createClient();
+   21: type Order = {
+   22:   id: string;
+   23:   status: string;
+   24:   total: number;
+   25:   delivery_address: string | null;
+   26:   created_at: string;
+   27:   vendor_id: string;
+   28:   rider_id: string | null;
+   29: 
+   30:   vendors?: {
+   31:   id: string;
+   32:   name: string;
+   33: };
+   34: 
+   35:   rider?: {
+   36:     full_name: string;
+   37:     phone: string;
+   38:   };
+   39: 
+   40:   profiles?: {
+
+--- lines 51-71 (match at 59) ---
+   51:   id: string;
+   52: 
+   53:   full_name: string;
+   54: 
+   55:   phone: string;
+   56: 
+   57:   currentStatus?: string;
+   58: 
+   59:   assignedOrders?: number;
+   60: 
+   61:   completedOrders?: number;
+   62: 
+   63:   revenue?: number;
+   64: 
+   65:   score?: number;
+   66: 
+   67:   activeOrder?: any;
+   68: 
+   69:   liveLocation?: {
+   70: 
+   71:     rider_id: string;
+
+--- lines 613-633 (match at 621) ---
+  613:     vendors (
+  614:       id,
+  615:       name,
+  616:       cuisine,
+  617:       location,
+  618:       status
+  619:     ),
+  620: 
+  621:     rider:profiles!orders_rider_id_fkey (
+  622:       id,
+  623:       full_name,
+  624:       phone
+  625:     ),
+  626: 
+  627:     profiles!orders_user_id_fkey (
+  628:       id,
+  629:       full_name,
+  630:       email,
+  631:       phone
+  632:     )
+  633:   `)
+
+--- lines 818-838 (match at 826) ---
+  818: 
+  819:  const ridersWithStatus =
+  820:   (ridersData || []).map(
+  821:     (rider) => {
+  822: 
+  823:       const riderOrders =
+  824:         ordersData?.filter(
+  825:           (order) =>
+  826:             order.rider_id === rider.id
+  827:         ) || [];
+  828: 
+  829:         const activeOrder =
+  830:   riderOrders.find(
+  831:     (order) =>
+  832:       order.status !== "delivered"
+  833:   );
+  834: 
+  835:       const riderOrder =
+  836:         riderOrders.find(
+  837:           (order) =>
+  838:             order.status !== "delivered"
+
+--- lines 856-876 (match at 864) ---
+  856:         "picked_up"
+  857:       ) {
+  858: 
+  859:         currentStatus =
+  860:           "Picked Up";
+  861: 
+  862:       }
+  863: 
+  864:       const assignedOrders =
+  865:         riderOrders.filter(
+  866:           (order) =>
+  867:             order.status === "assigned" ||
+  868:             order.status === "picked_up"
+  869:         ).length;
+  870: 
+  871:       const completedOrders =
+  872:         riderOrders.filter(
+  873:           (order) =>
+  874:             order.status === "delivered"
+  875:         ).length;
+  876: 
+
+--- lines 895-915 (match at 903) ---
+  895:           completedOrders * 10
+  896:         );
+  897: 
+  898:    const liveLocation =
+  899:   riderLocations?.find(
+  900: 
+  901:     (location) =>
+  902: 
+  903:       location.rider_id === rider.id
+  904: 
+  905:   );
+  906: 
+  907: return {
+  908: 
+  909:   ...rider,
+  910: 
+  911:   currentStatus,
+  912: 
+  913:   assignedOrders,
+  914: 
+  915:   completedOrders,
+
+--- lines 934-954 (match at 942) ---
+  934:   setVendors(
+  935:   vendorsWithStats
+  936: );
+  937: 
+  938:   const ready =
+  939:     ordersData?.filter(
+  940:       o =>
+  941:         o.status ===
+  942:         "ready_for_pickup"
+  943:     ).length || 0;
+  944: 
+  945:   const assigned =
+  946:     ordersData?.filter(
+  947:       o =>
+  948:         o.status ===
+  949:         "assigned"
+  950:     ).length || 0;
+  951: 
+  952:   const pickedUp =
+  953:     ordersData?.filter(
+  954:       o =>
+
+--- lines 1125-1145 (match at 1133) ---
+ 1125:         "preparing" &&
+ 1126:       minutesOpen > 30
+ 1127:     ) {
+ 1128:       return true;
+ 1129:     }
+ 1130: 
+ 1131:     if (
+ 1132:       order.status ===
+ 1133:         "ready_for_pickup" &&
+ 1134:       minutesOpen > 20
+ 1135:     ) {
+ 1136:       return true;
+ 1137:     }
+ 1138: 
+ 1139:     if (
+ 1140:       order.status ===
+ 1141:         "assigned" &&
+ 1142:       minutesOpen > 30
+ 1143:     ) {
+ 1144:       return true;
+ 1145:     }
+
+--- lines 1149-1169 (match at 1157) ---
+ 1149:   }) || [];
+ 1150: 
+ 1151: setExceptions(
+ 1152:   exceptionOrders
+ 1153: );
+ 1154: 
+ 1155: }
+ 1156: 
+ 1157: async function assignRider(
+ 1158:   orderId: string,
+ 1159:   riderId: string
+ 1160: ) {
+ 1161: 
+ 1162:   const { error } =
+ 1163:     await supabase
+ 1164:       .from("orders")
+ 1165:       .update({
+ 1166: 
+ 1167:         rider_id:
+ 1168:           riderId,
+ 1169: 
+
+--- lines 1368-1388 (match at 1376) ---
+ 1368: 
+ 1369:         <div className="
+ 1370:           bg-white
+ 1371:           rounded-3xl
+ 1372:           p-6
+ 1373:           shadow-sm
+ 1374:         ">
+ 1375:           <p className="text-gray-500">
+ 1376:             Assigned Orders
+ 1377:           </p>
+ 1378: 
+ 1379:           <h2 className="
+ 1380:             text-5xl
+ 1381:             font-bold
+ 1382:             text-blue-500
+ 1383:             mt-2
+ 1384:           ">
+ 1385:             {stats.assigned}
+ 1386:           </h2>
+ 1387:         </div>
+ 1388: 
+
+--- lines 1438-1458 (match at 1446) ---
+ 1438: 
+ 1439: <ExecutiveOverview
+ 1440:   revenue={kpis.revenue}
+ 1441:   averageOrder={kpis.averageOrder}
+ 1442:   completionRate={kpis.completionRate}
+ 1443:   vendorExposure={totalVendorExposure}
+ 1444:   riderExposure={totalRiderExposure}
+ 1445:   readyOrders={stats.ready}
+ 1446:   assignedOrders={stats.assigned}
+ 1447:   pickedUpOrders={stats.pickedUp}
+ 1448:   deliveredOrders={stats.delivered}
+ 1449: />
+ 1450: 
+ 1451: </div>
+ 1452: <div
+ 1453:   className="
+ 1454:     bg-red-50
+ 1455:     border
+ 1456:     border-red-200
+ 1457:     rounded-3xl
+ 1458:     p-6
+
+--- lines 1526-1546 (match at 1534) ---
+ 1526:       <p className="text-sm text-gray-500">
+ 1527:         Recommended Action:
+ 1528:         Check vendor kitchen status.
+ 1529:       </p>
+ 1530:     </>
+ 1531: 
+ 1532:   )}
+ 1533: 
+ 1534:   {order.status === "ready_for_pickup" && (
+ 1535: 
+ 1536:     <>
+ 1537:       <p className="text-sm text-red-600 font-medium">
+ 1538:         Order is waiting for rider assignment.
+ 1539:       </p>
+ 1540: 
+ 1541:       <p className="text-sm text-gray-500">
+ 1542:         Recommended Action:
+ 1543:         Assign a rider immediately.
+ 1544:       </p>
+ 1545:     </>
+ 1546: 
+
+--- lines 1585-1605 (match at 1593) ---
+ 1585:         py-2
+ 1586:         rounded-lg
+ 1587:         text-sm
+ 1588:       "
+ 1589:     >
+ 1590:       👁 View Order
+ 1591:     </button>
+ 1592: 
+ 1593:     {order.status === "ready_for_pickup" && (
+ 1594: 
+ 1595:       <button
+ 1596:         onClick={() => {
+ 1597: 
+ 1598:           setSelectedOrder(order);
+ 1599: 
+ 1600:           setShowAssignModal(true);
+ 1601: 
+ 1602:         }}
+ 1603:         className="
+ 1604:           bg-orange-500
+ 1605:           text-white
+
+--- lines 1678-1698 (match at 1686) ---
+ 1678:     >
+ 1679: 
+ 1680: console.log("MAP RIDER LOCATIONS:", riderLocations);
+ 1681: 
+ 1682: {riderLocations.map((location) => (
+ 1683: 
+ 1684:   <Marker
+ 1685: 
+ 1686:     key={location.rider_id}
+ 1687: 
+ 1688:     position={{
+ 1689: 
+ 1690:       lat: Number(location.latitude),
+ 1691: 
+ 1692:       lng: Number(location.longitude)
+ 1693: 
+ 1694:     }}
+ 1695: 
+ 1696:     title={`Rider ${location.rider_id}`}
+ 1697: 
+ 1698:   />
+
+--- lines 1841-1861 (match at 1849) ---
+ 1841:   </span>
+ 1842: 
+ 1843: </td>
+ 1844: 
+ 1845: <td className="py-4">
+ 1846: 
+ 1847:   {orders.find(
+ 1848:     (order) =>
+ 1849:       order.rider_id === rider.id &&
+ 1850:       order.status !== "delivered"
+ 1851:   ) ? (
+ 1852: 
+ 1853:     <span className="font-medium">
+ 1854:       #
+ 1855:       {
+ 1856:         orders
+ 1857:           .find(
+ 1858:             (order) =>
+ 1859:               order.rider_id === rider.id &&
+ 1860:               order.status !== "delivered"
+ 1861:           )
+
+--- lines 2006-2026 (match at 2014) ---
+ 2006:             className="border-b"
+ 2007:           >
+ 2008: 
+ 2009:             <td className="py-4 font-medium">
+ 2010:               {rider.full_name}
+ 2011:             </td>
+ 2012: 
+ 2013:             <td className="py-4">
+ 2014:               {rider.assignedOrders}
+ 2015:             </td>
+ 2016: 
+ 2017:             <td className="py-4">
+ 2018:               {rider.completedOrders}
+ 2019:             </td>
+ 2020: 
+ 2021:             <td className="py-4 font-medium text-green-600">
+ 2022:   ₦
+ 2023:   {Number(
+ 2024:     rider.revenue || 0
+ 2025:   ).toLocaleString()}
+ 2026: </td>
+
+--- lines 2840-2860 (match at 2848) ---
+ 2840:             <div
+ 2841:               className="
+ 2842:                 text-red-600
+ 2843:                 font-medium
+ 2844:               "
+ 2845:             >
+ 2846:               {order.status}
+ 2847: 
+ 2848: {order.status === "assigned" && (
+ 2849:   <div
+ 2850:     className="
+ 2851:       text-xs
+ 2852:       text-red-700
+ 2853:       font-bold
+ 2854:     "
+ 2855:   >
+ 2856:     CRITICAL
+ 2857:   </div>
+ 2858: )}
+ 2859: 
+ 2860: {order.status === "ready_for_pickup" && (
+
+--- lines 2964-2984 (match at 2972) ---
+ 2964:     <option value="pending">
+ 2965:       Pending
+ 2966:     </option>
+ 2967: 
+ 2968:     <option value="preparing">
+ 2969:       Preparing
+ 2970:     </option>
+ 2971: 
+ 2972:     <option value="ready_for_pickup">
+ 2973:       Ready For Pickup
+ 2974:     </option>
+ 2975: 
+ 2976:     <option value="assigned">
+ 2977:       Assigned
+ 2978:     </option>
+ 2979: 
+ 2980:     <option value="picked_up">
+ 2981:       Picked Up
+ 2982:     </option>
+ 2983: 
+ 2984:     <option value="delivered">
+
+--- lines 3073-3093 (match at 3081) ---
+ 3073:   selectedVendorFilter === ""
+ 3074:     ? true
+ 3075:     : order.vendors?.id ===
+ 3076:       selectedVendorFilter;
+ 3077: const matchesRider =
+ 3078: 
+ 3079:   selectedRiderFilter === ""
+ 3080:     ? true
+ 3081:     : order.rider_id ===
+ 3082:       selectedRiderFilter;
+ 3083: 
+ 3084: return (
+ 3085:   matchesStatus &&
+ 3086:   matchesSearch &&
+ 3087:   matchesVendor &&
+ 3088:   matchesRider
+ 3089: );
+ 3090: 
+ 3091: 
+ 3092: 
+ 3093:   })
+
+--- lines 3147-3167 (match at 3155) ---
+ 3147:         font-medium
+ 3148:       "
+ 3149:     >
+ 3150:       Accepted
+ 3151:     </span>
+ 3152: 
+ 3153:   )}
+ 3154: 
+ 3155:   {order.status === "ready_for_pickup" && (
+ 3156: 
+ 3157:     <span
+ 3158:       className="
+ 3159:         bg-orange-100
+ 3160:         text-orange-700
+ 3161:         px-3
+ 3162:         py-1
+ 3163:         rounded-full
+ 3164:         text-sm
+ 3165:         font-medium
+ 3166:       "
+ 3167:     >
+
+--- lines 3232-3252 (match at 3240) ---
+ 3232:                 {Number(
+ 3233:                   order.total
+ 3234:                 ).toLocaleString()}
+ 3235: 
+ 3236:               </td>
+ 3237: 
+ 3238:              <td className="py-4">
+ 3239: 
+ 3240:   {order.status === "ready_for_pickup" ? (
+ 3241: 
+ 3242:     <button
+ 3243:       onClick={() => {
+ 3244: 
+ 3245:         setSelectedOrder(order);
+ 3246: 
+ 3247:         setShowAssignModal(true);
+ 3248: 
+ 3249:       }}
+ 3250:       className="
+ 3251:         bg-orange-500
+ 3252:         text-white
+
+--- lines 3356-3376 (match at 3364) ---
+ 3356:                   <p className="text-sm text-gray-500">
+ 3357:                     {rider.phone || "No Phone"}
+ 3358:                   </p>
+ 3359: 
+ 3360:                 </div>
+ 3361: 
+ 3362:                 <button
+ 3363:                   onClick={() =>
+ 3364:                     assignRider(
+ 3365:                       selectedOrder.id,
+ 3366:                       rider.id
+ 3367:                     )
+ 3368:                   }
+ 3369:                   className="
+ 3370:                     bg-orange-500
+ 3371:                     text-white
+ 3372:                     px-4
+ 3373:                     py-2
+ 3374:                     rounded-xl
+ 3375:                   "
+ 3376:                 >
+
+--- lines 3614-3634 (match at 3622) ---
+ 3614:   </h3>
+ 3615: 
+ 3616:   <div className="space-y-3">
+ 3617: 
+ 3618:     <div>
+ 3619:       {[
+ 3620:         "pending",
+ 3621:         "preparing",
+ 3622:         "ready_for_pickup",
+ 3623:         "assigned",
+ 3624:         "picked_up",
+ 3625:         "delivered"
+ 3626:       ]
+ 3627:       .slice(
+ 3628:         0,
+ 3629:         [
+ 3630:           "pending",
+ 3631:           "preparing",
+ 3632:           "ready_for_pickup",
+ 3633:           "assigned",
+ 3634:           "picked_up",
+
+--- lines 3678-3698 (match at 3686) ---
+ 3678:     </div>
+ 3679: 
+ 3680:   </div>
+ 3681: 
+ 3682: </div>
+ 3683: 
+ 3684: <div className="pt-6">
+ 3685: 
+ 3686:   {selectedOrder.status === "ready_for_pickup" && (
+ 3687: 
+ 3688:     <button
+ 3689:       onClick={() => {
+ 3690: 
+ 3691:         setShowOrderModal(false);
+ 3692: 
+ 3693:         setSelectedOrder(selectedOrder);
+ 3694: 
+ 3695:         setShowAssignModal(true);
+ 3696: 
+ 3697:       }}
+ 3698:       className="
+
+--- lines 3705-3725 (match at 3713) ---
+ 3705:       "
+ 3706:     >
+ 3707:       Assign Rider
+ 3708:     </button>
+ 3709: 
+ 3710:   )}
+ 3711: 
+ 3712: {(
+ 3713:   selectedOrder.status === "assigned" ||
+ 3714:   selectedOrder.status === "picked_up" ||
+ 3715:   selectedOrder.status === "delivered"
+ 3716: ) && (
+ 3717: 
+ 3718:  <div className="
+ 3719:   bg-blue-50
+ 3720:   border
+ 3721:   border-blue-200
+ 3722:   rounded-xl
+ 3723:   p-4
+ 3724: ">
+ 3725: 
+
+--- lines 3743-3763 (match at 3751) ---
+ 3743:   ">
+ 3744: 
+ 3745:     <p className="text-sm text-gray-500">
+ 3746:       Current Activity
+ 3747:     </p>
+ 3748: 
+ 3749:     <p className="font-semibold text-blue-600">
+ 3750: 
+ 3751:       {selectedOrder.status === "assigned" &&
+ 3752:         "Rider Assigned"}
+ 3753: 
+ 3754:       {selectedOrder.status === "picked_up" &&
+ 3755:         "Order Collected"}
+ 3756: 
+ 3757:       {selectedOrder.status === "delivered" &&
+ 3758:         "Delivery Completed"}
+ 3759: 
+ 3760:     </p>
+ 3761: 
+ 3762:     <p className="text-sm text-gray-500 mt-3">
+ 3763:       Delivery Status
+
+--- lines 3854-3874 (match at 3862) ---
+ 3854:       className="
+ 3855:         bg-purple-500
+ 3856:         text-white
+ 3857:         py-3
+ 3858:         rounded-xl
+ 3859:         font-semibold
+ 3860:       "
+ 3861:     >
+ 3862:       🔄 Reassign Rider
+ 3863:     </button>
+ 3864: 
+ 3865:   </div>
+ 3866: 
+ 3867: </div>
+ 3868: 
+ 3869: )}
+ 3870: 
+ 3871:   {selectedOrder.status === "picked_up" && (
+ 3872: 
+ 3873:     <div className="
+ 3874:       bg-purple-50
+
+--- lines 4018-4038 (match at 4026) ---
+ 4018:             {selectedRider.currentStatus}
+ 4019:           </p>
+ 4020: 
+ 4021:         </div>
+ 4022: 
+ 4023:         <div>
+ 4024: 
+ 4025:           <p className="text-gray-500">
+ 4026:             Assigned Orders
+ 4027:           </p>
+ 4028: 
+ 4029:           <p className="font-semibold">
+ 4030:             {selectedRider.assignedOrders}
+ 4031:           </p>
+ 4032: 
+ 4033:         </div>
+ 4034: 
+ 4035:         <div>
+ 4036: 
+ 4037:           <p className="text-gray-500">
+ 4038:             Completed Deliveries
+
+--- lines 4189-4209 (match at 4197) ---
+ 4189:     Recent Deliveries
+ 4190:   </h3>
+ 4191: 
+ 4192:   <div className="space-y-3">
+ 4193: 
+ 4194:     {orders
+ 4195:       .filter(
+ 4196:         (order) =>
+ 4197:           order.rider_id ===
+ 4198:           selectedRider.id
+ 4199:       )
+ 4200:       .slice(0,5)
+ 4201:       .map((order) => (
+ 4202: 
+ 4203:         <div
+ 4204:           key={order.id}
+ 4205:           className="
+ 4206:             flex
+ 4207:             justify-between
+ 4208:             items-center
+ 4209:             border
+
+====================================================================================================
+FILE: app\orders\page.tsx
+Matching lines: 3
+
+--- lines 21-41 (match at 29) ---
+   21:   order_items: OrderItem[] | null;
+   22:   rider: { full_name: string | null; phone: string | null } | null;
+   23: };
+   24: 
+   25: const statuses = [
+   26:   "pending",
+   27:   "accepted",
+   28:   "preparing",
+   29:   "ready_for_pickup",
+   30:   "assigned",
+   31:   "picked_up",
+   32:   "delivered",
+   33: ];
+   34: 
+   35: const otpEligibleStatuses = ["accepted", "assigned", "picked_up"];
+   36: 
+   37: function badgeColor(status: string) {
+   38:   switch (status) {
+   39:     case "pending":
+   40:       return "bg-yellow-100 text-yellow-700";
+   41:     case "accepted":
+
+--- lines 96-116 (match at 104) ---
+   96:           delivery_address,
+   97:           customer_notes,
+   98:           order_items (
+   99:             id,
+  100:             name,
+  101:             quantity,
+  102:             price
+  103:           ),
+  104:           rider:profiles!orders_rider_id_fkey (
+  105:             full_name,
+  106:             phone
+  107:           )
+  108:         `)
+  109:         .eq("user_id", user.id)
+  110:         .order("created_at", { ascending: false });
+  111: 
+  112:       if (error) {
+  113:         console.error("LOAD ORDERS ERROR:", error);
+  114:         setLoadError("Unable to load your orders. Please try again.");
+  115:         return;
+  116:       }
+
+====================================================================================================
+FILE: app\rider-dashboard\page.tsx
+Matching lines: 10
+
+--- lines 33-53 (match at 41) ---
+   33:   food_amount: number;
+   34:   delivery_fee: number;
+   35:   platform_fee: number;
+   36:   vendor_amount: number;
+   37:   rider_amount: number;
+   38:   mkh_amount: number;
+   39:   created_at: string;
+   40:   vendor_id: string;
+   41:   rider_id: string | null;
+   42:   delivery_address: string | null;
+   43:   customer_notes?: string | null;
+   44:   delivery_otp?: string | null;
+   45:   otp_verified?: boolean;
+   46: 
+   47:   vendors?: {
+   48:     name: string;
+   49:     location: string;
+   50:   };
+   51: 
+   52:   profiles?: {
+   53:     full_name: string;
+
+--- lines 99-119 (match at 107) ---
+   99:       return;
+  100:     }
+  101: 
+  102: 
+  103:     const orderFields = `
+  104:       id,
+  105:       user_id,
+  106:       vendor_id,
+  107:       rider_id,
+  108:       status,
+  109:       total,
+  110:       food_amount,
+  111:       delivery_fee,
+  112:       platform_fee,
+  113:       mkh_amount,
+  114:       vendor_amount,
+  115:       rider_amount,
+  116:       created_at,
+  117:       delivery_address,
+  118:       customer_notes,
+  119:       payment_status,
+
+--- lines 140-160 (match at 148) ---
+  140:     /* AVAILABLE PICKUPS */
+  141: 
+  142:     const {
+  143:       data: queue,
+  144:       error: queueError,
+  145:     } = await supabase
+  146:       .from("orders")
+  147:       .select(orderFields)
+  148:       .eq("status", "ready_for_pickup")
+  149:       .is("rider_id", null)
+  150:       .order("created_at", {
+  151:         ascending: false,
+  152:       });
+  153: 
+  154:     if (queueError) {
+  155:       console.error("AVAILABLE ORDERS ERROR:", queueError);
+  156:     }
+  157: 
+  158:     /* RIDER ACTIVE JOBS */
+  159: 
+  160:     const {
+
+--- lines 203-223 (match at 211) ---
+  203:       data: completed,
+  204:       error: completedError,
+  205:     } = await supabase
+  206:       .from("orders")
+  207:       .select(`
+  208:         id,
+  209:         user_id,
+  210:         vendor_id,
+  211:         rider_id,
+  212:         status,
+  213:         total,
+  214:         food_amount,
+  215:         delivery_fee,
+  216:         platform_fee,
+  217:         mkh_amount,
+  218:         vendor_amount,
+  219:         rider_amount,
+  220:         created_at,
+  221:         delivery_address,
+  222:         customer_notes,
+  223:         payment_status,
+
+--- lines 224-244 (match at 232) ---
+  224:         otp_verified,
+  225:         picked_up_at,
+  226:         delivered_at,
+  227:         vendors:vendors!orders_vendor_id_fkey(
+  228:           name,
+  229:           location
+  230:         )
+  231:       `)
+  232:       .eq("rider_id", user.id)
+  233:       .eq("status", "delivered")
+  234:       .order("delivered_at", {
+  235:         ascending: false,
+  236:       });
+  237: 
+  238:     if (completedError) {
+  239:       console.error("COMPLETED ORDERS ERROR:", completedError);
+  240:     }
+  241: 
+  242:     setCompletedOrders(
+  243:   (completed || []).map((order) => ({
+  244:     ...order,
+
+--- lines 308-328 (match at 316) ---
+  308:         heading,
+  309:         speed,
+  310:       } = position.coords;
+  311: 
+  312:       const { error } = await supabase
+  313:         .from("rider_locations")
+  314:         .upsert(
+  315:           {
+  316:             rider_id: user.id,
+  317:             latitude,
+  318:             longitude,
+  319:             accuracy: accuracy ?? 0,
+  320:             heading: heading ?? 0,
+  321:             speed: speed ?? 0,
+  322:             location: `POINT(${longitude} ${latitude})`,
+  323:             updated_at: new Date().toISOString(),
+  324:           },
+  325:           {
+  326:             onConflict: "rider_id",
+  327:           }
+  328:         );
+
+--- lines 473-493 (match at 481) ---
+  473: 
+  474:       /* ----------------------------------
+  475:          DELIVERY
+  476:          ----------------------------------- */
+  477: 
+  478:       
+  479:       if (status === "delivered") {
+  480:         const { data, error } = await supabase.rpc(
+  481:           "complete_my_delivery",
+  482:           { p_order_id: orderId }
+  483:         );
+  484: 
+  485:         if (error) {
+  486:           console.error("DELIVERY COMPLETION ERROR:", error);
+  487:           alert(error.message || "Unable to complete delivery.");
+  488:           return;
+  489:         }
+  490: 
+  491:         if (!data?.success) {
+  492:           alert(data?.message || "Delivery completion failed.");
+  493:           return;
+
+====================================================================================================
+FILE: app\rider-dashboard\page1.tsx
+Matching lines: 10
+
+--- lines 22-42 (match at 30) ---
+   22:   food_amount: number;
+   23:   delivery_fee: number;
+   24:   platform_fee: number;
+   25:   vendor_amount: number;
+   26:   rider_amount: number;
+   27:   mkh_amount: number;
+   28:   created_at: string;
+   29:   vendor_id: string;
+   30:   rider_id: string | null;
+   31:   delivery_address: string | null;
+   32:   customer_notes?: string | null;
+   33:   delivery_otp?: string | null;
+   34:   otp_verified?: boolean;
+   35: 
+   36:   vendors?: {
+   37:     name: string;
+   38:     location: string;
+   39:   };
+   40: 
+   41:   profiles?: {
+   42:     full_name: string;
+
+--- lines 95-115 (match at 103) ---
+   95:       .single();
+   96: 
+   97:     console.log("PROFILE:", profile);
+   98: 
+   99:     const orderFields = `
+  100:       id,
+  101:       user_id,
+  102:       vendor_id,
+  103:       rider_id,
+  104:       status,
+  105:       total,
+  106:       food_amount,
+  107:       delivery_fee,
+  108:       platform_fee,
+  109:       mkh_amount,
+  110:       vendor_amount,
+  111:       rider_amount,
+  112:       created_at,
+  113:       delivery_address,
+  114:       customer_notes,
+  115:       payment_status,
+
+--- lines 136-156 (match at 144) ---
+  136:     /* AVAILABLE PICKUPS */
+  137: 
+  138:     const {
+  139:       data: queue,
+  140:       error: queueError,
+  141:     } = await supabase
+  142:       .from("orders")
+  143:       .select(orderFields)
+  144:       .eq("status", "ready_for_pickup")
+  145:       .is("rider_id", null)
+  146:       .order("created_at", {
+  147:         ascending: false,
+  148:       });
+  149: 
+  150:     if (queueError) {
+  151:       console.error("AVAILABLE ORDERS ERROR:", queueError);
+  152:     }
+  153: 
+  154:     /* RIDER ACTIVE JOBS */
+  155: 
+  156:     const {
+
+--- lines 199-219 (match at 207) ---
+  199:       data: completed,
+  200:       error: completedError,
+  201:     } = await supabase
+  202:       .from("orders")
+  203:       .select(`
+  204:         id,
+  205:         user_id,
+  206:         vendor_id,
+  207:         rider_id,
+  208:         status,
+  209:         total,
+  210:         food_amount,
+  211:         delivery_fee,
+  212:         platform_fee,
+  213:         mkh_amount,
+  214:         vendor_amount,
+  215:         rider_amount,
+  216:         created_at,
+  217:         delivery_address,
+  218:         customer_notes,
+  219:         payment_status,
+
+--- lines 220-240 (match at 228) ---
+  220:         otp_verified,
+  221:         picked_up_at,
+  222:         delivered_at,
+  223:         vendors:vendors!orders_vendor_id_fkey(
+  224:           name,
+  225:           location
+  226:         )
+  227:       `)
+  228:       .eq("rider_id", user.id)
+  229:       .eq("status", "delivered")
+  230:       .order("delivered_at", {
+  231:         ascending: false,
+  232:       });
+  233: 
+  234:     if (completedError) {
+  235:       console.error("COMPLETED ORDERS ERROR:", completedError);
+  236:     }
+  237: 
+  238:     setCompletedOrders(
+  239:   (completed || []).map((order) => ({
+  240:     ...order,
+
+--- lines 304-324 (match at 312) ---
+  304:         heading,
+  305:         speed,
+  306:       } = position.coords;
+  307: 
+  308:       const { error } = await supabase
+  309:         .from("rider_locations")
+  310:         .upsert(
+  311:           {
+  312:             rider_id: user.id,
+  313:             latitude,
+  314:             longitude,
+  315:             accuracy: accuracy ?? 0,
+  316:             heading: heading ?? 0,
+  317:             speed: speed ?? 0,
+  318:             location: `POINT(${longitude} ${latitude})`,
+  319:             updated_at: new Date().toISOString(),
+  320:           },
+  321:           {
+  322:             onConflict: "rider_id",
+  323:           }
+  324:         );
+
+--- lines 469-489 (match at 477) ---
+  469: 
+  470:       /* ----------------------------------
+  471:          DELIVERY
+  472:          ----------------------------------- */
+  473: 
+  474:       
+  475:       if (status === "delivered") {
+  476:         const { data, error } = await supabase.rpc(
+  477:           "complete_my_delivery",
+  478:           { p_order_id: orderId }
+  479:         );
+  480: 
+  481:         if (error) {
+  482:           console.error("DELIVERY COMPLETION ERROR:", error);
+  483:           alert(error.message || "Unable to complete delivery.");
+  484:           return;
+  485:         }
+  486: 
+  487:         if (!data?.success) {
+  488:           alert(data?.message || "Delivery completion failed.");
+  489:           return;
+
+====================================================================================================
+FILE: app\territory-relationship-manager\page.tsx
+Matching lines: 1
+
+--- lines 580-600 (match at 588) ---
+  580: 
+  581:                 <div className="flex items-center gap-5">
+  582: 
+  583:                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+  584: 
+  585:                     {{
+  586:                       accepted: "✅",
+  587:                       preparing: "🍳",
+  588:                       ready_for_pickup: "📦",
+  589:                       assigned: "🏍",
+  590:                       picked_up: "🏍",
+  591:                       delivered: "🎉",
+  592:                       cancelled: "❌",
+  593:                     }[event.event_type] ?? "📍"}
+  594: 
+  595:                   </div>
+  596: 
+  597:                   <div>
+  598: 
+  599:                     <h3 className="font-semibold text-[#0F172A]">
+  600:                       {event.title}
+
+====================================================================================================
+FILE: app\territory-relationship-manager\live-operations\page.tsx
+Matching lines: 4
+
+--- lines 67-87 (match at 75) ---
+   67:         const now = Date.now();
+   68: 
+   69: const generatedAlerts = data
+   70:   .filter((order: any) =>
+   71:     [
+   72:       "pending",
+   73:       "accepted",
+   74:       "preparing",
+   75:       "ready_for_pickup",
+   76:     ].includes(order.status)
+   77:   )
+   78:   .flatMap((order: any) => {
+   79:   const created = new Date(order.created_at).getTime();
+   80:   const waitingMinutes = Math.floor((now - created) / 60000);
+   81: 
+   82:   const alerts = [];
+   83: 
+   84:  let severity = "NORMAL";
+   85: let colour = "bg-emerald-100 text-emerald-700";
+   86: 
+   87: if (waitingMinutes >= 30) {
+
+--- lines 112-132 (match at 120) ---
+  112: 
+  113:   action:
+  114:     order.status === "pending"
+  115:       ? "Monitor Vendor"
+  116:       : order.status === "accepted"
+  117:       ? "Monitor Kitchen"
+  118:       : order.status === "preparing"
+  119:       ? "Follow Up"
+  120:       : order.status === "ready_for_pickup"
+  121:       ? "Assign Rider"
+  122:       : "Monitor",
+  123: 
+  124: });
+  125: 
+  126: return alerts;
+  127: 
+  128: });
+  129: 
+  130: setAlerts(generatedAlerts);
+  131: 
+  132: const { count: ridersOnline } = await supabase
+
+--- lines 134-154 (match at 142) ---
+  134:   .select("*", { count: "exact", head: true })
+  135:   .eq("role", "rider")
+  136:   .eq("status", "active");
+  137: const activeDeliveries = data.filter(
+  138:   (order: any) => order.status === "picked_up"
+  139: ).length;
+  140: 
+  141: const readyOrders = data.filter(
+  142:   (order: any) => order.status === "ready_for_pickup"
+  143: ).length;
+  144: 
+  145: setSnapshot({
+  146:   ridersOnline: ridersOnline ?? 0,
+  147:   activeDeliveries,
+  148:   readyOrders,
+  149:   operationalHealth: "Healthy",
+  150: });
+  151: 
+  152:       } catch (error) {
+  153: 
+  154:         console.error(error);
+
+--- lines 656-676 (match at 664) ---
+  656:                 <td className="px-6 py-5">
+  657: 
+  658:                   {order.profiles?.full_name ?? "-"}
+  659: 
+  660:                 </td>
+  661: 
+  662:                 <td className="px-6 py-5">
+  663: 
+  664:                   {order.riders?.full_name ?? "Unassigned"}
+  665: 
+  666:                 </td>
+  667: 
+  668:                 <td className="px-6 py-5">
+  669: 
+  670:                   <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+  671: 
+  672:                     Out for Delivery
+  673: 
+  674:                   </span>
+  675: 
+  676:                 </td>
+
+====================================================================================================
+FILE: app\territory-relationship-manager\orders\page.tsx
+Matching lines: 4
+
+--- lines 27-47 (match at 35) ---
+   27:         *,
+   28:         vendors (
+   29:           id,
+   30:           name,
+   31:           cuisine,
+   32:           location,
+   33:           status
+   34:         ),
+   35:         rider:profiles!orders_rider_id_fkey (
+   36:           id,
+   37:           full_name,
+   38:           phone
+   39:         ),
+   40:         profiles!orders_user_id_fkey (
+   41:           id,
+   42:           full_name,
+   43:           email,
+   44:           phone
+   45:         )
+   46:       `)
+   47:       .order("created_at", {
+
+--- lines 121-141 (match at 129) ---
+  121:     (order) => !["delivered", "cancelled"].includes(order.status)
+  122:   ).length;
+  123: 
+  124:   const preparingOrders = orders.filter(
+  125:     (order) => order.status === "preparing"
+  126:   ).length;
+  127: 
+  128:   const readyOrders = orders.filter(
+  129:     (order) => order.status === "ready_for_pickup"
+  130:   ).length;
+  131: 
+  132:   const outForDelivery = orders.filter(
+  133:     (order) => order.status === "picked_up"
+  134:   ).length;
+  135: 
+  136:   const exceptions = orders.filter((order) => {
+  137:     const minutesOpen =
+  138:       (Date.now() - new Date(order.created_at).getTime()) / 60000;
+  139: 
+  140:     return (
+  141:       minutesOpen >= 30 &&
+
+--- lines 332-352 (match at 340) ---
+  332:   onChange={(e) => setStatusFilter(e.target.value)}
+  333:   className="rounded-xl border border-slate-300 px-4 py-2 text-sm"
+  334: >
+  335: 
+  336:        <option value="all">All Status</option>
+  337: <option value="pending">Pending</option>
+  338: <option value="accepted">Accepted</option>
+  339: <option value="preparing">Preparing</option>
+  340: <option value="ready_for_pickup">Ready for Pickup</option>
+  341: <option value="picked_up">Out for Delivery</option>
+  342: <option value="delivered">Delivered</option>
+  343: <option value="cancelled">Cancelled</option>
+  344: 
+  345:       </select>
+  346: 
+  347:     </div>
+  348: 
+  349:   </div>
+  350: 
+  351:  {/* Orders Table */}
+  352: 
+
+--- lines 406-426 (match at 414) ---
+  406:            <span
+  407:   className={`rounded-full px-3 py-1 text-xs font-bold ${
+  408:     order.status === "pending"
+  409:       ? "bg-slate-100 text-slate-700"
+  410:       : order.status === "accepted"
+  411:       ? "bg-blue-100 text-blue-700"
+  412:       : order.status === "preparing"
+  413:       ? "bg-orange-100 text-orange-700"
+  414:       : order.status === "ready_for_pickup"
+  415:       ? "bg-purple-100 text-purple-700"
+  416:       : order.status === "picked_up"
+  417:       ? "bg-emerald-100 text-emerald-700"
+  418:       : order.status === "delivered"
+  419:       ? "bg-green-100 text-green-700"
+  420:       : order.status === "cancelled"
+  421:       ? "bg-red-100 text-red-700"
+  422:       : "bg-slate-100 text-slate-700"
+  423:   }
+  424: `}
+  425: >
+  426:   {order.status
+
+====================================================================================================
+FILE: app\territory-relationship-manager\riders\page.tsx
+Matching lines: 3
+
+--- lines 39-59 (match at 47) ---
+   39:         getRiders(),
+   40:         getRiderLocations(),
+   41:         getRiderWallets(),
+   42:         getRiderCurrentOrders(),
+   43:       ]);
+   44: 
+   45:       const merged: RiderRecord[] = profiles.map((profile) => {
+   46:         const wallet = wallets.find(
+   47:           (w) => w.rider_id === profile.id
+   48:         );
+   49: 
+   50:         const location = locations.find(
+   51:           (l) => l.rider_id === profile.id
+   52:         );
+   53: 
+   54:         const currentOrder =
+   55:           currentOrders.find(
+   56:             (order) => order.rider_id === profile.id
+   57:           ) ?? null;
+   58: 
+   59:         const operationalStatus =
+
+====================================================================================================
+FILE: app\vendor-dashboard\page.tsx
+Matching lines: 4
+
+--- lines 27-47 (match at 35) ---
+   27:   total:number;
+   28: 
+   29:   status:string;
+   30: 
+   31:   created_at:string;
+   32: 
+   33:   vendor_id:string;
+   34: 
+   35:   rider_id:string | null;
+   36: 
+   37:   delivery_address?: string | null;
+   38: 
+   39: customer_notes?: string | null;
+   40: 
+   41: customer_phone?: string | null;
+   42: 
+   43: profiles?: {
+   44: 
+   45:   full_name:string;
+   46: 
+   47:   email:string;
+
+--- lines 409-429 (match at 417) ---
+  409:   const activeDeliveries =
+  410:     orders.filter(
+  411:       o=>
+  412: 
+  413:         o.status==="accepted" ||
+  414: 
+  415:         o.status==="preparing" ||
+  416: 
+  417:         o.status==="ready_for_pickup"
+  418: 
+  419:     ).length;
+  420:       if (loading) {
+  421: 
+  422:     return (
+  423: 
+  424:       <main className="
+  425:         min-h-screen
+  426:         p-8
+  427:         bg-gray-100
+  428:       ">
+  429: 
+
+--- lines 699-719 (match at 707) ---
+  699:                     {order.status}
+  700: 
+  701:                   </Badge>
+  702: 
+  703:                 </div>
+  704: 
+  705:                 {
+  706: 
+  707:                   order.rider_id && (
+  708: 
+  709:                     <div className="
+  710:                       mb-5
+  711:                       bg-green-100
+  712:                       text-green-700
+  713:                       p-3
+  714:                       rounded-xl
+  715:                       font-semibold
+  716:                     ">
+  717: 
+  718:                       Rider Assigned
+  719: 
+
+--- lines 872-892 (match at 880) ---
+  872: 
+  873:                       &&
+  874: 
+  875:                       <Button
+  876:                         onClick={()=>
+  877: 
+  878:                           updateStatus(
+  879:                             order.id,
+  880:                             "ready_for_pickup"
+  881:                           )
+  882: 
+  883:                         }
+  884:                       >
+  885: 
+  886:                         Ready For Pickup
+  887: 
+  888:                       </Button>
+  889: 
+  890:                     }
+  891: 
+  892:                   </div>
+
+====================================================================================================
+FILE: app\vendor-dashboard-v2\page.tsx
+Matching lines: 6
+
+--- lines 500-520 (match at 508) ---
+  500: 
+  501: async function updateOrderStatus(
+  502:   orderId: string,
+  503:   status: string
+  504: ) {
+  505:   const vendorAllowedStatuses = [
+  506:     "accepted",
+  507:     "preparing",
+  508:     "ready_for_pickup",
+  509:     "cancelled",
+  510:   ];
+  511: 
+  512:   if (!vendorAllowedStatuses.includes(status)) {
+  513:     console.warn(
+  514:       "Vendor attempted unauthorized order status:",
+  515:       status
+  516:     );
+  517: 
+  518:     alert(
+  519:       "This order status is controlled by the rider or system."
+  520:     );
+
+--- lines 1434-1454 (match at 1442) ---
+ 1434: 
+ 1435:     ${
+ 1436:       order.status === "pending"
+ 1437:         ? "bg-yellow-100 text-yellow-700"
+ 1438:         : order.status === "accepted"
+ 1439:         ? "bg-blue-100 text-blue-700"
+ 1440:         : order.status === "preparing"
+ 1441:         ? "bg-purple-100 text-purple-700"
+ 1442:         : order.status === "ready_for_pickup"
+ 1443:         ? "bg-orange-100 text-orange-700"
+ 1444:         : order.status === "picked_up"
+ 1445:         ? "bg-indigo-100 text-indigo-700"
+ 1446:         : "bg-green-100 text-green-700"
+ 1447:     }
+ 1448:   `}
+ 1449: >
+ 1450:   {order.status.replaceAll("_"," ")}
+ 1451: </span>
+ 1452: 
+ 1453:           </div>
+ 1454: 
+
+--- lines 1511-1531 (match at 1519) ---
+ 1511: )}
+ 1512: 
+ 1513: {order.status === "preparing" && (
+ 1514: 
+ 1515:   <button
+ 1516:     onClick={() =>
+ 1517:       updateOrderStatus(
+ 1518:         order.id,
+ 1519:         "ready_for_pickup"
+ 1520:       )
+ 1521:     }
+ 1522:     className="
+ 1523:       rounded-lg
+ 1524:       bg-purple-600
+ 1525:       px-4
+ 1526:       py-2
+ 1527:       text-sm
+ 1528:       font-semibold
+ 1529:       text-white
+ 1530:       hover:bg-purple-700
+ 1531:     "
+
+--- lines 1545-1565 (match at 1553) ---
+ 1545:       bg-orange-100
+ 1546:       px-4
+ 1547:       py-2
+ 1548:       text-sm
+ 1549:       font-bold
+ 1550:       text-orange-700
+ 1551:     "
+ 1552:   >
+ 1553:     Waiting for Rider
+ 1554:   </span>
+ 1555: 
+ 1556: )}
+ 1557: 
+ 1558: {order.status === "assigned" && (
+ 1559: 
+ 1560:   <span
+ 1561:     className="
+ 1562:       inline-flex
+ 1563:       items-center
+ 1564:       rounded-lg
+ 1565:       bg-blue-100
+
+====================================================================================================
+FILE: components\manager\ExceptionManagementPanel.tsx
+Matching lines: 7
+
+--- lines 3-23 (match at 11) ---
+    3: type Order = {
+    4:   id: string;
+    5:   status: string;
+    6: };
+    7: 
+    8: type Props = {
+    9:   exceptions: Order[];
+   10:   onViewOrder: (order: Order) => void;
+   11:   onAssignRider: (order: Order) => void;
+   12: };
+   13: 
+   14: export default function ExceptionManagementPanel({
+   15:   exceptions,
+   16:   onViewOrder,
+   17:   onAssignRider,
+   18: }: Props) {
+   19:   return (
+   20:     <div
+   21:       className="
+   22:         bg-red-50
+   23:         border
+
+--- lines 83-103 (match at 91) ---
+   83: 
+   84:                   <p className="text-sm text-gray-500">
+   85:                     Recommended Action:
+   86:                     Check vendor kitchen status.
+   87:                   </p>
+   88:                 </>
+   89:               )}
+   90: 
+   91:               {order.status === "ready_for_pickup" && (
+   92:                 <>
+   93:                   <p className="text-sm text-red-600 font-medium">
+   94:                     Order is waiting for rider assignment.
+   95:                   </p>
+   96: 
+   97:                   <p className="text-sm text-gray-500">
+   98:                     Recommended Action:
+   99:                     Assign a rider immediately.
+  100:                   </p>
+  101:                 </>
+  102:               )}
+  103: 
+
+--- lines 131-151 (match at 139) ---
+  131:                     py-2
+  132:                     rounded-lg
+  133:                     text-sm
+  134:                   "
+  135:                 >
+  136:                   👁 View Order
+  137:                 </button>
+  138: 
+  139:                 {order.status === "ready_for_pickup" && (
+  140:                   <button
+  141:                     onClick={() => onAssignRider(order)}
+  142:                     className="
+  143:                       bg-orange-500
+  144:                       text-white
+  145:                       px-4
+  146:                       py-2
+  147:                       rounded-lg
+  148:                       text-sm
+  149:                     "
+  150:                   >
+  151:                     🔄 Assign Rider
+
+====================================================================================================
+FILE: components\manager\ExecutiveOverview.tsx
+Matching lines: 4
+
+--- lines 2-22 (match at 10) ---
+    2: 
+    3: type Props = {
+    4:   revenue: number;
+    5:   averageOrder: number;
+    6:   completionRate: number;
+    7:   vendorExposure: number;
+    8:   riderExposure: number;
+    9:   readyOrders: number;
+   10:   assignedOrders: number;
+   11:   pickedUpOrders: number;
+   12:   deliveredOrders: number;
+   13: };
+   14: 
+   15: export default function ExecutiveOverview({
+   16:   revenue,
+   17:   averageOrder,
+   18:   completionRate,
+   19:   vendorExposure,
+   20:   riderExposure,
+   21:   readyOrders,
+   22:   assignedOrders,
+
+--- lines 84-104 (match at 92) ---
+   84: 
+   85:         <h2 className="text-xl font-bold mb-5">
+   86:           🔔 Live Operations Alerts
+   87:         </h2>
+   88: 
+   89:         <div className="grid md:grid-cols-2 gap-4">
+   90: 
+   91:           <div className="bg-red-50 border border-red-200 rounded-xl p-4 font-medium text-red-700">
+   92:             🔴 {readyOrders} Orders waiting for rider assignment
+   93:           </div>
+   94: 
+   95:           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 font-medium text-blue-700">
+   96:             🔵 {assignedOrders} Riders currently delivering
+   97:           </div>
+   98: 
+   99:           <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 font-medium text-purple-700">
+  100:             🟣 {pickedUpOrders} Orders picked up
+  101:           </div>
+  102: 
+  103:           <div className="bg-green-50 border border-green-200 rounded-xl p-4 font-medium text-green-700">
+  104:             🟢 {deliveredOrders} Completed deliveries
+
+====================================================================================================
+FILE: components\maps\LiveDispatchMap.tsx
+Matching lines: 5
+
+--- lines 19-39 (match at 27) ---
+   19: 
+   20:   useRef,
+   21: 
+   22:   useState
+   23: 
+   24: } from "react";
+   25: 
+   26: type RiderLocation = {
+   27:   rider_id: string;
+   28:   latitude: number;
+   29:   longitude: number;
+   30: };
+   31: 
+   32: type Props = {
+   33: 
+   34:   riderLocations: RiderLocation[];
+   35: 
+   36:   riders: any[];
+   37: 
+   38: };
+   39: 
+
+--- lines 156-176 (match at 164) ---
+  156: >
+  157: 
+  158:         {
+  159: 
+  160:           riderLocations.map((location) => (
+  161: 
+  162:        <RiderMarker
+  163: 
+  164:   key={location.rider_id}
+  165: 
+  166:   rider_id={location.rider_id}
+  167: 
+  168:   latitude={Number(location.latitude)}
+  169: 
+  170:   longitude={Number(location.longitude)}
+  171: 
+  172:   status={
+  173: 
+  174:     riders.find(
+  175: 
+  176:       (r) => r.id === location.rider_id
+
+--- lines 178-198 (match at 186) ---
+  178:     )?.currentStatus
+  179: 
+  180:   }
+  181: 
+  182:   onClick={() => {
+  183: 
+  184:     const rider = riders.find(
+  185: 
+  186:       (r) => r.id === location.rider_id
+  187: 
+  188:     );
+  189: 
+  190:     setSelectedRider({
+  191: 
+  192:       ...location,
+  193: 
+  194:       rider
+  195: 
+  196:     });
+  197: 
+  198:   }}
+
+====================================================================================================
+FILE: components\maps\RiderMarker.tsx
+Matching lines: 3
+
+--- lines 1-19 (match at 7) ---
+    1: "use client";
+    2: 
+    3: import { Marker } from "@react-google-maps/api";
+    4: 
+    5: type Props = {
+    6: 
+    7:   rider_id: string;
+    8: 
+    9:   latitude: number;
+   10: 
+   11:   longitude: number;
+   12: 
+   13:   status?: string;
+   14: 
+   15:   onClick?: () => void;
+   16: 
+   17: };
+   18: 
+   19: export default function RiderMarker({
+
+--- lines 53-73 (match at 61) ---
+   53:       position={{
+   54: 
+   55:         lat: Number(latitude),
+   56: 
+   57:         lng: Number(longitude)
+   58: 
+   59:       }}
+   60: 
+   61:       title={`MKH Rider ${rider_id}`}
+   62: 
+   63: onClick={onClick}
+   64: 
+   65:       icon={{
+   66: 
+   67:         path: window.google.maps.SymbolPath.CIRCLE,
+   68: 
+   69:         scale: 10,
+   70: 
+   71:         fillColor: markerColor,
+   72: 
+   73:         fillOpacity: 1,
+
+====================================================================================================
+FILE: components\territory-manager\EnterpriseIntelligencePanel.tsx
+Matching lines: 1
+
+--- lines 67-87 (match at 75) ---
+   67:       recommendation =
+   68:         elapsedMinutes > 25
+   69:           ? "Kitchen preparation is taking longer than expected. Contact the vendor."
+   70:           : "Kitchen preparation is progressing normally.";
+   71:       break;
+   72: 
+   73:     case "ready":
+   74:       recommendation =
+   75:         "Order is ready. Ensure a rider is assigned promptly.";
+   76:       break;
+   77: 
+   78:     case "picked_up":
+   79:       recommendation =
+   80:         "Order is with the rider. Monitor delivery progress.";
+   81:       break;
+   82: 
+   83:     case "delivered":
+   84:       recommendation =
+   85:         "Order completed successfully.";
+   86:       break;
+   87: 
+
+====================================================================================================
+FILE: components\territory-manager\RiderLocationPanel.tsx
+Matching lines: 2
+
+--- lines 1-20 (match at 8) ---
+    1: "use client";
+    2: 
+    3: interface CurrentOrder {
+    4:   id: string;
+    5:   order_number: string | null;
+    6:   status: string;
+    7:   vendor_id: string | null;
+    8:   rider_id: string | null;
+    9:   total: number;
+   10:   created_at: string;
+   11: }
+   12: 
+   13: interface Rider {
+   14:   id: string;
+   15:   rider_id: string;
+   16:   latitude: number;
+   17:   longitude: number;
+   18:   speed: number;
+   19:   heading: number;
+   20:   accuracy: number;
+
+====================================================================================================
+FILE: components\territory-manager\RightOperationsPanel.tsx
+Matching lines: 2
+
+--- lines 90-110 (match at 98) ---
+   90: 
+   91:           <div className="flex justify-between">
+   92: 
+   93:             <span className="text-gray-500">
+   94:               Assigned Rider
+   95:             </span>
+   96: 
+   97:             <span className="font-semibold">
+   98:               {order?.rider_name ?? "Awaiting Assignment"}
+   99:             </span>
+  100: 
+  101:           </div>
+  102: 
+  103:           <div className="flex justify-between">
+  104: 
+  105:             <span className="text-gray-500">
+  106:               Current Status
+  107:             </span>
+  108: 
+  109:             <span className="font-semibold text-green-600">
+  110:               Active
+
+--- lines 318-338 (match at 326) ---
+  318: 
+  319:           <button
+  320:             className="w-full rounded-xl border border-gray-200 px-4 py-3 text-left hover:bg-gray-50 transition"
+  321:           >
+  322:             <div className="font-semibold">
+  323:               Auto Assign Backup Rider
+  324:             </div>
+  325:             <div className="text-sm text-gray-500 mt-1">
+  326:               Trigger automatic reassignment if delivery is at risk.
+  327:             </div>
+  328:           </button>
+  329: 
+  330:           <button
+  331:             className="w-full rounded-xl border border-gray-200 px-4 py-3 text-left hover:bg-gray-50 transition"
+  332:           >
+  333:             <div className="font-semibold">
+  334:               Notify Vendor
+  335:             </div>
+  336:             <div className="text-sm text-gray-500 mt-1">
+  337:               Send an operational update to the vendor.
+  338:             </div>
+
+====================================================================================================
+FILE: components\territory-manager\SmartExceptionDetection.tsx
+Matching lines: 2
+
+--- lines 3-23 (match at 11) ---
+    3: }
+    4: 
+    5: export default function SmartExceptionDetection({
+    6:   order,
+    7: }: SmartExceptionDetectionProps) {
+    8: 
+    9:   const exceptions = [];
+   10: 
+   11: if (!order?.rider_id && order?.status !== "delivered" && order?.status !== "cancelled") {
+   12:   exceptions.push({
+   13:     title: "Rider Assignment Delay",
+   14:     description:
+   15:       "No rider has been assigned to this order yet.",
+   16:     severity: "Medium",
+   17:     color: "orange",
+   18:   });
+   19: }
+   20: 
+   21: if (order?.status === "preparing") {
+   22:   exceptions.push({
+   23:     title: "Vendor Preparation Monitoring",
+
+====================================================================================================
+FILE: components\territory-manager\TerritoryMap.tsx
+Matching lines: 2
+
+--- lines 2-22 (match at 10) ---
+    2: 
+    3: import { useEffect, useRef } from "react";
+    4: 
+    5: interface CurrentOrder {
+    6:   id: string;
+    7:   order_number: string | null;
+    8:   status: string;
+    9:   vendor_id: string | null;
+   10:   rider_id: string | null;
+   11:   total: number;
+   12:   created_at: string;
+   13: }
+   14: 
+   15: interface RiderLocation {
+   16:   id: string;
+   17:   rider_id: string;
+   18:   latitude: number;
+   19:   longitude: number;
+   20:   speed: number;
+   21:   heading: number;
+   22:   accuracy: number;
+
+====================================================================================================
+FILE: lib\services\finance.ts
+Matching lines: 3
+
+--- lines 23-43 (match at 31) ---
+   23:     .from("financial_ledger")
+   24:     .select(`
+   25:       *,
+   26:       vendors:vendor_id (
+   27:         id,
+   28:         name,
+   29:         status
+   30:       ),
+   31:       profiles:rider_id (
+   32:         id,
+   33:         full_name,
+   34:         status
+   35:       )
+   36:     `)
+   37:     .order("created_at", { ascending: false });
+   38: 
+   39:   if (error) throw error;
+   40: 
+   41:   return data ?? [];
+   42: }
+   43: 
+
+--- lines 59-78 (match at 67) ---
+   59:   return data ?? [];
+   60: }
+   61: 
+   62: export async function getRiderEarnings() {
+   63:   const { data, error } = await supabase
+   64:     .from("rider_earnings")
+   65:     .select(`
+   66:       *,
+   67:       profiles!rider_earnings_rider_id_fkey (
+   68:         id,
+   69:         full_name,
+   70:         status
+   71:       )
+   72:     `)
+   73:     .order("created_at", { ascending: false });
+   74: 
+   75:   if (error) throw error;
+   76: 
+   77:   return data ?? [];
+   78: }
+
+====================================================================================================
+FILE: lib\services\financialLedger.ts
+Matching lines: 2
+
+--- lines 39-59 (match at 47) ---
+   39:     .select("*")
+   40:     .eq("vendor_id", vendorId)
+   41:     .order("created_at", {
+   42:       ascending: false,
+   43:     });
+   44: }
+   45: 
+   46: export async function getRiderLedger(
+   47:   riderId: string
+   48: ) {
+   49:   return await supabase
+   50:     .from("financial_ledger")
+   51:     .select("*")
+   52:     .eq("rider_id", riderId)
+   53:     .order("created_at", {
+   54:       ascending: false,
+   55:     });
+   56: }
+   57: 
+   58: export async function getLedgerByType(
+   59:   type: LedgerEntryType
+
+====================================================================================================
+FILE: lib\services\orders.ts
+Matching lines: 5
+
+--- lines 2-22 (match at 10) ---
+    2: 
+    3: export async function getOrders() {
+    4:   const { data, error } = await supabase
+    5:     .from("orders")
+    6:     .select(`
+    7:       *,
+    8:        vendors(name),
+    9:   profiles!orders_user_id_fkey(full_name),
+   10:   riders:profiles!orders_rider_id_fkey(full_name)
+   11:       ),
+   12:       rider:profiles!orders_rider_id_fkey (
+   13:         id,
+   14:         full_name,
+   15:         phone
+   16:       ),
+   17:       profiles!orders_user_id_fkey (
+   18:         id,
+   19:         full_name,
+   20:         email,
+   21:         phone
+   22:       )
+
+--- lines 27-47 (match at 35) ---
+   27: 
+   28:   if (error) {
+   29:     throw error;
+   30:   }
+   31: 
+   32:   return data ?? [];
+   33: }
+   34: 
+   35: export async function assignRider(
+   36:   orderId: string,
+   37:   riderId: string
+   38: ) {
+   39:   const { error } = await supabase
+   40:     .from("orders")
+   41:     .update({
+   42:       rider_id: riderId,
+   43:       status: "assigned",
+   44:     })
+   45:     .eq("id", orderId);
+   46: 
+   47:   if (error) {
+
+====================================================================================================
+FILE: lib\services\reportingEngine.ts
+Matching lines: 2
+
+--- lines 7-27 (match at 15) ---
+    7: ) {
+    8:   return await supabase
+    9:     .from("financial_ledger")
+   10:     .select("amount, entry_type")
+   11:     .eq("vendor_id", vendorId);
+   12: }
+   13: 
+   14: export async function getRiderFinancialSummary(
+   15:   riderId: string
+   16: ) {
+   17:   return await supabase
+   18:     .from("financial_ledger")
+   19:     .select("amount, entry_type")
+   20:     .eq("rider_id", riderId);
+   21: }
+   22: 
+   23: export async function getPlatformRevenue() {
+   24:   return await supabase
+   25:     .from("financial_ledger")
+   26:     .select("amount")
+   27:     .eq("entry_type", "platform_revenue");
+
+====================================================================================================
+FILE: lib\services\riders.ts
+Matching lines: 4
+
+--- lines 60-80 (match at 68) ---
+   60:   const { data, error } = await supabase
+   61:     .from("orders")
+   62:     .select(
+   63:       `
+   64:         id,
+   65:         order_number,
+   66:         status,
+   67:         vendor_id,
+   68:         rider_id,
+   69:         total,
+   70:         created_at
+   71:       `
+   72:     )
+   73:     .in("status", ["assigned", "picked_up"])
+   74:     .not("rider_id", "is", null);
+   75: 
+   76:   if (error) throw error;
+   77: 
+   78:   return (data ?? []) as RiderCurrentOrder[];
+   79: }
+   80: 
+
+--- lines 81-101 (match at 89) ---
+   81: /**
+   82:  * Derives the rider's live operational status.
+   83:  *
+   84:  * Account status remains separate from operational status.
+   85:  *
+   86:  * inactive / suspended account
+   87:  *        -> offline
+   88:  *
+   89:  * assigned order
+   90:  *        -> assigned
+   91:  *
+   92:  * picked_up order
+   93:  *        -> delivering
+   94:  *
+   95:  * active account with no active order
+   96:  *        -> available
+   97:  */
+   98: export function getRiderOperationalStatus(
+   99:   accountStatus: string | null,
+  100:   currentOrder: RiderCurrentOrder | null
+  101: ): RiderOperationalStatus {
+
+====================================================================================================
+FILE: lib\services\settlementEngine.ts
+Matching lines: 5
+
+--- lines 57-77 (match at 65) ---
+   57:      2. Execute atomic database settlement
+   58:   ---------------------------------- */
+   59: 
+   60:   console.log(
+   61:     "💰 CALLING ATOMIC SETTLEMENT RPC"
+   62:   );
+   63: 
+   64:   const { data, error } = await supabase.rpc(
+   65:     "process_order_settlement",
+   66:     {
+   67:       p_order_id: settlement.order_id,
+   68:       p_reference: settlement.id,
+   69:       p_territory_id:
+   70:         settlement.territory_id ?? null,
+   71:     }
+   72:   );
+   73: 
+   74:   console.log("SETTLEMENT RPC RESULT:", {
+   75:     data,
+   76:     error,
+   77:   });
+
+--- lines 126-146 (match at 134) ---
+  126: 
+  127:     console.log(
+  128:       "Order:",
+  129:       settlement.order_id
+  130:     );
+  131: 
+  132:     console.log(
+  133:       "Rider:",
+  134:       data.rider_id
+  135:     );
+  136: 
+  137:     console.log("========================================");
+  138: 
+  139:     return {
+  140:       success: true,
+  141:       already_settled: true,
+  142:       rider_id: data.rider_id,
+  143:       data,
+  144:     };
+  145:   }
+  146: 
+
+--- lines 153-173 (match at 161) ---
+  153:     "✅ ATOMIC SETTLEMENT COMPLETED SUCCESSFULLY"
+  154:   );
+  155:   console.log(
+  156:     "Order:",
+  157:     settlement.order_id
+  158:   );
+  159:   console.log(
+  160:     "Rider:",
+  161:     data.rider_id
+  162:   );
+  163:   console.log(
+  164:     "Vendor:",
+  165:     data.vendor_id
+  166:   );
+  167:   console.log(
+  168:     "Rider Amount:",
+  169:     data.rider_amount
+  170:   );
+  171:   console.log(
+  172:     "Vendor Amount:",
+  173:     data.vendor_amount
+
+--- lines 180-191 (match at 188) ---
+  180:     "Delivery Amount:",
+  181:     data.delivery_amount
+  182:   );
+  183:   console.log("========================================");
+  184: 
+  185:   return {
+  186:     success: true,
+  187:     already_settled: false,
+  188:     rider_id: data.rider_id,
+  189:     data,
+  190:   };
+  191: }
+
+====================================================================================================
+FILE: lib\services\territory-map.ts
+Matching lines: 8
+
+--- lines 1-21 (match at 9) ---
+    1: import { supabase } from "@/lib/supabase";
+    2: import {
+    3:   RiderCurrentOrder,
+    4:   RiderOperationalStatus,
+    5: } from "@/types/rider";
+    6: 
+    7: export interface TerritoryRiderLocation {
+    8:   id: string;
+    9:   rider_id: string;
+   10:   latitude: number;
+   11:   longitude: number;
+   12:   speed: number;
+   13:   heading: number;
+   14:   accuracy: number;
+   15:   updated_at: string;
+   16: 
+   17:   profiles?: {
+   18:     full_name: string | null;
+   19:     status: string | null;
+   20:   };
+   21: 
+
+--- lines 29-49 (match at 37) ---
+   29:   const [
+   30:     { data: locationRows, error: locationError },
+   31:     { data: orderRows, error: orderError },
+   32:   ] = await Promise.all([
+   33:     supabase
+   34:       .from("rider_locations")
+   35:       .select(`
+   36:         id,
+   37:         rider_id,
+   38:         latitude,
+   39:         longitude,
+   40:         speed,
+   41:         heading,
+   42:         accuracy,
+   43:         updated_at,
+   44:         profiles:rider_id (
+   45:           full_name,
+   46:           status
+   47:         )
+   48:       `)
+   49:       .order("updated_at", { ascending: false }),
+
+--- lines 50-70 (match at 58) ---
+   50: 
+   51:     supabase
+   52:       .from("orders")
+   53:       .select(`
+   54:         id,
+   55:         order_number,
+   56:         status,
+   57:         vendor_id,
+   58:         rider_id,
+   59:         total,
+   60:         created_at
+   61:       `)
+   62:       .in("status", ["assigned", "picked_up"])
+   63:       .not("rider_id", "is", null),
+   64:   ]);
+   65: 
+   66:   if (locationError) {
+   67:     throw locationError;
+   68:   }
+   69: 
+   70:   if (orderError) {
+
+--- lines 72-92 (match at 80) ---
+   72:   }
+   73: 
+   74:   const locations = locationRows ?? [];
+   75:   const currentOrders = (orderRows ?? []) as RiderCurrentOrder[];
+   76: 
+   77:   return locations.map((location: any) => {
+   78:     const currentOrder =
+   79:       currentOrders.find(
+   80:         (order) => order.rider_id === location.rider_id
+   81:       ) ?? null;
+   82: 
+   83:     const accountStatus =
+   84:       location.profiles?.status ?? null;
+   85: 
+   86:     let operationalStatus: RiderOperationalStatus;
+   87: 
+   88:     if (
+   89:       accountStatus === "inactive" ||
+   90:       accountStatus === "suspended"
+   91:     ) {
+   92:       operationalStatus = "offline";
+
+--- lines 95-115 (match at 103) ---
+   95:     } else if (currentOrder?.status === "picked_up") {
+   96:       operationalStatus = "delivering";
+   97:     } else {
+   98:       operationalStatus = "available";
+   99:     }
+  100: 
+  101:     return {
+  102:       id: location.id,
+  103:       rider_id: location.rider_id,
+  104:       latitude: Number(location.latitude),
+  105:       longitude: Number(location.longitude),
+  106:       speed: Number(location.speed ?? 0),
+  107:       heading: Number(location.heading ?? 0),
+  108:       accuracy: Number(location.accuracy ?? 0),
+  109:       updated_at: location.updated_at,
+  110: 
+  111:       profiles: location.profiles
+  112:         ? {
+  113:             full_name: location.profiles.full_name ?? null,
+  114:             status: location.profiles.status ?? null,
+  115:           }
+
+====================================================================================================
+FILE: lib\services\walletEngine.ts
+Matching lines: 5
+
+--- lines 32-52 (match at 40) ---
+   32:     .single();
+   33: }
+   34: 
+   35: /* ----------------------------------
+   36:    Rider Wallet
+   37: ----------------------------------- */
+   38: 
+   39: export async function getRiderWallet(
+   40:   riderId: string
+   41: ) {
+   42:   return await supabase
+   43:     .from("rider_wallets")
+   44:     .select("*")
+   45:     .eq("rider_id", riderId)
+   46:     .single();
+   47: }
+   48: 
+   49: export async function updateRiderWallet(
+   50:   riderId: string,
+   51:   values: {
+   52:     available_balance?: number;
+
+--- lines 57-75 (match at 65) ---
+   57: 
+   58:   console.log("Updating Rider Wallet");
+   59:   console.log("Rider ID:", riderId);
+   60:   console.log("Values:", values);
+   61: 
+   62:   const result = await supabase
+   63:   .from("rider_wallets")
+   64:   .update(values)
+   65:   .eq("rider_id", riderId)
+   66:   .select();
+   67: 
+   68: console.log("=== RIDER WALLET UPDATE ===");
+   69: console.log("Error:", result.error);
+   70: console.log("Data:", result.data);
+   71: console.log("Count:", result.data?.length);
+   72: console.log("===========================");
+   73: 
+   74: return result;
+   75: }
+

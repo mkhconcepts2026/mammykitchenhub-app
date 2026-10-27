@@ -1,46 +1,32 @@
+
 "use client";
 
 import { Search } from "lucide-react";
 
-export function SearchBar() {
+interface SearchBarProps {
+  value: string;
+  onSearchChange: (value: string) => void;
+}
 
+export function SearchBar({ value, onSearchChange }: SearchBarProps) {
   return (
-
-    <div className="relative max-w-2xl mx-auto">
-
+    <div
+      id="vendor-search"
+      className="relative mx-auto w-full max-w-2xl scroll-mt-28"
+    >
       <Search
-        className="
-          absolute
-          left-4
-          top-1/2
-          -translate-y-1/2
-          w-5
-          h-5
-          text-gray-400
-        "
+        aria-hidden="true"
+        className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
       />
 
       <input
-        type="text"
+        type="search"
+        aria-label="Search for food, vendors, or cuisine"
         placeholder="Search for food, vendors, or cuisine..."
-        className="
-          w-full
-          pl-12
-          pr-4
-          py-4
-          bg-white
-          rounded-xl
-          border
-          border-gray-200
-          shadow-sm
-          focus:outline-none
-          focus:ring-2
-          focus:ring-orange-500
-          focus:border-transparent
-        "
+        value={value}
+        onChange={(event) => onSearchChange(event.target.value)}
+        className="w-full rounded-xl border border-gray-200 bg-white py-4 pl-12 pr-4 shadow-sm transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-orange-500"
       />
-
     </div>
-
   );
 }

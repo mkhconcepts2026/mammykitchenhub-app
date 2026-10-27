@@ -1,616 +1,535 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useCart } from "@/components/CartContext";
 
+type PaymentMethod = "cash_on_delivery" | "wallet";
+
 export default function CheckoutPage() {
+  const router = useRouter();
+  const supabase = createClient();
+  const { items, subtotal, clearCart } = useCart();
 
-  const router =
-    useRouter();
+  const [loading, setLoading] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [customerNotes, setCustomerNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] =
+    useState<PaymentMethod>("cash_on_delivery");
 
-  const supabase =
-    createClient();
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState("");
+  const [pageError, setPageError] = useState("");
+  const codCheckoutReference = useRef<string | null>(null);
 
-  const {
-    items,
-    subtotal,
-    clearCart
-  } =
-    useCart();
+  async function getCodCheckoutReference(): Promise<string> {
+    const signatureInput = JSON.stringify({
+      cart: items.map((item) => ({
+        menu_item_id: item.id,
+        quantity: item.quantity,
+      })),
+      address: deliveryAddress.trim(),
+      phone: phoneNumber.trim(),
+      notes: customerNotes.trim() || null,
+    });
 
-  const [loading,
-    setLoading] =
-    useState(false);
-    const [
-  deliveryAddress,
-  setDeliveryAddress
-] =
-  useState("");
-
-const [
-  phoneNumber,
-  setPhoneNumber
-] =
-  useState("");
-
-const [
-  customerNotes,
-  setCustomerNotes
-] =
-  useState("");
-
-const deliveryFee =
-  1500;
-
-const platformFee =
-  300;
-
-const vendorAmount =
-  subtotal;
-
-const riderAmount =
-  Math.round(
-    deliveryFee * 0.7
-  );
-
-const mkhAmount =
-  Math.round(
-    deliveryFee * 0.3
-  ) +
-  platformFee;
-
-const total =
-  subtotal +
-  deliveryFee +
-  platformFee;
-
-  async function placeOrder() {
+    // SHA-256 fingerprint; the underlying checkout details are not stored.
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(signatureInput)
+    );
+    const signature = Array.from(
+      new Uint8Array(digest),
+      (byte) => byte.toString(16).padStart(2, "0")
+    ).join("");
+    const storageKey = "mkh:cod-checkout-attempt";
 
     try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed.signature === signature &&
+          typeof parsed.reference === "string" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.reference)
+        ) {
+          codCheckoutReference.current = parsed.reference;
+          return parsed.reference;
+        }
+      }
 
-      setLoading(true);
+      const reference = crypto.randomUUID();
+      codCheckoutReference.current = reference;
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({ signature, reference })
+      );
+      return reference;
+    } catch {
+      // Fall back to the in-memory reference if browser storage is unavailable.
+      if (!codCheckoutReference.current) {
+        codCheckoutReference.current = crypto.randomUUID();
+      }
+      return codCheckoutReference.current;
+    }
+  }
 
+  const deliveryFee = 1500;
+  const platformFee = 300;
+  const total = subtotal + deliveryFee + platformFee;
+
+  const formatNaira = (amount: number) =>
+    `₦${amount.toLocaleString("en-NG")}`;
+
+  const loadWalletBalance = useCallback(async () => {
+    setWalletLoading(true);
+    setWalletError("");
+
+    try {
       const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-        data:{
-          user
+      if (authError || !user) {
+        setWalletBalance(null);
+        setWalletError("Please sign in to use your wallet.");
+        return;
+      }
+
+      const { data: wallet, error } = await supabase
+        .from("customer_wallets")
+        .select("available_balance")
+        .eq("customer_id", user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!wallet) {
+        setWalletBalance(null);
+        setWalletError(
+          "Your MKH Wallet is not activated yet. Please activate it before checkout."
+        );
+        return;
+      }
+
+      setWalletBalance(Number(wallet.available_balance));
+    } catch (error) {
+      console.error("WALLET BALANCE ERROR:", error);
+      setWalletBalance(null);
+      setWalletError(
+        "Unable to load your wallet balance. Please try again."
+      );
+    } finally {
+      setWalletLoading(false);
+    }
+  }, [supabase]);
+
+  async function placeOrder() {
+    setPageError("");
+
+    if (loading) return;
+
+    if (items.length === 0) {
+      setPageError("Your cart is empty.");
+      return;
+    }
+
+    if (!deliveryAddress.trim()) {
+      setPageError("Please enter your delivery address.");
+      return;
+    }
+
+    if (!/^0\d{10}$/.test(phoneNumber.trim())) {
+      setPageError("Enter a valid 11-digit phone number starting with 0, e.g. 08012345678.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(subtotal) ||
+      subtotal <= 0 ||
+      items.some(
+        (item) =>
+          !Number.isSafeInteger(item.quantity) ||
+          item.quantity < 1 ||
+          !Number.isFinite(item.price) ||
+          item.price < 0
+      )
+    ) {
+      setPageError("Your cart contains invalid items. Please review it.");
+      return;
+    }
+
+    if (items.some((item) => item.vendor_id !== items[0]?.vendor_id)) {
+      setPageError(
+        "Please order from one vendor at a time. Remove items from other vendors."
+      );
+      return;
+    }
+
+    if (paymentMethod === "wallet") {
+      if (walletLoading) {
+        setPageError("Please wait while we check your wallet balance.");
+        return;
+      }
+
+      if (walletBalance === null) {
+        setPageError(
+          walletError || "Your wallet balance is currently unavailable."
+        );
+        return;
+      }
+
+      if (walletBalance < total) {
+        setPageError(
+          `Insufficient wallet balance. Your order total is ${formatNaira(total)}.`
+        );
+        return;
+      }
+    }
+
+    setLoading(true);
+
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        router.push("/login");
+        return;
+      }
+
+      if (paymentMethod === "wallet") {
+        const response = await fetch("/api/customer/wallet/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cart: items.map((item) => ({
+              menu_item_id: item.id,
+              quantity: item.quantity,
+            })),
+            deliveryAddress: deliveryAddress.trim(),
+            phoneNumber: phoneNumber.trim(),
+            customerNotes: customerNotes.trim() || null,
+            checkoutReference: crypto.randomUUID(),
+          }),
+        });
+
+        const result = await response.json();
+
+        if (
+          !response.ok ||
+          result.success !== true ||
+          !result.orderId
+        ) {
+          throw new Error(
+            typeof result.message === "string"
+              ? result.message
+              : "Wallet checkout could not be completed."
+          );
         }
 
-      } =
-      await supabase
-        .auth
-        .getUser();
-
-      if (!user) {
-
-        alert(
-          "Please login first."
-        );
-
+        clearCart();
         router.push(
-          "/login"
+          `/success?order=${encodeURIComponent(result.orderId)}`
         );
-
         return;
-
       }
+
+      // Reuse the reference for identical checkout details, including after reload.
+      const checkoutReference = await getCodCheckoutReference();
+
+      const response = await fetch("/api/customer/cod/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cart: items.map((item) => ({
+            menu_item_id: item.id,
+            quantity: item.quantity,
+          })),
+          address: deliveryAddress.trim(),
+          phone: phoneNumber.trim(),
+          notes: customerNotes.trim() || null,
+          checkoutReference,
+        }),
+      });
+
+      const result = await response.json();
 
       if (
-        items.length === 0
+        !response.ok ||
+        result.success !== true ||
+        typeof result.orderId !== "string"
       ) {
-
-        alert(
-          "Cart is empty."
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "Cash on Delivery checkout could not be completed."
         );
-
-        return;
-
       }
 
-      const vendorId =
-        items[0]
-        ?.vendor_id;
-if (
-  !deliveryAddress.trim()
-) {
-
-  alert(
-    "Please enter a delivery address."
-  );
-
-  return;
-
-}
-      const {
-
-        data:order,
-        error:orderError
-
-      } =
-      await supabase
-        .from("orders")
-       .insert({
-
-  user_id:
-    user.id,
-
-  vendor_id:
-    vendorId,
-
-  food_amount:
-    subtotal,
-
-  delivery_fee:
-    deliveryFee,
-
-  platform_fee:
-    platformFee,
-
-  vendor_amount:
-    vendorAmount,
-
-  rider_amount:
-    riderAmount,
-
-  mkh_amount:
-    mkhAmount,
-
-  total,
-
-  delivery_address:
-    deliveryAddress,
-
-  customer_notes:
-    customerNotes,
-
-  customer_phone:
-    phoneNumber,
-
-  status:
-    "pending"
-
-})
-        .select()
-        .single();
-
-      if (orderError)
-        throw orderError;
-
-      const orderItems =
-        items.map(
-
-          (item)=>({
-
-            order_id:
-              order.id,
-
-            menu_item_id:
-              item.id,
-
-            name:
-              item.name,
-
-            quantity:
-              item.quantity,
-
-            price:
-              item.price
-
-          })
-
-        );
-
-      const {
-
-        error:itemError
-
-      } =
-      await supabase
-        .from(
-          "order_items"
-        )
-        .insert(
-          orderItems
-        );
-
-      if (itemError)
-        throw itemError;
-
+      codCheckoutReference.current = null;
+      try {
+        sessionStorage.removeItem("mkh:cod-checkout-attempt");
+      } catch {
+        // Storage may be unavailable; successful checkout must still continue.
+      }
       clearCart();
-
       router.push(
-
-        `/success?order=${order.id}`
-
+        `/success?order=${encodeURIComponent(result.orderId)}`
       );
-
-    }
-
-    catch(err) {
-
-      console.error(err);
-
-      alert(
-        "Failed placing order."
+    } catch (error) {
+      console.error("CHECKOUT ERROR:", error);
+      setPageError(
+        error instanceof Error
+          ? error.message
+          : "Checkout failed. Please try again."
       );
-
-    }
-
-    finally {
-
+    } finally {
       setLoading(false);
-
     }
+  }
 
+  function handlePaymentMethodChange(value: string) {
+    const method = value as PaymentMethod;
+    setPaymentMethod(method);
+    setPageError("");
+
+    if (method === "wallet") {
+      void loadWalletBalance();
+    }
   }
 
   return (
-
-    <main className="
-      min-h-screen
-      bg-gray-50
-      p-6
-    ">
-
-      <div className="
-        max-w-6xl
-        mx-auto
-        grid
-        lg:grid-cols-3
-        gap-8
-      ">
-
-        <div className="
-          lg:col-span-2
-          bg-white
-          rounded-2xl
-          shadow-sm
-          p-8
-        ">
-
-          <h1 className="
-            text-4xl
-            font-bold
-            mb-8
-          ">
-
+    <main className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-3">
+        <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-8 lg:col-span-2">
+          <h1 className="mb-8 text-3xl font-bold sm:text-4xl">
             Checkout
-
           </h1>
 
-          <div className="
-            space-y-6
-          ">
-
+          <div className="space-y-6">
             <div>
-
-              <label className="
-                block
-                font-semibold
-                mb-2
-              ">
-
-                Delivery Address
-
-              </label>
-
+              <label
+                htmlFor="deliveryAddress"
+                className="mb-2 block font-semibold"
+              >Delivery Address *</label>
               <input
-  type="text"
-  placeholder="Enter delivery address"
-  value={deliveryAddress}
-  onChange={(e)=>
-    setDeliveryAddress(
-      e.target.value
-    )
-  }
-  className="
-    w-full
-    border
-    rounded-xl
-    p-4
-  "
-/>
-
+                id="deliveryAddress"
+                type="text"
+                required
+                autoComplete="street-address"
+                maxLength={1000}
+                placeholder="Enter delivery address"
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                className="w-full rounded-xl border p-4 outline-none focus:border-orange-500"
+              />
             </div>
 
             <div>
-
-              <label className="
-                block
-                font-semibold
-                mb-2
-              ">
-
-                Phone Number
-
-              </label>
-
+              <label
+                htmlFor="phoneNumber"
+                className="mb-2 block font-semibold"
+              >Phone Number *</label>
               <input
-  type="text"
-  placeholder="08012345678"
-  value={phoneNumber}
-  onChange={(e)=>
-    setPhoneNumber(
-      e.target.value
-    )
-  }
-  className="
-    w-full
-    border
-    rounded-xl
-    p-4
-  "
-/>
-<div>
-
-  <label className="
-    block
-    font-semibold
-    mb-2
-  ">
-
-    Delivery Notes
-
-  </label>
-
-  <textarea
-    value={customerNotes}
-    onChange={(e)=>
-      setCustomerNotes(
-        e.target.value
-      )
-    }
-    placeholder="
-      Landmark,
-      gate code,
-      directions...
-    "
-    className="
-      w-full
-      border
-      rounded-xl
-      p-4
-    "
-  />
-
-</div>
+                id="phoneNumber"
+                type="tel"
+                required
+                autoComplete="tel"
+                inputMode="numeric"
+                minLength={11}
+                maxLength={11}
+                pattern="0[0-9]{10}"
+                placeholder="08012345678"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                className="w-full rounded-xl border p-4 outline-none focus:border-orange-500"
+              />
             </div>
 
             <div>
-
-              <label className="
-                block
-                font-semibold
-                mb-2
-              ">
-
-                Payment Method
-
-              </label>
-
-              <select
-                className="
-                  w-full
-                  border
-                  rounded-xl
-                  p-4
-                "
+              <label
+                htmlFor="customerNotes"
+                className="mb-2 block font-semibold"
               >
+                Delivery Notes
+              </label>
+              <textarea
+                id="customerNotes"
+                value={customerNotes}
+                onChange={(e) => setCustomerNotes(e.target.value)}
+                placeholder="Landmark, gate code, directions..."
+                maxLength={2000}
+                rows={3}
+                className="w-full rounded-xl border p-4 outline-none focus:border-orange-500"
+              />
+            </div>
 
-                <option>
-
+            <div>
+              <label
+                htmlFor="paymentMethod"
+                className="mb-2 block font-semibold"
+              >
+                Payment Method
+              </label>
+              <select
+                id="paymentMethod"
+                value={paymentMethod}
+                onChange={(e) =>
+                  handlePaymentMethodChange(e.target.value)
+                }
+                disabled={loading}
+                className="w-full rounded-xl border bg-white p-4 outline-none focus:border-orange-500"
+              >
+                <option value="cash_on_delivery">
                   Cash on Delivery
-
                 </option>
-
-                <option>
-
-                  Card Payment
-
+                <option value="wallet">MKH Wallet</option>
+                <option value="card" disabled>
+                  Card Payment — Coming Soon
                 </option>
-
               </select>
-
             </div>
 
-          </div>
+            {paymentMethod === "wallet" && (
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
+                <div className="text-sm font-medium text-gray-600">
+                  Available MKH Wallet Balance
+                </div>
 
-        </div>
+                <div className="mt-2 text-2xl font-bold text-gray-900">
+                  {walletLoading
+                    ? "Checking balance..."
+                    : walletBalance === null
+                      ? "Unavailable"
+                      : formatNaira(walletBalance)}
+                </div>
 
-        <div className="
-          bg-white
-          rounded-2xl
-          shadow-sm
-          p-8
-          h-fit
-        ">
+                {walletError && (
+                  <p className="mt-3 text-sm text-red-700">
+                    {walletError}
+                  </p>
+                )}
 
-          <h2 className="
-            text-2xl
-            font-bold
-            mb-6
-          ">
-
-            Order Summary
-
-          </h2>
-
-          <div className="
-            space-y-4
-            mb-8
-          ">
-
-            {
-
-              items.map(
-
-                (item)=>(
-
-                  <div
-                    key={item.id}
-                    className="
-                      flex
-                      justify-between
-                    "
+                {walletBalance !== null && (
+                  <p
+                    className={`mt-3 text-sm ${
+                      walletBalance >= total
+                        ? "text-green-700"
+                        : "text-red-700"
+                    }`}
                   >
+                    {walletBalance >= total
+                      ? "Your balance covers this order."
+                      : `You need ${formatNaira(total - walletBalance)} more to pay for this order.`}
+                  </p>
+                )}
 
-                    <div>
+                <button
+                  type="button"
+                  onClick={() => void loadWalletBalance()}
+                  disabled={walletLoading || loading}
+                  className="mt-3 text-sm font-semibold text-orange-700 underline disabled:opacity-50"
+                >
+                  Refresh balance
+                </button>
+              </div>
+            )}
 
-                      {item.quantity}x {item.name}
+            {pageError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+              >
+                {pageError}
+              </div>
+            )}
+          </div>
+        </section>
 
-                    </div>
+        <aside className="h-fit rounded-2xl bg-white p-6 shadow-sm sm:p-8">
+          <h2 className="mb-6 text-2xl font-bold">Order Summary</h2>
 
-                    <div>
+          <div className="mb-8 space-y-4">
+            {items.map((item) => (
+              <div
+                key={item.id}
+                className="flex justify-between gap-4 text-sm"
+              >
+                <span>
+                  {item.quantity} × {item.name}
+                </span>
+                <span className="shrink-0">
+                  {formatNaira(item.price * item.quantity)}
+                </span>
+              </div>
+            ))}
 
-                      ₦
-                      {
-
-                        (
-                          item.price *
-                          item.quantity
-                        )
-                        .toLocaleString()
-
-                      }
-
-                    </div>
-
-                  </div>
-
-                )
-
-              )
-
-            }
-
+            {items.length === 0 && (
+              <p className="text-sm text-gray-500">
+                Your cart is empty.
+              </p>
+            )}
           </div>
 
-          <div className="
-            border-t
-            pt-6
-            space-y-3
-          ">
-
-            <div className="
-              flex
-              justify-between
-            ">
-
-              <span>
-
-                Subtotal
-
-              </span>
-
-              <span>
-
-                ₦
-                {subtotal.toLocaleString()}
-
-              </span>
-
+          <div className="space-y-3 border-t pt-6">
+            <div className="flex justify-between gap-4">
+              <span>Subtotal</span>
+              <span>{formatNaira(subtotal)}</span>
             </div>
 
-         <div className="
-  flex
-  justify-between
-">
+            <div className="flex justify-between gap-4">
+              <span>Delivery Fee</span>
+              <span>{formatNaira(deliveryFee)}</span>
+            </div>
 
-  <span>
+            <div className="flex justify-between gap-4">
+              <span>Service Fee</span>
+              <span>{formatNaira(platformFee)}</span>
+            </div>
 
-    Delivery Fee
-
-  </span>
-
-  <span>
-
-    ₦
-    {deliveryFee.toLocaleString()}
-
-  </span>
-
-</div>
-
-<div className="
-  flex
-  justify-between
-">
-
-  <span>
-
-    Service Fee
-
-  </span>
-
-  <span>
-
-    ₦
-    {platformFee.toLocaleString()}
-
-  </span>
-
-</div>
-
-<div className="
-  flex
-  justify-between
-  text-xl
-  font-bold
-">
-
-  <span>
-
-    Total
-
-  </span>
-
-  <span>
-
-    ₦
-    {total.toLocaleString()}
-
-  </span>
-
-</div>
-
+            <div className="flex justify-between gap-4 border-t pt-4 text-xl font-bold">
+              <span>Total</span>
+              <span>{formatNaira(total)}</span>
+            </div>
           </div>
 
           <button
-            onClick={
-              placeOrder
-            }
+            type="button"
+            onClick={placeOrder}
             disabled={
-              loading
+              !deliveryAddress.trim() ||
+              !/^0\d{10}$/.test(phoneNumber.trim()) ||
+              loading ||
+              items.length === 0 ||
+              (paymentMethod === "wallet" &&
+                (walletLoading ||
+                  walletBalance === null ||
+                  walletBalance < total))
             }
-            className="
-              w-full
-              mt-8
-              bg-orange-500
-              text-white
-              p-4
-              rounded-xl
-              font-bold
-            "
+            className="mt-8 w-full rounded-xl bg-orange-500 p-4 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-
-            {
-
-              loading
-              ? "Placing Order..."
-              : "Place Order"
-
-            }
-
+            {loading
+              ? paymentMethod === "wallet"
+                ? "Processing Wallet Payment..."
+                : "Placing Order..."
+              : paymentMethod === "wallet"
+                ? "Pay with MKH Wallet"
+                : "Place Order"}
           </button>
 
-        </div>
-
+          <p className="mt-4 text-xs leading-5 text-gray-500">
+            Wallet payments are processed by the MKH server. Card payment
+            is not yet available.
+          </p>
+        </aside>
       </div>
-
     </main>
-
   );
-
 }

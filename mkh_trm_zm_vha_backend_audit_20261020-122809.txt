@@ -1,0 +1,713 @@
+﻿MKH ACTIVE TRM + FUTURE ZM/VHA REASSIGNMENT BACKEND AUDIT (READ-ONLY)
+Project: C:\MKH\mkh-app
+Generated: 2026-10-20 12:28:09
+Files scanned: 170
+Scope: active TRM dashboard, API/backend, Supabase/migration SQL, service code, and related components.
+Excluded: app\manager-v3 and app\manager-dashboard-v3 (retired/truncated dashboard), dependencies, build output, backups.
+No source files, database objects, or Supabase policies were modified.
+
+IMPORTANT: This report is a source-code audit only. It cannot prove the live Supabase policies match local migrations.
+
+====================================================================================================
+FILE: app\api\admin\employees\create\route.ts
+MATCHING LINES: 2
+--- lines 156-162 ---
+  156:             role.system_role,
+  157: 
+  158:           // NEW: Link profile to operational territory
+  159:           territory_id:
+  160:             employee.territoryId || null,
+  161: 
+  162:           status:
+--- lines 230-236 ---
+  230:         lga_id:
+  231:           employee.lgaId || null,
+  232: 
+  233:         territory_id:
+  234:           employee.territoryId || null,
+  235: 
+  236:         office_location:
+
+====================================================================================================
+FILE: app\territory-relationship-manager\live-operations\page.tsx
+MATCHING LINES: 2
+--- lines 41-47 ---
+   41: 
+   42: const { data: events, error: eventsError } =
+   43:   await supabase
+   44:     .from("order_events")
+   45:     .select(`
+   46:       id,
+   47:       title,
+--- lines 172-178 ---
+  172:       {
+  173:         event: "INSERT",
+  174:         schema: "public",
+  175:         table: "order_events",
+  176:       },
+  177:       () => {
+  178:         loadOrders();
+
+====================================================================================================
+FILE: app\territory-relationship-manager\orders\page.tsx
+MATCHING LINES: 3
+--- lines 32-38 ---
+   32:           location,
+   33:           status
+   34:         ),
+   35:         rider:profiles!orders_rider_id_fkey (
+   36:           id,
+   37:           full_name,
+   38:           phone
+--- lines 102-111 ---
+  102:         {
+  103:           event: "*",
+  104:           schema: "public",
+  105:           table: "order_events",
+  106:         },
+  107:         () => {
+  108:           console.log("ORDER EVENT RECEIVED: order_events");
+  109:           refreshWorkspace();
+  110:         }
+  111:       )
+
+====================================================================================================
+FILE: app\territory-relationship-manager\page.tsx
+MATCHING LINES: 2
+--- lines 211-217 ---
+  211:   async function loadLiveEvents() {
+  212:     try {
+  213:       const { data, error } = await supabase
+  214:         .from("order_events")
+  215:         .select("*")
+  216:         .order("created_at", {
+  217:           ascending: false,
+--- lines 255-261 ---
+  255:         {
+  256:           event: "INSERT",
+  257:           schema: "public",
+  258:           table: "order_events",
+  259:         },
+  260:         (payload) => {
+  261:           console.log(
+
+====================================================================================================
+FILE: app\territory-relationship-manager\riders\page.tsx
+MATCHING LINES: 3
+--- lines 44-59 ---
+   44: 
+   45:       const merged: RiderRecord[] = profiles.map((profile) => {
+   46:         const wallet = wallets.find(
+   47:           (w) => w.rider_id === profile.id
+   48:         );
+   49: 
+   50:         const location = locations.find(
+   51:           (l) => l.rider_id === profile.id
+   52:         );
+   53: 
+   54:         const currentOrder =
+   55:           currentOrders.find(
+   56:             (order) => order.rider_id === profile.id
+   57:           ) ?? null;
+   58: 
+   59:         const operationalStatus =
+
+====================================================================================================
+FILE: app\territory-relationship-manager\vendors\page.tsx
+MATCHING LINES: 2
+--- lines 50-62 ---
+   50:         vendorRows.map((vendor) => {
+   51:           const wallet =
+   52:             walletRows.find(
+   53:               (w) => w.vendor_id === vendor.id
+   54:             );
+   55: 
+   56:           const transactions =
+   57:             transactionRows.filter(
+   58:               (transaction) =>
+   59:                 transaction.vendor_id === vendor.id
+   60:             );
+   61: 
+   62:           return {
+
+====================================================================================================
+FILE: components\CartContext.tsx
+MATCHING LINES: 5
+--- lines 10-16 ---
+   10: 
+   11: export type CartItem = {
+   12:   id: string;
+   13:   vendor_id: string;
+   14:   name: string;
+   15:   description?: string;
+   16:   price: number;
+--- lines 51-57 ---
+   51: 
+   52:     if (
+   53:       !item.id ||
+   54:       !item.vendor_id ||
+   55:       !item.name ||
+   56:       !Number.isFinite(price) ||
+   57:       price < 0 ||
+--- lines 63-69 ---
+   63: 
+   64:     const differentVendor = items.some(
+   65:       (existingItem) =>
+   66:         existingItem.vendor_id !== item.vendor_id
+   67:     );
+   68: 
+   69:     if (differentVendor) {
+--- lines 86-98 ---
+   86:       const existingItem = currentItems.find(
+   87:         (currentItem) =>
+   88:           currentItem.id === item.id &&
+   89:           currentItem.vendor_id === item.vendor_id
+   90:       );
+   91: 
+   92:       if (existingItem) {
+   93:         return currentItems.map((currentItem) =>
+   94:           currentItem.id === item.id &&
+   95:           currentItem.vendor_id === item.vendor_id
+   96:             ? {
+   97:                 ...currentItem,
+   98:                 quantity: currentItem.quantity + quantity,
+
+====================================================================================================
+FILE: components\manager\ExceptionManagementPanel.tsx
+MATCHING LINES: 3
+--- lines 8-20 ---
+    8: type Props = {
+    9:   exceptions: Order[];
+   10:   onViewOrder: (order: Order) => void;
+   11:   onAssignRider: (order: Order) => void;
+   12: };
+   13: 
+   14: export default function ExceptionManagementPanel({
+   15:   exceptions,
+   16:   onViewOrder,
+   17:   onAssignRider,
+   18: }: Props) {
+   19:   return (
+   20:     <div
+--- lines 138-144 ---
+  138: 
+  139:                 {order.status === "ready_for_pickup" && (
+  140:                   <button
+  141:                     onClick={() => onAssignRider(order)}
+  142:                     className="
+  143:                       bg-orange-500
+  144:                       text-white
+
+====================================================================================================
+FILE: components\maps\LiveDispatchMap.tsx
+MATCHING LINES: 5
+--- lines 24-30 ---
+   24: } from "react";
+   25: 
+   26: type RiderLocation = {
+   27:   rider_id: string;
+   28:   latitude: number;
+   29:   longitude: number;
+   30: };
+--- lines 161-169 ---
+  161: 
+  162:        <RiderMarker
+  163: 
+  164:   key={location.rider_id}
+  165: 
+  166:   rider_id={location.rider_id}
+  167: 
+  168:   latitude={Number(location.latitude)}
+  169: 
+--- lines 173-179 ---
+  173: 
+  174:     riders.find(
+  175: 
+  176:       (r) => r.id === location.rider_id
+  177: 
+  178:     )?.currentStatus
+  179: 
+--- lines 183-189 ---
+  183: 
+  184:     const rider = riders.find(
+  185: 
+  186:       (r) => r.id === location.rider_id
+  187: 
+  188:     );
+  189: 
+
+====================================================================================================
+FILE: components\maps\RiderMarker.tsx
+MATCHING LINES: 3
+--- lines 4-10 ---
+    4: 
+    5: type Props = {
+    6: 
+    7:   rider_id: string;
+    8: 
+    9:   latitude: number;
+   10: 
+--- lines 18-24 ---
+   18: 
+   19: export default function RiderMarker({
+   20: 
+   21:   rider_id,
+   22: 
+   23:   latitude,
+   24: 
+--- lines 58-64 ---
+   58: 
+   59:       }}
+   60: 
+   61:       title={`MKH Rider ${rider_id}`}
+   62: 
+   63: onClick={onClick}
+   64: 
+
+====================================================================================================
+FILE: components\territory-manager\AppSidebar.tsx
+MATCHING LINES: 8
+--- lines 20-56 ---
+   20:   {
+   21:     label: "Executive Dashboard",
+   22:     icon: LayoutDashboard,
+   23:     href: "/territory-relationship-manager",
+   24:   },
+   25:   {
+   26:     label: "Live Operations",
+   27:     icon: Radio,
+   28:     href: "/territory-relationship-manager/live-operations",
+   29:   },
+   30:   {
+   31:     label: "Orders",
+   32:     icon: ShoppingBag,
+   33:     href: "/territory-relationship-manager/orders",
+   34:   },
+   35:   {
+   36:     label: "Riders",
+   37:     icon: Bike,
+   38:     href: "/territory-relationship-manager/riders",
+   39:   },
+   40:   {
+   41:     label: "Vendors",
+   42:     icon: Store,
+   43:     href: "/territory-relationship-manager/vendors",
+   44:   },
+   45:   {
+   46:     label: "Territory Map",
+   47:     icon: Map,
+   48:     href: "/territory-relationship-manager/territory-map",
+   49:   },
+   50:   {
+   51:     label: "Finance",
+   52:     icon: Wallet,
+   53:     href: "/territory-relationship-manager/finance",
+   54:   },
+   55: ];
+   56: 
+--- lines 75-81 ---
+   75:           const Icon = item.icon;
+   76: 
+   77:           const active =
+   78:             item.href === "/territory-relationship-manager"
+   79:               ? pathname === item.href
+   80:               : pathname === item.href ||
+   81:                 pathname.startsWith(item.href + "/");
+
+====================================================================================================
+FILE: components\territory-manager\AuditTrail.tsx
+MATCHING LINES: 1
+--- lines 18-24 ---
+   18: 
+   19:   async function loadOrderEvents() {
+   20:     const { data, error } = await supabase
+   21:       .from("order_events")
+   22:       .select("*")
+   23:       .eq("order_id", order.id)
+   24:       .order("created_at", {
+
+====================================================================================================
+FILE: components\territory-manager\RiderLocationPanel.tsx
+MATCHING LINES: 3
+--- lines 4-18 ---
+    4:   id: string;
+    5:   order_number: string | null;
+    6:   status: string;
+    7:   vendor_id: string | null;
+    8:   rider_id: string | null;
+    9:   total: number;
+   10:   created_at: string;
+   11: }
+   12: 
+   13: interface Rider {
+   14:   id: string;
+   15:   rider_id: string;
+   16:   latitude: number;
+   17:   longitude: number;
+   18:   speed: number;
+
+====================================================================================================
+FILE: components\territory-manager\SmartExceptionDetection.tsx
+MATCHING LINES: 1
+--- lines 8-14 ---
+    8: 
+    9:   const exceptions = [];
+   10: 
+   11: if (!order?.rider_id && order?.status !== "delivered" && order?.status !== "cancelled") {
+   12:   exceptions.push({
+   13:     title: "Rider Assignment Delay",
+   14:     description:
+
+====================================================================================================
+FILE: components\territory-manager\TerritoryMap.tsx
+MATCHING LINES: 3
+--- lines 6-20 ---
+    6:   id: string;
+    7:   order_number: string | null;
+    8:   status: string;
+    9:   vendor_id: string | null;
+   10:   rider_id: string | null;
+   11:   total: number;
+   12:   created_at: string;
+   13: }
+   14: 
+   15: interface RiderLocation {
+   16:   id: string;
+   17:   rider_id: string;
+   18:   latitude: number;
+   19:   longitude: number;
+   20:   speed: number;
+
+====================================================================================================
+FILE: components\VendorDetail.tsx
+MATCHING LINES: 1
+--- lines 47-53 ---
+   47: 
+   48:     const cartItem = {
+   49:       id: String(item.id),
+   50:       vendor_id: String(vendor.id),
+   51:       name: String(item.name),
+   52:       description: item.description ?? "",
+   53:       price: Number(item.price),
+
+====================================================================================================
+FILE: lib\employees\createEmployee.ts
+MATCHING LINES: 1
+--- lines 116-122 ---
+  116:         lga_id:
+  117:           employee.lgaId || null,
+  118: 
+  119:         territory_id:
+  120:           employee.territoryId || null,
+  121: 
+  122:         reports_to:
+
+====================================================================================================
+FILE: lib\services\finance.ts
+MATCHING LINES: 5
+--- lines 5-11 ---
+    5:     .from("vendor_wallets")
+    6:     .select(`
+    7:       *,
+    8:       vendors!vendor_wallets_vendor_id_fkey (
+    9:         id,
+   10:         name,
+   11:         status
+--- lines 23-34 ---
+   23:     .from("financial_ledger")
+   24:     .select(`
+   25:       *,
+   26:       vendors:vendor_id (
+   27:         id,
+   28:         name,
+   29:         status
+   30:       ),
+   31:       profiles:rider_id (
+   32:         id,
+   33:         full_name,
+   34:         status
+--- lines 46-52 ---
+   46:     .from("rider_wallets")
+   47:     .select(`
+   48:       *,
+   49:       profiles!rider_wallets_rider_id_fkey (
+   50:         id,
+   51:         full_name,
+   52:         status
+--- lines 64-70 ---
+   64:     .from("rider_earnings")
+   65:     .select(`
+   66:       *,
+   67:       profiles!rider_earnings_rider_id_fkey (
+   68:         id,
+   69:         full_name,
+   70:         status
+
+====================================================================================================
+FILE: lib\services\financialLedger.ts
+MATCHING LINES: 2
+--- lines 37-43 ---
+   37:   return await supabase
+   38:     .from("financial_ledger")
+   39:     .select("*")
+   40:     .eq("vendor_id", vendorId)
+   41:     .order("created_at", {
+   42:       ascending: false,
+   43:     });
+--- lines 49-55 ---
+   49:   return await supabase
+   50:     .from("financial_ledger")
+   51:     .select("*")
+   52:     .eq("rider_id", riderId)
+   53:     .order("created_at", {
+   54:       ascending: false,
+   55:     });
+
+====================================================================================================
+FILE: lib\services\orders.ts
+MATCHING LINES: 4
+--- lines 7-15 ---
+    7:       *,
+    8:        vendors(name),
+    9:   profiles!orders_user_id_fkey(full_name),
+   10:   riders:profiles!orders_rider_id_fkey(full_name)
+   11:       ),
+   12:       rider:profiles!orders_rider_id_fkey (
+   13:         id,
+   14:         full_name,
+   15:         phone
+--- lines 32-45 ---
+   32:   return data ?? [];
+   33: }
+   34: 
+   35: export async function assignRider(
+   36:   orderId: string,
+   37:   riderId: string
+   38: ) {
+   39:   const { error } = await supabase
+   40:     .from("orders")
+   41:     .update({
+   42:       rider_id: riderId,
+   43:       status: "assigned",
+   44:     })
+   45:     .eq("id", orderId);
+
+====================================================================================================
+FILE: lib\services\reportingEngine.ts
+MATCHING LINES: 2
+--- lines 8-14 ---
+    8:   return await supabase
+    9:     .from("financial_ledger")
+   10:     .select("amount, entry_type")
+   11:     .eq("vendor_id", vendorId);
+   12: }
+   13: 
+   14: export async function getRiderFinancialSummary(
+--- lines 17-23 ---
+   17:   return await supabase
+   18:     .from("financial_ledger")
+   19:     .select("amount, entry_type")
+   20:     .eq("rider_id", riderId);
+   21: }
+   22: 
+   23: export async function getPlatformRevenue() {
+
+====================================================================================================
+FILE: lib\services\riders.ts
+MATCHING LINES: 3
+--- lines 64-77 ---
+   64:         id,
+   65:         order_number,
+   66:         status,
+   67:         vendor_id,
+   68:         rider_id,
+   69:         total,
+   70:         created_at
+   71:       `
+   72:     )
+   73:     .in("status", ["assigned", "picked_up"])
+   74:     .not("rider_id", "is", null);
+   75: 
+   76:   if (error) throw error;
+   77: 
+
+====================================================================================================
+FILE: lib\services\settlementEngine.ts
+MATCHING LINES: 7
+--- lines 66-73 ---
+   66:     {
+   67:       p_order_id: settlement.order_id,
+   68:       p_reference: settlement.id,
+   69:       p_territory_id:
+   70:         settlement.territory_id ?? null,
+   71:     }
+   72:   );
+   73: 
+--- lines 131-145 ---
+  131: 
+  132:     console.log(
+  133:       "Rider:",
+  134:       data.rider_id
+  135:     );
+  136: 
+  137:     console.log("========================================");
+  138: 
+  139:     return {
+  140:       success: true,
+  141:       already_settled: true,
+  142:       rider_id: data.rider_id,
+  143:       data,
+  144:     };
+  145:   }
+--- lines 158-168 ---
+  158:   );
+  159:   console.log(
+  160:     "Rider:",
+  161:     data.rider_id
+  162:   );
+  163:   console.log(
+  164:     "Vendor:",
+  165:     data.vendor_id
+  166:   );
+  167:   console.log(
+  168:     "Rider Amount:",
+--- lines 185-191 ---
+  185:   return {
+  186:     success: true,
+  187:     already_settled: false,
+  188:     rider_id: data.rider_id,
+  189:     data,
+  190:   };
+  191: }
+
+====================================================================================================
+FILE: lib\services\territory-map.ts
+MATCHING LINES: 8
+--- lines 6-12 ---
+    6: 
+    7: export interface TerritoryRiderLocation {
+    8:   id: string;
+    9:   rider_id: string;
+   10:   latitude: number;
+   11:   longitude: number;
+   12:   speed: number;
+--- lines 34-47 ---
+   34:       .from("rider_locations")
+   35:       .select(`
+   36:         id,
+   37:         rider_id,
+   38:         latitude,
+   39:         longitude,
+   40:         speed,
+   41:         heading,
+   42:         accuracy,
+   43:         updated_at,
+   44:         profiles:rider_id (
+   45:           full_name,
+   46:           status
+   47:         )
+--- lines 54-66 ---
+   54:         id,
+   55:         order_number,
+   56:         status,
+   57:         vendor_id,
+   58:         rider_id,
+   59:         total,
+   60:         created_at
+   61:       `)
+   62:       .in("status", ["assigned", "picked_up"])
+   63:       .not("rider_id", "is", null),
+   64:   ]);
+   65: 
+   66:   if (locationError) {
+--- lines 77-83 ---
+   77:   return locations.map((location: any) => {
+   78:     const currentOrder =
+   79:       currentOrders.find(
+   80:         (order) => order.rider_id === location.rider_id
+   81:       ) ?? null;
+   82: 
+   83:     const accountStatus =
+--- lines 100-106 ---
+  100: 
+  101:     return {
+  102:       id: location.id,
+  103:       rider_id: location.rider_id,
+  104:       latitude: Number(location.latitude),
+  105:       longitude: Number(location.longitude),
+  106:       speed: Number(location.speed ?? 0),
+
+====================================================================================================
+FILE: lib\services\vendors.ts
+MATCHING LINES: 1
+--- lines 41-47 ---
+   41:     .order("created_at", { ascending: false });
+   42: 
+   43:   if (vendorId) {
+   44:     query = query.eq("vendor_id", vendorId);
+   45:   }
+   46: 
+   47:   const { data, error } = await query;
+
+====================================================================================================
+FILE: lib\services\walletEngine.ts
+MATCHING LINES: 4
+--- lines 12-18 ---
+   12:   return await supabase
+   13:     .from("vendor_wallets")
+   14:     .select("*")
+   15:     .eq("vendor_id", vendorId)
+   16:     .single();
+   17: }
+   18: 
+--- lines 27-33 ---
+   27:   return await supabase
+   28:     .from("vendor_wallets")
+   29:     .update(values)
+   30:     .eq("vendor_id", vendorId)
+   31:     .select()
+   32:     .single();
+   33: }
+--- lines 42-48 ---
+   42:   return await supabase
+   43:     .from("rider_wallets")
+   44:     .select("*")
+   45:     .eq("rider_id", riderId)
+   46:     .single();
+   47: }
+   48: 
+--- lines 62-68 ---
+   62:   const result = await supabase
+   63:   .from("rider_wallets")
+   64:   .update(values)
+   65:   .eq("rider_id", riderId)
+   66:   .select();
+   67: 
+   68: console.log("=== RIDER WALLET UPDATE ===");
+
+====================================================================================================
+FILE: package-lock.json
+MATCHING LINES: 2
+--- lines 3229-3235 ---
+ 3229:     "node_modules/electron-to-chromium": {
+ 3230:       "version": "1.5.360",
+ 3231:       "resolved": "https://registry.npmjs.org/electron-to-chromium/-/electron-to-chromium-1.5.360.tgz",
+ 3232:       "integrity": "sha512-GkcBt6YYAw9SxFWn+xVar4cLVGlXVuswwtRLBozi2zp0GjXs4ZnOrqV4zbXzg35n7w81hCkyJNYicgXlVHAmBA==",
+ 3233:       "dev": true,
+ 3234:       "license": "ISC"
+ 3235:     },
+--- lines 5532-5538 ---
+ 5532:     "node_modules/object-inspect": {
+ 5533:       "version": "1.13.4",
+ 5534:       "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz",
+ 5535:       "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==",
+ 5536:       "dev": true,
+ 5537:       "license": "MIT",
+ 5538:       "engines": {
+
+====================================================================================================
+AUDIT SUMMARY
+Files examined: 170
+Relevant matching lines before context expansion: 86
+Review this report to identify the authoritative role names/IDs, live RPC pathway, existing order event/audit conventions, and territory-zone-vendor relationships.
+Do not treat a role label in frontend code as proof of database authorization; live Supabase RLS/functions must still be verified before granting ZM reassignment.

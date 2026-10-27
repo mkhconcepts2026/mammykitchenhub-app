@@ -1,0 +1,1709 @@
+"use client";
+import VendorSidebar from "@/components/vendor/VendorSidebar";
+import VendorDashboardTab from "@/components/vendor/VendorDashboardTab";
+import VendorOrdersTab from "@/components/vendor/VendorOrdersTab";
+import VendorMenuTab from "@/components/vendor/VendorMenuTab";
+import VendorKYCTab from "@/components/vendor/VendorKYCTab";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+
+
+type Tab =
+  | "dashboard"
+  | "orders"
+  | "menu"
+  | "earnings"
+  | "kyc";
+
+export default function VendorDashboardV2() {
+
+  const router =
+    useRouter();
+
+  const supabase =
+    createClient();
+
+  const [loading,setLoading] =
+    useState(true);
+
+  const [vendorName,setVendorName] =
+    useState("");
+
+  const [kitchenImage, setKitchenImage] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState("");
+  const [photoError, setPhotoError] = useState("");
+
+  const [currentTab, setCurrentTab] =
+  useState<Tab>("dashboard");
+  
+    const [orders, setOrders] =
+  useState<any[]>([]);
+
+const [loadingOrders, setLoadingOrders] =
+  useState(false);
+
+    const [menuItems,setMenuItems] = useState<any[]>([]);
+const [showForm,setShowForm] = useState(false);
+const [editingId,setEditingId] = useState<string | null>(null);
+
+const [form,setForm] = useState({
+  name:"",
+  description:"",
+  category:"Rice",
+  image:"",
+  price:"",
+  available:true
+});
+const [imageFile,setImageFile] =
+  useState<File | null>(null);
+
+  const [availableBalance, setAvailableBalance] =
+  useState(0);
+
+const [pendingBalance, setPendingBalance] =
+  useState(0);
+
+const nextFriday = new Date();
+
+while (nextFriday.getDay() !== 5) {
+  nextFriday.setDate(
+    nextFriday.getDate() + 1
+  );
+}
+
+const nextFridayText =
+  nextFriday.toLocaleDateString(
+    "en-NG",
+    {
+      weekday: "long",
+      month: "short",
+      day: "numeric"
+    }
+  );
+
+const [totalEarned, setTotalEarned] =
+  useState(0);
+
+const successfulOrders =
+  orders.filter(
+    (order) =>
+      order.status === "delivered"
+  ).length;
+
+const [vendorWallet, setVendorWallet] =
+  useState<any>(null);
+
+  const [payoutHistory, setPayoutHistory] =
+  useState<any[]>([]);
+
+  const [cacFile, setCacFile] =
+  useState<File | null>(null);
+
+const [idFile, setIdFile] =
+  useState<File | null>(null);
+
+const [selfieFile, setSelfieFile] =
+  useState<File | null>(null);
+
+const [bankName, setBankName] =
+  useState("");
+
+const [accountNumber, setAccountNumber] =
+  useState("");
+
+  
+const [accountName, setAccountName] =
+  useState("");
+
+  const [selectedBank, setSelectedBank] =
+  useState("");
+
+const [verifiedAccountName,
+  setVerifiedAccountName] =
+  useState("");
+
+
+const [nextPayoutText, setNextPayoutText] =
+  useState("");
+
+const [verifyingAccount,
+  setVerifyingAccount] =
+  useState(false);
+
+const [kycStatus, setKycStatus] =
+  useState("Not Submitted");
+const [kycReviewNotes, setKycReviewNotes] = useState("");
+
+  const [submittingKyc, setSubmittingKyc] =
+  useState(false);
+
+  const [isSubmittingPayout, setIsSubmittingPayout] =
+  useState(false);
+const [isPayoutWindowOpen, setIsPayoutWindowOpen] =
+  useState(false);
+  const [hasPendingPayout, setHasPendingPayout] =
+  useState(false);
+
+  async function loadVendor() {
+
+    try {
+
+      const {
+        data:{ user }
+      } =
+      await supabase
+        .auth
+        .getUser();
+
+      if(!user){
+
+        router.push("/login");
+        return;
+
+      }
+
+      const {
+        data:profile
+      } =
+      await supabase
+        .from("profiles")
+        .select("vendor_id")
+        .eq("id",user.id)
+        .single();
+        console.log("PROFILE:", profile);
+
+      if(!profile?.vendor_id){
+
+        setLoading(false);
+        return;
+
+      }
+
+   const {
+  data: wallet
+} =
+await supabase
+  .from("vendor_wallets")
+  .select("*")
+  .eq(
+    "vendor_id",
+    profile.vendor_id
+  )
+  .single();
+
+setVendorWallet(
+  wallet
+);
+
+console.log(
+  "VENDOR WALLET:",
+  wallet
+);
+
+const {
+  data: pendingRequest
+} =
+await supabase
+  .from("payout_requests")
+  .select("id")
+  .eq(
+    "requester_id",
+    profile.vendor_id
+  )
+  .eq(
+    "status",
+    "pending"
+  )
+  .maybeSingle();
+
+setHasPendingPayout(
+  !!pendingRequest
+);
+
+const {
+  data: payouts
+} =
+await supabase
+  .from("payout_requests")
+  .select("*")
+  .eq(
+    "requester_id",
+    profile.vendor_id
+  )
+  .order(
+    "requested_at",
+    {
+      ascending:false
+    }
+  );
+
+setPayoutHistory(
+  payouts || []
+);
+
+if (wallet) {
+
+  let availableBalance =
+    Number(
+      wallet.available_balance || 0
+    );
+
+  let pendingBalance =
+    Number(
+      wallet.accrued_balance || 0
+    );
+
+  // Automatically move matured earnings
+  // into Available Balance during
+  // payout window.
+
+  if (
+
+    isPayoutWindowOpen &&
+
+    pendingBalance > 0
+
+  ) {
+
+    availableBalance +=
+      pendingBalance;
+
+    pendingBalance = 0;
+
+  }
+
+  setAvailableBalance(
+    availableBalance
+  );
+
+  setPendingBalance(
+    pendingBalance
+  );
+
+  setTotalEarned(
+    Number(
+      wallet.lifetime_earnings || 0
+    )
+  );
+
+}
+
+      const {
+        data:vendor
+      } =
+      await supabase
+        .from("vendors")
+        .select("name,image")
+        .eq(
+          "id",
+          profile.vendor_id
+        )
+        .single();
+
+      setVendorName(
+        vendor?.name || ""
+      );
+      setKitchenImage(vendor?.image || "");
+
+    }
+
+    catch(error){
+
+      console.error(error);
+
+    }
+
+    finally{
+
+      setLoading(false);
+
+    }
+
+  }
+async function loadMenuItems(){
+
+  const {
+    data:{ user }
+  } = await supabase.auth.getUser();
+
+  if(!user) return;
+
+  const {
+    data:profile
+  } = await supabase
+    .from("profiles")
+    .select("vendor_id")
+    .eq("id", user.id)
+    .single();
+
+  if(!profile?.vendor_id) return;
+
+  const { data } = await supabase
+    .from("menu_items")
+    .select("*")
+    .eq("vendor_id", profile.vendor_id)
+    .order("created_at", {
+      ascending:false
+    });
+
+  setMenuItems(data || []);
+
+}
+
+function checkPayoutWindow() {
+
+  const now = new Date();
+
+  console.log(
+  "CURRENT TIME:",
+  now.toString()
+);
+
+console.log(
+  "DAY:",
+  now.getDay()
+);
+
+console.log(
+  "HOUR:",
+  now.getHours()
+);
+
+  const day = now.getDay();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+
+  const fridayOpen =
+    day === 5 &&
+    hour >= 16;
+
+  const saturdayOpen =
+    day === 6;
+
+  const sundayOpen =
+    day === 0 &&
+    (
+      hour < 23 ||
+      (
+        hour === 23 &&
+        minute <= 59
+      )
+    );
+
+  const payoutWindowOpen =
+    fridayOpen ||
+    saturdayOpen ||
+    sundayOpen;
+
+    console.log(
+  "PAYOUT WINDOW:",
+  payoutWindowOpen
+);
+
+  setIsPayoutWindowOpen(
+    payoutWindowOpen
+  );
+
+  if (payoutWindowOpen) {
+
+    setNextPayoutText(
+      "Withdrawals close Sunday at 11:59 PM"
+    );
+
+  } else {
+
+    setNextPayoutText(
+      "Next withdrawal window opens Friday at 4:00 PM"
+    );
+
+  }
+
+}
+
+async function loadOrders() {
+
+
+  try {
+
+    setLoadingOrders(true);
+
+    const {
+      data:{ user }
+    } =
+    await supabase
+      .auth
+      .getUser();
+
+    if(!user){
+
+      setLoadingOrders(false);
+      return;
+
+    }
+
+    const {
+      data:profile
+    } =
+    await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq("id", user.id)
+      .single();
+
+    if(!profile?.vendor_id){
+
+      setLoadingOrders(false);
+      return;
+
+    }
+
+    const {
+      data,
+      error
+    } =
+   await supabase
+  .from("orders")
+  .select(`
+    *,
+    profiles!orders_user_id_fkey(
+      full_name,
+      phone,
+      email
+    )
+  `)
+      .eq(
+        "vendor_id",
+        profile.vendor_id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:false
+        }
+      );
+
+    if(error){
+
+      console.error(error);
+
+    }
+
+    setOrders(data || []);
+
+  }
+
+  catch(error){
+
+    console.error(error);
+
+  }
+
+  finally{
+
+    setLoadingOrders(false);
+
+  }
+
+}
+
+
+async function updateOrderStatus(
+  orderId: string,
+  status: string
+) {
+  const vendorAllowedStatuses = [
+    "accepted",
+    "preparing",
+    "ready_for_pickup",
+    "cancelled",
+  ];
+
+  if (!vendorAllowedStatuses.includes(status)) {
+    console.warn(
+      "Vendor attempted unauthorized order status:",
+      status
+    );
+
+    alert(
+      "This order status is controlled by the rider or system."
+    );
+
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "vendor_update_order_status",
+      {
+        p_order_id: orderId,
+        p_status: status,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "VENDOR ORDER STATUS RPC ERROR:",
+        error
+      );
+
+      alert(
+        error.message ||
+          "Unable to update order status."
+      );
+
+      return;
+    }
+
+    if (!data?.success) {
+      console.error(
+        "VENDOR ORDER STATUS UNCONFIRMED:",
+        data
+      );
+
+      alert(
+        "The order status update could not be confirmed."
+      );
+
+      return;
+    }
+
+    await loadOrders();
+  } catch (error) {
+    console.error(
+      "UPDATE ORDER STATUS ERROR:",
+      error
+    );
+
+    alert(
+      "Unable to update order status."
+    );
+  }
+}
+
+async function saveMenuItem(){
+
+  const {
+    data:{ user }
+  } = await supabase.auth.getUser();
+  console.log("SAVE CLICKED");
+console.log("USER:", user);
+
+  if(!user) return;
+
+  const {
+    data:profile
+  } = await supabase
+    .from("profiles")
+    .select("vendor_id")
+    .eq("id", user.id)
+    .single();
+console.log("PROFILE:", profile);
+console.log("FORM:", form);
+  if(!profile?.vendor_id) return;
+
+  let imageUrl =
+  form.image;
+  if(imageFile){
+
+  const fileExt =
+    imageFile.name
+      .split(".")
+      .pop();
+
+  const fileName =
+    `${Date.now()}.${fileExt}`;
+
+  const {
+
+    error:uploadError
+
+  } =
+  await supabase
+    .storage
+    .from("menu-images")
+    .upload(
+      fileName,
+      imageFile
+    );
+
+  if(uploadError){
+
+    alert(
+      uploadError.message
+    );
+
+    return;
+
+  }
+
+  const {
+
+    data
+
+  } =
+  supabase
+    .storage
+    .from("menu-images")
+    .getPublicUrl(
+      fileName
+    );
+
+  imageUrl =
+    data.publicUrl;
+
+}
+  if(editingId){
+
+    await supabase
+      .from("menu_items")
+      .update({
+        name:form.name,
+        description:form.description,
+        category:form.category,
+        image:imageUrl,
+        price:Number(form.price),
+        available:form.available
+      })
+      .eq("id", editingId);
+
+  } else {
+
+    const { data, error } =
+await supabase
+  .from("menu_items")
+  .insert({
+        vendor_id:profile.vendor_id,
+        name:form.name,
+        description:form.description,
+        category:form.category,
+        image:imageUrl,
+        price:Number(form.price),
+        available:form.available
+      });
+      console.log("INSERT DATA:", data);
+console.log("INSERT ERROR:", error);
+
+  }
+
+  setShowForm(false);
+
+  setEditingId(null);
+
+  setForm({
+    name:"",
+    description:"",
+    category:"Rice",
+    image:"",
+    price:"",
+    available:true
+  });
+
+  await loadMenuItems();
+
+}
+async function uploadKycFile(
+  file: File,
+  folder: string,
+  bucket = "kyc-documents"
+) {
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const fileName =
+    `${user.id}-${Date.now()}-${file.name}`;
+
+  const { error } =
+    await supabase.storage
+      .from(bucket)
+      .upload(
+        `${folder}/${fileName}`,
+        file
+      );
+
+  if (error) {
+
+    console.log(
+      "STORAGE ERROR:",
+      error
+    );
+
+    alert(
+      JSON.stringify(error)
+    );
+
+    return null;
+
+  }
+
+  // Private bucket: persist an object path, never a public URL.
+  return `${folder}/${fileName}`;
+
+}
+
+  
+async function submitKyc(files?: { cacFile: File; idFile: File; selfieFile: File; kitchenPhotoFile: File }) {
+  if (submittingKyc) return;
+  setSubmittingKyc(true);
+
+  try {
+    const submittedCacFile = files?.cacFile ?? cacFile;
+    const submittedIdFile = files?.idFile ?? idFile;
+    const submittedSelfieFile = files?.selfieFile ?? selfieFile;
+    const submittedKitchenPhotoFile = files?.kitchenPhotoFile;
+    if (!submittedCacFile || !submittedIdFile || !submittedSelfieFile || !submittedKitchenPhotoFile) {
+      alert("Please upload the corrected CAC certificate, National ID, selfie and kitchen photo.");
+      return;
+    }
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      alert("Your session could not be verified. Please sign in again.");
+      return;
+    }
+
+    const statusResponse = await fetch("/api/vendor/kyc-status", { cache: "no-store" });
+    const statusResult = await statusResponse.json().catch(() => ({}));
+    if (
+      !statusResponse.ok ||
+      !statusResult?.success ||
+      !["Rejected", "Requires Attention"].includes(String(statusResult.status)) ||
+      !["application", "vendor_kyc"].includes(String(statusResult.source)) ||
+      typeof statusResult.sourceRecordId !== "string"
+    ) {
+      alert("Resubmission is only available for a rejected KYC submission. Refresh the page and try again.");
+      return;
+    }
+
+    const isApplicationSource = statusResult.source === "application";
+    const bucket = isApplicationSource ? "vendor-documents" : "kyc-documents";
+    const cacFolder = "cac";
+    const idFolder = isApplicationSource ? "ids" : "id";
+    const selfieFolder = isApplicationSource ? "selfies" : "selfie";
+
+    const cacPath = await uploadKycFile(submittedCacFile, cacFolder, bucket);
+    if (!cacPath) return;
+    const idPath = await uploadKycFile(submittedIdFile, idFolder, bucket);
+    if (!idPath) return;
+    const selfiePath = await uploadKycFile(submittedSelfieFile, selfieFolder, bucket);
+    if (!selfiePath) return;
+
+    let kitchenPhotoPath: string | null = null;
+    if (isApplicationSource) {
+      if (
+        !["image/png", "image/jpeg"].includes(submittedKitchenPhotoFile.type) ||
+        submittedKitchenPhotoFile.size > 5 * 1024 * 1024
+      ) {
+        alert("The kitchen photo must be a PNG or JPG image no larger than 5 MB.");
+        return;
+      }
+      const safePhotoName = submittedKitchenPhotoFile.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const photoStoragePath = `kitchens/${user.id}/${user.id}-${Date.now()}-${safePhotoName}`;
+      const { error: photoUploadError } = await supabase.storage
+        .from("vendor-kitchen-images")
+        .upload(photoStoragePath, submittedKitchenPhotoFile, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: submittedKitchenPhotoFile.type,
+        });
+      if (photoUploadError) {
+        console.error("Kitchen photo upload failed:", photoUploadError);
+        alert(`Kitchen photo upload failed: ${photoUploadError.message}`);
+        return;
+      }
+      kitchenPhotoPath = photoStoragePath;
+    }
+    if (!selfiePath) return;
+
+    const response = await fetch("/api/vendor/kyc-resubmit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: statusResult.source,
+        sourceRecordId: statusResult.sourceRecordId,
+        cacPath,
+        idPath,
+        selfiePath,
+        kitchenPhotoPath,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      alert(typeof result?.message === "string" ? result.message : "The corrected documents could not be submitted. Please try again.");
+      return;
+    }
+
+    setKycStatus("Pending Review");
+    setKycReviewNotes("");
+    await loadVendorKyc();
+    alert("Corrected documents submitted successfully. Your KYC status is now Pending Review.");
+  } catch (error) {
+    console.error("KYC resubmission error:", error);
+    alert("We could not complete the resubmission. Please check your connection and try again.");
+  } finally {
+    setSubmittingKyc(false);
+  }
+}
+
+async function loadVendorKyc() {
+  try {
+    // Read the latest saved status through a server route so the vendor does not
+    // need direct SELECT access to all KYC records.
+    const response = await fetch("/api/vendor/kyc-status", { cache: "no-store" });
+    if (!response.ok) {
+      console.error("KYC status request failed:", response.status);
+      return;
+    }
+    const result = await response.json();
+    if (result?.success && typeof result.status === "string") {
+      setKycStatus(result.status || "Not Submitted");
+      setKycReviewNotes(typeof result.reviewNotes === "string" ? result.reviewNotes : "");
+    }
+  } catch (error) {
+    console.error("Unable to load vendor KYC status:", error);
+  }
+}
+
+function editMenuItem(item:any){
+
+  setEditingId(item.id);
+
+  setForm({
+    name:item.name,
+    description:item.description,
+    category:item.category,
+    image:item.image,
+    price:String(item.price),
+    available:item.available
+  });
+
+  setShowForm(true);
+
+}
+
+async function deleteMenuItem(id:string){
+
+  const ok =
+    window.confirm(
+      "Delete menu item?"
+    );
+
+  if(!ok) return;
+
+  await supabase
+    .from("menu_items")
+    .delete()
+    .eq("id", id);
+
+  await loadMenuItems();
+
+}
+
+async function toggleAvailability(item:any){
+
+  await supabase
+    .from("menu_items")
+    .update({
+      available:!item.available
+    })
+    .eq("id", item.id);
+
+  await loadMenuItems();
+
+}
+
+  async function handleKitchenPhotoChange(
+  event: React.ChangeEvent<HTMLInputElement>
+) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  setPhotoMessage("");
+  setPhotoError("");
+
+  if (!["image/png", "image/jpeg"].includes(file.type)) {
+    setPhotoError("Choose a PNG or JPG image.");
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    setPhotoError("The image must be 5 MB or smaller.");
+    return;
+  }
+
+  setPhotoUploading(true);
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) throw new Error("Please sign in again.");
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("vendor_id, role, status")
+      .eq("id", user.id)
+      .single();
+
+    if (
+      profileError ||
+      !profile?.vendor_id ||
+      profile.role?.toLowerCase() !== "vendor" ||
+      profile.status?.toLowerCase() !== "active"
+    ) {
+      throw new Error("Your account is not authorized to update this photo.");
+    }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const storagePath = `kitchens/${profile.vendor_id}/${Date.now()}-${safeName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("vendor-kitchen-images")
+      .upload(storagePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadError) throw new Error(`Photo upload failed: ${uploadError.message}`);
+
+    const { data: publicData } = supabase.storage
+      .from("vendor-kitchen-images")
+      .getPublicUrl(storagePath);
+
+    const publicUrl = publicData.publicUrl;
+    const { data: updatedVendor, error: updateError } = await supabase
+      .from("vendors")
+      .update({ image: publicUrl })
+      .eq("id", profile.vendor_id)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) {
+      throw new Error(`Photo uploaded, but saving the URL failed: ${updateError.message}`);
+    }
+    if (!updatedVendor) {
+      throw new Error("Photo uploaded, but the vendor record was not updated. Check database permissions.");
+    }
+
+    setKitchenImage(publicUrl);
+    setPhotoMessage("Kitchen photo updated successfully.");
+  } catch (error) {
+    setPhotoError(error instanceof Error ? error.message : "Could not update the kitchen photo.");
+  } finally {
+    setPhotoUploading(false);
+  }
+}
+async function logout(){
+
+    await supabase
+      .auth
+      .signOut();
+
+    router.push("/login");
+
+  }
+  function calculateVendorWallet() {
+
+  let available = 0;
+  let pending = 0;
+
+  orders.forEach((order) => {
+
+    if (
+      order.status === "delivered"
+    ) {
+
+      available += Number(
+        order.total || 0
+      );
+
+    } else {
+
+      pending += Number(
+        order.total || 0
+      );
+
+    }
+
+  });
+
+  setAvailableBalance(
+    available
+  );
+
+  setPendingBalance(
+    pending
+  );
+
+  setTotalEarned(
+    available + pending
+  );
+
+}
+
+async function requestPayout() {
+
+  try {
+
+    setIsSubmittingPayout(true);
+
+    const {
+      data:{ user }
+    } =
+    await supabase
+      .auth
+      .getUser();
+
+    if(!user){
+
+      return;
+
+    }
+
+    const {
+      data: profile
+    } =
+    await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq(
+        "id",
+        user.id
+      )
+      .single();
+
+    if(
+      !profile?.vendor_id
+    ){
+
+      alert(
+        "Vendor not found"
+      );
+
+      return;
+
+    }
+
+    const {
+      data: existingRequest
+    } =
+    await supabase
+      .from(
+        "payout_requests"
+      )
+      .select("id")
+      .eq(
+        "requester_id",
+        profile.vendor_id
+      )
+      .eq(
+        "status",
+        "pending"
+      )
+      .maybeSingle();
+
+    if(existingRequest){
+
+      alert(
+        "You already have a pending payout request awaiting approval."
+      );
+
+      return;
+
+    }
+
+    const {
+      error
+    } =
+    await supabase
+      .from(
+        "payout_requests"
+      )
+      .insert({
+
+        requester_id:
+          profile.vendor_id,
+
+        requester_type:
+          "vendor",
+
+        amount:
+          pendingBalance,
+
+        status:
+          "pending"
+
+      });
+
+    if(error){
+
+      console.error(
+        "PAYOUT ERROR:",
+        error
+      );
+
+      alert(
+        JSON.stringify(error)
+      );
+
+      return;
+
+    }
+
+    alert(
+      "Payout request submitted"
+    );
+
+   
+
+  }
+
+  catch(error){
+
+    console.error(
+      error
+    );
+
+  }
+
+  finally{
+
+    setIsSubmittingPayout(
+      false
+    );
+
+  }
+
+}
+useEffect(() => {
+
+  checkPayoutWindow();
+
+  loadVendor();
+
+  loadMenuItems();
+
+  loadOrders();
+
+  loadVendorKyc();
+
+}, []);
+
+
+  if(loading){
+
+    return(
+
+      <main className="
+        min-h-screen
+        flex
+        items-center
+        justify-center
+      ">
+
+        <h1 className="
+          text-3xl
+          font-bold
+        ">
+
+          Loading Vendor Dashboard...
+
+        </h1>
+
+      </main>
+
+    );
+
+  }
+
+  return(
+
+    <main className="min-h-screen bg-[#eef2f7] text-[#0b1220]">
+      <div className="flex min-h-screen">
+        <VendorSidebar
+          currentTab={currentTab}
+          setCurrentTab={setCurrentTab}
+          vendorName={vendorName}
+          logout={logout}
+        />
+
+        <div className="min-w-0 flex-1">
+          <header className="sticky top-0 z-20 flex min-h-[88px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/95 px-5 py-4 backdrop-blur-xl md:px-8">
+            <div className="min-w-0">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.28em] text-[#ff6b00]">
+                Mammy Kitchen Hub
+              </p>
+              <h1 className="mt-1 truncate text-xl font-extrabold tracking-tight text-[#0b1220] md:text-2xl">
+                Vendor Workspace
+              </h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 sm:inline-flex">
+                Kitchen Operations
+              </span>
+              <button type="button" onClick={logout} className="rounded-xl bg-[#ff6b00] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e65f00] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200">Logout</button>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0b1220] text-sm font-bold text-white" aria-label="Vendor account">
+                {(vendorName || "V").slice(0, 1).toUpperCase()}
+              </div>
+            </div>
+          </header>
+
+          <div className="mx-auto max-w-[1500px] p-4 md:p-8">
+            {currentTab === "dashboard" && (
+              <>
+              {/* MKH_KITCHEN_PHOTO_FRAGMENT_FIX */}
+              <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+    {kitchenImage ? (
+      <img src={kitchenImage} alt="Current kitchen" className="h-28 w-36 rounded-xl object-cover" />
+    ) : (
+      <div className="flex h-28 w-36 items-center justify-center rounded-xl bg-slate-100 text-center text-xs text-slate-500">
+        No kitchen photo
+      </div>
+    )}
+    <div className="min-w-0 flex-1">
+      <h2 className="text-lg font-bold text-[#0b1220]">Kitchen Photo</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Update the photo customers see for your kitchen. PNG or JPG, up to 5 MB.
+      </p>
+      <label className="mt-3 inline-flex cursor-pointer items-center rounded-xl bg-[#ff6b00] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e65f00]">
+        {photoUploading ? "Uploading photo..." : "Change Kitchen Photo"}
+        <input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" className="hidden" disabled={photoUploading} onChange={handleKitchenPhotoChange} />
+      </label>
+      {photoUploading && <p role="status" className="mt-2 text-sm text-slate-500">Uploading and saving your photo...</p>}
+      {photoMessage && <p role="status" className="mt-2 text-sm text-green-700">{photoMessage}</p>}
+      {photoError && <p role="alert" className="mt-2 text-sm text-red-600">{photoError}</p>}
+    </div>
+  </div>
+</div>
+<VendorDashboardTab vendorName={vendorName} orders={orders} />
+            
+              </>)}
+
+        {currentTab === "orders" && (
+          <VendorOrdersTab
+            orders={orders}
+            loadingOrders={loadingOrders}
+            updateOrderStatus={updateOrderStatus}
+          />
+        )}
+        {currentTab === "menu" && (
+          <VendorMenuTab
+            menuItems={menuItems}
+            showForm={showForm}
+            setShowForm={setShowForm}
+            editingId={editingId}
+            setEditingId={setEditingId}
+            form={form}
+            setForm={setForm}
+            imageFile={imageFile}
+            setImageFile={setImageFile}
+            saveMenuItem={saveMenuItem}
+            editMenuItem={editMenuItem}
+            deleteMenuItem={deleteMenuItem}
+            toggleAvailability={toggleAvailability}
+          />
+        )}
+       {currentTab === "earnings" && (
+
+  <div className="space-y-6">
+
+    <div>
+
+      <h1 className="text-5xl font-bold">
+        Earnings & Payouts
+      </h1>
+
+      <p className="text-gray-500 text-lg">
+        Track your revenue and manage payouts
+      </p>
+
+    </div>
+
+    <div className="
+      grid
+      grid-cols-1
+      md:grid-cols-3
+      gap-6
+    ">
+
+  <div
+  className="
+    bg-orange-500
+    text-white
+    rounded-3xl
+    p-6
+  "
+>
+
+  <p className="text-orange-100">
+    Available for Withdrawal
+  </p>
+
+  <h2
+    className="
+      text-4xl
+      font-bold
+      mt-2
+    "
+  >
+    ₦{pendingBalance.toLocaleString()}
+  </h2>
+
+  <p
+    className="
+      text-orange-100
+      mt-2
+    "
+  >
+    {
+      isPayoutWindowOpen
+
+        ? "Withdrawal window is open"
+
+        : "Withdrawal window opens Friday 4PM"
+    }
+  </p>
+
+  <button
+    onClick={requestPayout}
+    disabled={
+      !isPayoutWindowOpen ||
+      isSubmittingPayout ||
+      pendingBalance <= 0 ||
+      hasPendingPayout
+    }
+    className={`
+      mt-6
+      px-5
+      py-3
+      rounded-xl
+      font-semibold
+      w-full
+
+      ${
+        hasPendingPayout
+
+          ? "bg-blue-100 text-blue-600 cursor-not-allowed"
+
+          : isPayoutWindowOpen
+
+          ? "bg-white text-orange-500"
+
+          : "bg-gray-300 text-gray-500 cursor-not-allowed"
+      }
+    `}
+  >
+
+    {
+
+      isSubmittingPayout
+
+        ? "Submitting..."
+
+        : hasPendingPayout
+
+        ? "Payout Request Submitted"
+
+        : isPayoutWindowOpen
+
+        ? "Withdraw Funds"
+
+        : "Available Friday 4PM - Sunday 11:59PM"
+
+    }
+
+  </button>
+
+</div>
+
+<div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+   Lifetime Earnings
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{totalEarned.toLocaleString()}
+  </h2>
+
+  <p className="
+    text-blue-600
+    mt-2
+  ">
+    Total revenue earned on MKH
+  </p>
+
+</div>
+
+<div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+     Pending Payout
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{pendingBalance.toLocaleString()}
+  </h2>
+
+  <p
+    className={`
+      mt-2
+      ${
+        isPayoutWindowOpen
+          ? "text-green-600"
+          : "text-orange-500"
+      }
+    `}
+  >
+    Available on {nextFridayText}
+  </p>
+
+</div>
+
+    </div>
+
+    <div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+    Successful Orders
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    {successfulOrders}
+  </h2>
+
+  <p className="
+    text-green-600
+    mt-2
+  ">
+    Completed Deliveries
+  </p>
+
+</div>
+
+    <div className="
+      bg-white
+      rounded-3xl
+      p-8
+      shadow-sm
+    ">
+
+      <h3 className="
+        text-2xl
+        font-bold
+        mb-6
+      ">
+        Transaction History
+      </h3>
+
+      {orders.length === 0 ? (
+
+        <p className="text-gray-500">
+          No transactions yet.
+        </p>
+
+      ) : (
+
+        orders.map((order) => (
+
+          <div
+            key={order.id}
+            className="
+              border-b
+              py-4
+              flex
+              justify-between
+              items-center
+            "
+          >
+
+            <div>
+
+              <p className="font-semibold">
+                Order #{order.id.slice(0,8)}
+              </p>
+
+              <p className="text-sm text-gray-500">
+                {new Date(
+                  order.created_at
+                ).toLocaleDateString()}
+              </p>
+
+            </div>
+
+            <div className="text-right">
+
+              <p className="
+                font-bold
+              ">
+                ₦{Number(
+                  order.total
+                ).toLocaleString()}
+              </p>
+
+              <p
+                className={`
+                  text-sm
+                  ${
+                    order.status ===
+                    "delivered"
+                      ? "text-green-600"
+                      : "text-orange-500"
+                  }
+                `}
+              >
+                {order.status}
+              </p>
+
+            </div>
+
+          </div>
+
+        ))
+
+      )}
+
+    </div>
+
+  </div>
+
+)}
+
+{currentTab === "earnings" && (
+<div
+  className="
+    bg-white
+    rounded-3xl
+    p-8
+    shadow-sm
+    mt-8
+  "
+>
+
+  <h3
+    className="
+      text-2xl
+      font-bold
+      mb-6
+    "
+  >
+    Withdrawal History
+  </h3>
+
+  {payoutHistory.length === 0 ? (
+
+    <p className="text-gray-500">
+      No withdrawal requests yet.
+    </p>
+
+  ) : (
+
+    payoutHistory.map((payout) => (
+
+      <div
+        key={payout.id}
+        className="
+          border-b
+          py-4
+          flex
+          justify-between
+          items-center
+        "
+      >
+
+        <div>
+
+          <p className="font-semibold">
+            ₦{Number(
+              payout.amount
+            ).toLocaleString()}
+          </p>
+
+          <p className="text-sm text-gray-500">
+            {new Date(
+              payout.requested_at
+            ).toLocaleDateString()}
+          </p>
+
+        </div>
+
+        <div>
+
+          <span
+            className={`
+              px-3
+              py-2
+              rounded-full
+              text-xs
+              font-semibold
+
+              ${
+                payout.status === "pending"
+                  ? "bg-orange-100 text-orange-700"
+                  : payout.status === "approved"
+                  ? "bg-blue-100 text-blue-700"
+                  : payout.status === "processing"
+                  ? "bg-purple-100 text-purple-700"
+                  : payout.status === "paid"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }
+            `}
+          >
+            {payout.status.toUpperCase()}
+          </span>
+
+        </div>
+
+      </div>
+
+    ))
+
+  )}
+
+</div>
+)}
+
+       {currentTab === "kyc" && (
+  <VendorKYCTab kycStatus={kycStatus} reviewNotes={kycReviewNotes} onResubmit={submitKyc} submitting={submittingKyc} />
+)}
+
+          </div> {/* End Page Content */}
+        </div> {/* End Main Content */}
+      </div> {/* End Flex Layout */}
+    </main>
+
+  );
+
+}

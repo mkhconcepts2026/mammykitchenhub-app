@@ -1805,7 +1805,36 @@ const sendOtp = async () => {
 
     try {
 
-     
+      const requiredUploads = [
+        ...(vendorData.vendorType === "Kitchen / Restaurant"
+          ? [{ label: "CAC certificate", file: vendorData.cacFile }]
+          : []),
+        { label: "National ID", file: vendorData.idFile },
+        { label: "Selfie", file: vendorData.selfieFile },
+      ];
+      const missingUpload = requiredUploads.find((item) => !item.file);
+      if (missingUpload) {
+        alert(`${missingUpload.label} is required before submitting your application.`);
+        return;
+      }
+
+      const documentFiles = [
+        { label: "CAC certificate", file: vendorData.cacFile, allowed: ["application/pdf", "image/jpeg", "image/png", "image/webp"] },
+        { label: "National ID", file: vendorData.idFile, allowed: ["application/pdf", "image/jpeg", "image/png", "image/webp"] },
+        { label: "Selfie", file: vendorData.selfieFile, allowed: ["image/jpeg", "image/png", "image/webp"] },
+        { label: "Kitchen photo", file: vendorData.kitchenPhoto, allowed: ["image/jpeg", "image/png", "image/webp"] },
+      ];
+      for (const item of documentFiles) {
+        if (!item.file) continue;
+        if (!item.allowed.includes(item.file.type)) {
+          alert(`${item.label} must be a PDF, JPEG, PNG, or WebP file as appropriate.`);
+          return;
+        }
+        if (item.file.size > 10 * 1024 * 1024) {
+          alert(`${item.label} must be 10 MB or smaller.`);
+          return;
+        }
+      }
 
       alert("Uploading documents...");
 
@@ -1823,74 +1852,64 @@ const sendOtp = async () => {
       vendorData.cacFile
     );
 
-  console.log("CAC DATA:", data);
-  console.log("CAC ERROR:", error);
-
-  if (data) {
-
-    cacUrl =
-      supabase.storage
-        .from("vendor-documents")
-        .getPublicUrl(data.path)
-        .data.publicUrl;
+  if (error || !data) {
+    throw new Error("CAC upload failed. Please retry.");
   }
+  // This bucket becomes private. Store the object path; Admin review signs it server-side.
+  cacUrl = data.path;
 }
 
       if (vendorData.idFile) {
 
-        const { data } = await supabase.storage
+        const { data, error } = await supabase.storage
           .from("vendor-documents")
           .upload(
             `ids/${Date.now()}-${vendorData.idFile.name}`,
             vendorData.idFile
           );
 
-        if (data) {
-
-          idUrl =
-            supabase.storage
-              .from("vendor-documents")
-              .getPublicUrl(data.path)
-              .data.publicUrl;
+        if (error || !data) {
+          throw new Error("National ID upload failed. Please retry.");
         }
+        // This bucket becomes private. Store the object path, not a public URL.
+        idUrl = data.path;
       }
 
       if (vendorData.selfieFile) {
 
-        const { data } = await supabase.storage
+        const { data, error } = await supabase.storage
           .from("vendor-documents")
           .upload(
             `selfies/${Date.now()}-${vendorData.selfieFile.name}`,
             vendorData.selfieFile
           );
 
-        if (data) {
-
-          selfieUrl =
-            supabase.storage
-              .from("vendor-documents")
-              .getPublicUrl(data.path)
-              .data.publicUrl;
+        if (error || !data) {
+          throw new Error("Selfie upload failed. Please retry.");
         }
+        // This bucket becomes private. Store the object path, not a public URL.
+        selfieUrl = data.path;
       }
 
       if (vendorData.kitchenPhoto) {
 
-        const { data } = await supabase.storage
-          .from("vendor-documents")
+        const { data, error } = await supabase.storage
+          .from("vendor-kitchen-images")
           .upload(
             `kitchens/${Date.now()}-${vendorData.kitchenPhoto.name}`,
             vendorData.kitchenPhoto
           );
 
-        if (data) {
-
-          kitchenPhotoUrl =
-            supabase.storage
-              .from("vendor-documents")
-              .getPublicUrl(data.path)
-              .data.publicUrl;
+        if (error || !data) {
+          throw new Error("Kitchen photo upload failed. Please retry.");
         }
+        // Kitchen photos are uploaded files stored separately from private identity documents.
+        // The generated URL is only an internal storage reference; the vendor does not enter a URL.
+        kitchenPhotoUrl =
+          supabase.storage
+            .from("vendor-kitchen-images")
+            .getPublicUrl(data.path)
+            .data.publicUrl;
       }
 
       const { error } =
@@ -1964,7 +1983,7 @@ const sendOtp = async () => {
 
       console.error(error);
 
-      alert("Submission failed");
+      alert(error instanceof Error ? error.message : "Submission failed");
 
     }
 

@@ -1,5 +1,10 @@
 "use client";
 import VendorSidebar from "@/components/vendor/VendorSidebar";
+import VendorDashboardTab from "@/components/vendor/VendorDashboardTab";
+import VendorStorefrontCard from "@/components/vendor/VendorStorefrontCard";
+import VendorOrdersTab from "@/components/vendor/VendorOrdersTab";
+import VendorMenuTab from "@/components/vendor/VendorMenuTab";
+import VendorKYCTab from "@/components/vendor/VendorKYCTab";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -25,6 +30,73 @@ export default function VendorDashboardV2() {
 
   const [vendorName,setVendorName] =
     useState("");
+
+  const [averageRating, setAverageRating] =
+    useState<number | null>(null);
+  const [reviewCount, setReviewCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVendorRating() {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) return;
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("vendor_id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profileError || !profile?.vendor_id) return;
+
+        const { data: summary, error: summaryError } = await supabase
+          .from("vendor_review_summary")
+          .select("average_rating, review_count")
+          .eq("vendor_id", profile.vendor_id)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (summaryError || !summary) {
+          setAverageRating(null);
+          setReviewCount(0);
+          return;
+        }
+
+        const rating = Number(summary.average_rating);
+        const count = Number(summary.review_count);
+
+        setAverageRating(
+          Number.isFinite(rating) && count > 0 ? rating : null
+        );
+        setReviewCount(
+          Number.isFinite(count) && count > 0 ? count : 0
+        );
+      } catch {
+        if (!cancelled) {
+          setAverageRating(null);
+          setReviewCount(0);
+        }
+      }
+    }
+
+    void loadVendorRating();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [kitchenImage, setKitchenImage] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState("");
+  const [photoError, setPhotoError] = useState("");
 
   const [currentTab, setCurrentTab] =
   useState<Tab>("dashboard");
@@ -125,6 +197,13 @@ const [verifyingAccount,
 
 const [kycStatus, setKycStatus] =
   useState("Not Submitted");
+const [kycReviewNotes, setKycReviewNotes] = useState("");
+const [kycSource, setKycSource] = useState<"application" | "vendor_kyc" | null>(null);
+const [kycSourceRecordId, setKycSourceRecordId] = useState("");
+const [kycStorePhotoFile, setKycStorePhotoFile] = useState<File | null>(null);
+const [kycStorePhotoUploading, setKycStorePhotoUploading] = useState(false);
+const [kycStorePhotoMessage, setKycStorePhotoMessage] = useState("");
+const [kycStorePhotoError, setKycStorePhotoError] = useState("");
 
   const [submittingKyc, setSubmittingKyc] =
   useState(false);
@@ -285,16 +364,15 @@ if (wallet) {
       } =
       await supabase
         .from("vendors")
-        .select("name")
+        .select("name,image")
         .eq(
           "id",
           profile.vendor_id
         )
         .single();
 
-      setVendorName(
-        vendor?.name || ""
-      );
+      if (vendor?.name) setVendorName(vendor.name);
+      setKitchenImage(vendor?.image || "");
 
     }
 
@@ -448,38 +526,20 @@ async function loadOrders() {
 
     }
 
-    const {
-      data,
-      error
-    } =
-   await supabase
-  .from("orders")
-  .select(`
-    *,
-    profiles!orders_user_id_fkey(
-      full_name,
-      phone,
-      email
-    )
-  `)
-      .eq(
-        "vendor_id",
-        profile.vendor_id
-      )
-      .order(
-        "created_at",
-        {
-          ascending:false
-        }
+    const response = await fetch("/api/vendor/orders", {
+      cache: "no-store",
+    });
+    const result = await response.json();
+
+    if (!response.ok || result?.success !== true) {
+      throw new Error(
+        typeof result?.message === "string"
+          ? result.message
+          : "Unable to load vendor orders."
       );
-
-    if(error){
-
-      console.error(error);
-
     }
 
-    setOrders(data || []);
+    setOrders(Array.isArray(result.orders) ? result.orders : []);
 
   }
 
@@ -497,34 +557,11 @@ async function loadOrders() {
 
 }
 
+
 async function updateOrderStatus(
   orderId: string,
   status: string
 ) {
-  /*
-   * Vendor is only authorized to control
-   * the food preparation lifecycle.
-   *
-   * Vendor:
-   *
-   * pending
-   *   ↓
-   * accepted
-   *   ↓
-   * preparing
-   *   ↓
-   * ready_for_pickup
-   *
-   * Rider controls:
-   *
-   * assigned
-   * picked_up
-   * delivered
-   *
-   * Settlement is handled by the Rider
-   * delivery flow / settlement engine.
-   */
-
   const vendorAllowedStatuses = [
     "accepted",
     "preparing",
@@ -532,11 +569,7 @@ async function updateOrderStatus(
     "cancelled",
   ];
 
-  if (
-    !vendorAllowedStatuses.includes(
-      status
-    )
-  ) {
+  if (!vendorAllowedStatuses.includes(status)) {
     console.warn(
       "Vendor attempted unauthorized order status:",
       status
@@ -550,250 +583,42 @@ async function updateOrderStatus(
   }
 
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data, error } = await supabase.rpc(
+      "vendor_update_order_status",
+      {
+        p_order_id: orderId,
+        p_status: status,
+      }
+    );
 
-    if (!user) {
-      alert("Vendor session not found.");
-      return;
-    }
-
-    /*
-     * Verify that the logged-in user actually
-     * belongs to the vendor owning this order.
-     */
-
-    const {
-      data: profile,
-      error: profileError,
-    } = await supabase
-      .from("profiles")
-      .select("vendor_id")
-      .eq("id", user.id)
-      .single();
-
-    if (
-      profileError ||
-      !profile?.vendor_id
-    ) {
+    if (error) {
       console.error(
-        "VENDOR PROFILE ERROR:",
-        profileError
+        "VENDOR ORDER STATUS RPC ERROR:",
+        error
       );
 
       alert(
-        "Unable to verify vendor account."
+        error.message ||
+          "Unable to update order status."
       );
 
       return;
     }
 
-    /*
-     * Confirm that this order belongs
-     * to the current vendor.
-     */
-
-    const {
-      data: currentOrder,
-      error: orderLookupError,
-    } = await supabase
-      .from("orders")
-      .select(
-        "id, status, vendor_id, rider_id"
-      )
-      .eq("id", orderId)
-      .eq(
-        "vendor_id",
-        profile.vendor_id
-      )
-      .single();
-
-    if (
-      orderLookupError ||
-      !currentOrder
-    ) {
+    if (!data?.success) {
       console.error(
-        "VENDOR ORDER LOOKUP ERROR:",
-        orderLookupError
+        "VENDOR ORDER STATUS UNCONFIRMED:",
+        data
       );
 
       alert(
-        "Unable to verify this order."
+        "The order status update could not be confirmed."
       );
 
       return;
-    }
-
-    /*
-     * Vendor lifecycle transition protection.
-     */
-
-    const validTransitions: Record<
-      string,
-      string[]
-    > = {
-      pending: ["accepted", "cancelled"],
-
-      accepted: [
-        "preparing",
-        "cancelled",
-      ],
-
-      preparing: [
-        "ready_for_pickup",
-        "cancelled",
-      ],
-
-      ready_for_pickup: [],
-      assigned: [],
-      picked_up: [],
-      delivered: [],
-      cancelled: [],
-    };
-
-    const allowedNextStatuses =
-      validTransitions[
-        currentOrder.status
-      ] || [];
-
-    if (
-      !allowedNextStatuses.includes(
-        status
-      )
-    ) {
-      console.warn(
-        "INVALID VENDOR TRANSITION:",
-        {
-          currentStatus:
-            currentOrder.status,
-          requestedStatus: status,
-        }
-      );
-
-      alert(
-        `Vendor cannot change this order from "${currentOrder.status.replaceAll(
-          "_",
-          " "
-        )}" to "${status.replaceAll(
-          "_",
-          " "
-        )}".`
-      );
-
-      return;
-    }
-
-    const updates: any = {
-      status,
-    };
-
-    const now =
-      new Date().toISOString();
-
-    switch (status) {
-      case "accepted":
-        updates.accepted_at = now;
-        break;
-
-      case "preparing":
-        updates.preparing_at = now;
-        break;
-
-      case "ready_for_pickup":
-        updates.ready_at = now;
-        break;
-
-      case "cancelled":
-        updates.cancelled_at = now;
-        break;
-    }
-
-    /*
-     * IMPORTANT:
-     *
-     * Vendor can no longer write:
-     *
-     * picked_up
-     * delivered
-     *
-     * Therefore this function can never
-     * trigger settlement.
-     */
-
-    const {
-      error: updateError,
-    } = await supabase
-      .from("orders")
-      .update(updates)
-      .eq("id", orderId)
-      .eq(
-        "vendor_id",
-        profile.vendor_id
-      );
-
-    if (updateError) {
-      console.error(
-        "VENDOR ORDER UPDATE ERROR:",
-        updateError
-      );
-
-      alert(
-        updateError.message
-      );
-
-      return;
-    }
-
-    /*
-     * Record vendor order event.
-     */
-
-    const eventTitles: Record<
-      string,
-      string
-    > = {
-      accepted:
-        "Vendor Accepted Order",
-
-      preparing:
-        "Kitchen Started Preparation",
-
-      ready_for_pickup:
-        "Order Ready for Pickup",
-
-      cancelled:
-        "Order Cancelled",
-    };
-
-    const {
-      error: eventError,
-    } = await supabase
-      .from("order_events")
-      .insert({
-        order_id: orderId,
-        event_type: status,
-        title:
-          eventTitles[status] ||
-          status,
-        description:
-          `Order status changed to ${status.replaceAll(
-            "_",
-            " "
-          )}`,
-        actor_type: "vendor",
-        actor_id: user.id,
-      });
-
-    if (eventError) {
-      console.error(
-        "VENDOR ORDER EVENT ERROR:",
-        eventError
-      );
     }
 
     await loadOrders();
-
   } catch (error) {
     console.error(
       "UPDATE ORDER STATUS ERROR:",
@@ -805,6 +630,7 @@ async function updateOrderStatus(
     );
   }
 }
+
 async function saveMenuItem(){
 
   const {
@@ -928,7 +754,8 @@ console.log("INSERT ERROR:", error);
 }
 async function uploadKycFile(
   file: File,
-  folder: string
+  folder: string,
+  bucket = "kyc-documents"
 ) {
 
   const {
@@ -937,12 +764,26 @@ async function uploadKycFile(
 
   if (!user) return null;
 
+  const originalName = file.name.trim();
+  const lastDot = originalName.lastIndexOf(".");
+  const rawBaseName = lastDot > 0 ? originalName.slice(0, lastDot) : originalName;
+  const rawExtension = lastDot > 0 ? originalName.slice(lastDot + 1) : "";
+  const safeBaseName = rawBaseName
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "upload";
+  const safeExtension = rawExtension
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+  const safeFileName = safeExtension
+    ? `${safeBaseName}.${safeExtension}`
+    : safeBaseName;
   const fileName =
-    `${user.id}-${Date.now()}-${file.name}`;
+    `${user.id}-${Date.now()}-${safeFileName}`;
 
   const { error } =
     await supabase.storage
-      .from("kyc-documents")
+      .from(bucket)
       .upload(
         `${folder}/${fileName}`,
         file
@@ -963,180 +804,213 @@ async function uploadKycFile(
 
   }
 
-  const {
-    data
-  } = supabase.storage
-      .from("kyc-documents")
-      .getPublicUrl(
-        `${folder}/${fileName}`
-      );
-
-  return data.publicUrl;
+  // Private bucket: persist an object path, never a public URL.
+  return `${folder}/${fileName}`;
 
 }
 
   
-async function submitKyc() {
-
+async function submitKyc(files?: { cacFile: File; idFile: File; selfieFile: File; kitchenPhotoFile: File }) {
   if (submittingKyc) return;
-
   setSubmittingKyc(true);
 
   try {
+    const submittedCacFile = files?.cacFile ?? cacFile;
+    const submittedIdFile = files?.idFile ?? idFile;
+    const submittedSelfieFile = files?.selfieFile ?? selfieFile;
+    const submittedKitchenPhotoFile = files?.kitchenPhotoFile;
+    if (!submittedCacFile || !submittedIdFile || !submittedSelfieFile || !submittedKitchenPhotoFile) {
+      alert("Please upload the corrected CAC certificate, National ID, selfie and kitchen photo.");
+      return;
+    }
 
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      alert("Your session could not be verified. Please sign in again.");
+      return;
+    }
+
+    const statusResponse = await fetch("/api/vendor/kyc-status", { cache: "no-store" });
+    const statusResult = await statusResponse.json().catch(() => ({}));
     if (
-      !cacFile ||
-      !idFile ||
-      !selfieFile
+      !statusResponse.ok ||
+      !statusResult?.success ||
+      !["Rejected", "Requires Attention"].includes(String(statusResult.status)) ||
+      !["application", "vendor_kyc"].includes(String(statusResult.source)) ||
+      typeof statusResult.sourceRecordId !== "string"
     ) {
-
-      alert(
-        "Please upload all required documents"
-      );
-
-      setSubmittingKyc(false);
-
+      alert("Resubmission is only available for a rejected KYC submission. Refresh the page and try again.");
       return;
-
     }
 
-    const cacUrl =
-      await uploadKycFile(
-        cacFile,
-        "cac"
-      );
+    const isApplicationSource = statusResult.source === "application";
+    const bucket = isApplicationSource ? "vendor-documents" : "kyc-documents";
+    const cacFolder = "cac";
+    const idFolder = isApplicationSource ? "ids" : "id";
+    const selfieFolder = isApplicationSource ? "selfies" : "selfie";
 
-    const idUrl =
-      await uploadKycFile(
-        idFile,
-        "id"
-      );
+    const cacPath = await uploadKycFile(submittedCacFile, cacFolder, bucket);
+    if (!cacPath) return;
+    const idPath = await uploadKycFile(submittedIdFile, idFolder, bucket);
+    if (!idPath) return;
+    const selfiePath = await uploadKycFile(submittedSelfieFile, selfieFolder, bucket);
+    if (!selfiePath) return;
 
-    const selfieUrl =
-      await uploadKycFile(
-        selfieFile,
-        "selfie"
-      );
-
-    const {
-      data: { user }
-    } =
-      await supabase.auth.getUser();
-
-    if (!user) {
-
-      setSubmittingKyc(false);
-
-      return;
-
-    }
-
-    const {
-      data,
-      error
-    } =
-      await supabase
-        .from("vendor_kyc")
-        .insert({
-
-          vendor_id: user.id,
-
-          cac_url: cacUrl,
-
-          national_id_url: idUrl,
-
-          selfie_url: selfieUrl,
-
-          bank_name: selectedBank,
-
-          account_number:
-            accountNumber,
-
-          account_name:
-            verifiedAccountName,
-
-          status: "pending"
-
+    let kitchenPhotoPath: string | null = null;
+    if (isApplicationSource) {
+      if (
+        !["image/png", "image/jpeg"].includes(submittedKitchenPhotoFile.type) ||
+        submittedKitchenPhotoFile.size > 5 * 1024 * 1024
+      ) {
+        alert("The kitchen photo must be a PNG or JPG image no larger than 5 MB.");
+        return;
+      }
+      const safePhotoName = submittedKitchenPhotoFile.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      const photoStoragePath = `kitchens/${user.id}/${user.id}-${Date.now()}-${safePhotoName}`;
+      const { error: photoUploadError } = await supabase.storage
+        .from("vendor-kitchen-images")
+        .upload(photoStoragePath, submittedKitchenPhotoFile, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: submittedKitchenPhotoFile.type,
         });
+      if (photoUploadError) {
+        console.error("Kitchen photo upload failed:", photoUploadError);
+        alert(`Kitchen photo upload failed: ${photoUploadError.message}`);
+        return;
+      }
+      kitchenPhotoPath = photoStoragePath;
+    }
+    if (!selfiePath) return;
 
-    console.log(
-      "INSERT DATA:",
-      data
-    );
-
-    console.log(
-      "INSERT ERROR:",
-      error
-    );
-
-    if (error) {
-
-      alert(error.message);
-
-      setSubmittingKyc(false);
-
+    const response = await fetch("/api/vendor/kyc-resubmit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: statusResult.source,
+        sourceRecordId: statusResult.sourceRecordId,
+        cacPath,
+        idPath,
+        selfiePath,
+        kitchenPhotoPath,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      alert(typeof result?.message === "string" ? result.message : "The corrected documents could not be submitted. Please try again.");
       return;
-
     }
 
-    setKycStatus(
-      "Pending Review"
-    );
-
-    alert(
-      "Verification submitted successfully"
-    );
-
+    setKycStatus("Pending Review");
+    setKycReviewNotes("");
+    await loadVendorKyc();
+    alert("Corrected documents submitted successfully. Your KYC status is now Pending Review.");
+  } catch (error) {
+    console.error("KYC resubmission error:", error);
+    alert("We could not complete the resubmission. Please check your connection and try again.");
   } finally {
-
     setSubmittingKyc(false);
-
   }
-
 }
 
+async function uploadKycStorePhoto() {
+  if (kycStorePhotoUploading) return;
+  setKycStorePhotoError("");
+  setKycStorePhotoMessage("");
+
+  const file = kycStorePhotoFile;
+  if (!file) {
+    setKycStorePhotoError("Choose a store photo first.");
+    return;
+  }
+  if (!kycSource || !kycSourceRecordId) {
+    setKycStorePhotoError("The current KYC submission could not be identified. Refresh the dashboard and try again.");
+    return;
+  }
+  if (!["image/png", "image/jpeg"].includes(file.type)) {
+    setKycStorePhotoError("Choose a PNG or JPG image.");
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    setKycStorePhotoError("The store photo must be 5 MB or smaller.");
+    return;
+  }
+  if (["Verified", "Rejected"].includes(kycStatus)) {
+    setKycStorePhotoError("For a rejected KYC submission, use the corrected-document resubmission workflow. Verified submissions require support to change.");
+    return;
+  }
+
+  setKycStorePhotoUploading(true);
+  try {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw new Error("Please sign in again.");
+
+    const form = new FormData();
+    form.set("file", file);
+    form.set("source", kycSource);
+    form.set("sourceRecordId", kycSourceRecordId);
+
+    const response = await fetch("/api/vendor/kyc-store-photo", {
+      method: "POST",
+      body: form,
+      cache: "no-store",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.message || "The store photo could not be saved to your KYC submission.");
+    }
+
+    setKycStorePhotoFile(null);
+    setKycStorePhotoMessage("Store photo saved to your current KYC submission. It remains subject to review.");
+    await loadVendorKyc();
+  } catch (error) {
+    setKycStorePhotoError(error instanceof Error ? error.message : "Could not upload the store photo.");
+  } finally {
+    setKycStorePhotoUploading(false);
+  }
+}
+async function loadStorefrontProfile() {
+  try {
+    const response = await fetch("/api/vendor/storefront-photo", { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      console.error("Storefront profile load failed:", result?.message || response.status);
+      return;
+    }
+    if (typeof result.vendorName === "string" && result.vendorName.trim()) {
+      setVendorName(result.vendorName);
+    }
+    setKitchenImage(typeof result.image === "string" ? result.image : "");
+  } catch (error) {
+    console.error("Unable to load storefront profile:", error);
+  }
+}
 async function loadVendorKyc() {
+  try {
+    // Wait for the browser session before requesting the server-side KYC status.
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+    if (authError || !user) return;
 
-  if (!user) return;
-
-  const {
-    data,
-    error
-  } = await supabase
-    .from("vendor_kyc")
-    .select("*")
-    .eq("vendor_id", user.id)
-    .order(
-      "created_at",
-      { ascending: false }
-    )
-    .limit(1);
-
-  if (
-    error ||
-    !data ||
-    data.length === 0
-  ) return;
-
-  const kyc = data[0];
-
-  console.log(
-    "KYC RECORD:",
-    kyc
-  );
-
-  setKycStatus(
-    kyc.status === "pending"
-      ? "Pending Review"
-      : kyc.status === "approved"
-      ? "Verified"
-      : kyc.status
-  );
-
+    // The API independently verifies the server-side session.
+    const response = await fetch("/api/vendor/kyc-status", { cache: "no-store" });
+    if (!response.ok) {
+      console.error("KYC status request failed:", response.status);
+      return;
+    }
+    const result = await response.json();
+    if (result?.success && typeof result.status === "string") {
+      setKycStatus(result.status || "Not Submitted");
+      setKycReviewNotes(typeof result.reviewNotes === "string" ? result.reviewNotes : "");
+      setKycSource(result.source === "application" || result.source === "vendor_kyc" ? result.source : null);
+      setKycSourceRecordId(typeof result.sourceRecordId === "string" ? result.sourceRecordId : "");
+    }
+  } catch (error) {
+    console.error("Unable to load vendor KYC status:", error);
+  }
 }
 
 function editMenuItem(item:any){
@@ -1187,7 +1061,48 @@ async function toggleAvailability(item:any){
 
 }
 
-  async function logout(){
+  async function handleKitchenPhotoChange(
+  event: React.ChangeEvent<HTMLInputElement>
+) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  setPhotoMessage("");
+  setPhotoError("");
+  if (!["image/png", "image/jpeg"].includes(file.type)) {
+    setPhotoError("Choose a PNG or JPG image.");
+    return;
+  }
+  if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
+    setPhotoError("The image must be no larger than 5 MB.");
+    return;
+  }
+
+  setPhotoUploading(true);
+  try {
+    const form = new FormData();
+    form.set("file", file);
+    const response = await fetch("/api/vendor/storefront-photo", {
+      method: "POST",
+      body: form,
+      cache: "no-store",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.message || "Could not update the storefront photo.");
+    }
+
+    if (typeof result.image === "string") setKitchenImage(result.image);
+    if (typeof result.vendorName === "string") setVendorName(result.vendorName);
+    setPhotoMessage("Storefront photo updated successfully.");
+  } catch (error) {
+    setPhotoError(error instanceof Error ? error.message : "Could not update the storefront photo.");
+  } finally {
+    setPhotoUploading(false);
+  }
+}
+async function logout(){
 
     await supabase
       .auth
@@ -1379,6 +1294,7 @@ useEffect(() => {
 
   loadOrders();
 
+  loadStorefrontProfile();
   loadVendorKyc();
 
 }, []);
@@ -1412,799 +1328,76 @@ useEffect(() => {
 
   return(
 
-    <main className="
-      min-h-screen
-      bg-gray-100
-      p-8
-    ">
-      <div className="flex">
+    <main className="min-h-screen bg-[#eef2f7] text-[#0b1220]">
+      <div className="flex min-h-screen">
         <VendorSidebar
-  currentTab={currentTab}
-  setCurrentTab={setCurrentTab}
-  vendorName={vendorName}
-  logout={logout}
-/>
+          currentTab={currentTab}
+          setCurrentTab={setCurrentTab}
+          vendorName={vendorName}
+          logout={logout}
+        />
 
-      <div className="
-  flex-1
-  max-w-7xl
-  mx-auto
-">
-
-<div
-  className="
-    flex
-    justify-between
-    items-start
-    mb-10
-  "
->
-
-  <div>
-
-    {currentTab === "dashboard" && (
-
-      <div>
-
-        <h1 className="text-5xl font-bold mb-2">
-          Dashboard
-        </h1>
-
-        <p className="text-gray-500 text-lg mb-8">
-          Welcome back, {vendorName}
-        </p>
-
-        <div
-          className="
-            grid
-            grid-cols-1
-            md:grid-cols-2
-            xl:grid-cols-4
-            gap-4
-            mb-8
-          "
-        >
-
-          <div
-            className="
-              bg-white
-              rounded-3xl
-              px-6
-              py-5
-              shadow-sm
-              min-h-[140px]
-            "
-          >
-            <p className="text-gray-500">
-              Today's Revenue
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              ₦127,500
-            </h2>
-
-            <p className="text-green-600 mt-2">
-              +12.5% from yesterday
-            </p>
-          </div>
-
-          <div
-            className="
-              bg-white
-              rounded-3xl
-              px-6
-              py-5
-              shadow-sm
-              min-h-[140px]
-            "
-          >
-            <p className="text-gray-500">
-              Total Orders
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              {orders.length}
-            </h2>
-
-            <p className="text-green-600 mt-2">
-              Active Orders
-            </p>
-          </div>
-
-          <div
-            className="
-              bg-white
-              rounded-3xl
-              px-6
-              py-5
-              shadow-sm
-              min-h-[140px]
-            "
-          >
-            <p className="text-gray-500">
-              Pending Orders
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              {
-                orders.filter(
-                  o => o.status === "pending"
-                ).length
-              }
-            </h2>
-
-            <p className="text-orange-500 mt-2">
-              Requires attention
-            </p>
-          </div>
-
-          <div
-            className="
-              bg-white
-              rounded-3xl
-              px-6
-              py-5
-              shadow-sm
-              min-h-[140px]
-            "
-          >
-            <p className="text-gray-500">
-              Average Rating
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              4.8
-            </h2>
-
-            <p className="text-green-600 mt-2">
-              +0.2 this week
-            </p>
-          </div>
-
-        </div>
-
-      </div>
-
-    )}
-
-  </div>
-
-  <button
-    onClick={logout}
-    className="
-      bg-red-500
-      text-white
-      px-6
-      py-3
-      rounded-xl
-    "
-  >
-    Logout
-  </button>
-
-</div>
-       {currentTab === "orders" && (
-
-  <div className="bg-white rounded-3xl p-8">
-
-    <div className="flex justify-between mb-6">
-
-      <h2 className="text-2xl font-bold">
-        Orders
-      </h2>
-
-      <span className="text-gray-500">
-        {orders.length} Orders
-      </span>
-
-    </div>
-
-    {loadingOrders && (
-
-      <p>Loading orders...</p>
-
-    )}
-
-    {!loadingOrders && orders.length === 0 && (
-
-      <p className="text-gray-500">
-        No orders yet.
-      </p>
-
-    )}
-
-    {!loadingOrders &&
-      orders.map((order) => (
-
-        <div
-          key={order.id}
-          className="
-            border
-            rounded-xl
-            p-4
-            mb-4
-          "
-        >
-
-          <div className="flex justify-between">
-
-            <div>
-
-              <h3 className="font-bold">
-                Order #{order.id.slice(0,8)}
-              </h3>
-
-             <p className="text-sm text-blue-600">
-  Customer:
-  {" "}
-  {order.profiles?.full_name || "Unknown Customer"}
-</p>
-
-<p className="text-sm text-green-600">
-  📞 {order.profiles?.phone || "No phone"}
-</p>
-<p className="text-sm text-gray-600">
-  📍 {order.delivery_address || "No address"}
-</p>
-
-{
-  order.customer_notes && (
-    <p className="text-sm text-orange-700">
-      📝 {order.customer_notes}
-    </p>
-  )
-}
-
+        <div className="min-w-0 flex-1">
+          <header className="sticky top-0 z-20 flex min-h-[88px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/95 px-5 py-4 backdrop-blur-xl md:px-8">
+            <div className="min-w-0">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.28em] text-[#ff6b00]">
+                Mammy Kitchen Hub
+              </p>
+              <h1 className="mt-1 truncate text-xl font-extrabold tracking-tight text-[#0b1220] md:text-2xl">
+                Vendor Workspace
+              </h1>
             </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 sm:inline-flex">
+                Store Operations
+              </span>
+              <button type="button" onClick={logout} className="rounded-xl bg-[#ff6b00] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e65f00] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200">Logout</button>
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0b1220] text-sm font-bold text-white" aria-label="Vendor account">
+                {(vendorName || "V").slice(0, 1).toUpperCase()}
+              </div>
+            </div>
+          </header>
 
-           <span
-  className={`
-    px-3
-    py-1
-    rounded-full
-    text-sm
-    font-medium
-    capitalize
+          <div className="mx-auto max-w-[1500px] p-4 md:p-8">
+            {currentTab === "dashboard" && (
+              <>
 
-    ${
-      order.status === "pending"
-        ? "bg-yellow-100 text-yellow-700"
-        : order.status === "accepted"
-        ? "bg-blue-100 text-blue-700"
-        : order.status === "preparing"
-        ? "bg-purple-100 text-purple-700"
-        : order.status === "ready_for_pickup"
-        ? "bg-orange-100 text-orange-700"
-        : order.status === "picked_up"
-        ? "bg-indigo-100 text-indigo-700"
-        : "bg-green-100 text-green-700"
-    }
-  `}
->
-  {order.status.replaceAll("_"," ")}
-</span>
+<VendorDashboardTab vendorName={vendorName} orders={orders} averageRating={averageRating} reviewCount={reviewCount} />
+              <VendorStorefrontCard
+                vendorName={vendorName}
+                image={kitchenImage}
+                uploading={photoUploading}
+                message={photoMessage}
+                error={photoError}
+                onPhotoChange={handleKitchenPhotoChange}
+              />
 
-          </div>
+              </>)}
 
-         <div className="mt-3 flex justify-between items-center">
-<p className="text-sm text-gray-500">
-  {new Date(order.created_at).toLocaleString()}
-</p>
-  <p className="font-semibold">
-    ₦{Number(order.total).toLocaleString()}
-  </p>
-
-{order.status === "pending" && (
-
-  <button
-    onClick={() =>
-      updateOrderStatus(
-        order.id,
-        "accepted"
-      )
-    }
-    className="
-      rounded-lg
-      bg-blue-600
-      px-4
-      py-2
-      text-sm
-      font-semibold
-      text-white
-      hover:bg-blue-700
-    "
-  >
-    Accept Order
-  </button>
-
-)}
-
-{order.status === "accepted" && (
-
-  <button
-    onClick={() =>
-      updateOrderStatus(
-        order.id,
-        "preparing"
-      )
-    }
-    className="
-      rounded-lg
-      bg-orange-500
-      px-4
-      py-2
-      text-sm
-      font-semibold
-      text-white
-      hover:bg-orange-600
-    "
-  >
-    Start Preparing
-  </button>
-
-)}
-
-{order.status === "preparing" && (
-
-  <button
-    onClick={() =>
-      updateOrderStatus(
-        order.id,
-        "ready_for_pickup"
-      )
-    }
-    className="
-      rounded-lg
-      bg-purple-600
-      px-4
-      py-2
-      text-sm
-      font-semibold
-      text-white
-      hover:bg-purple-700
-    "
-  >
-    Ready for Pickup
-  </button>
-
-)}
-
-{order.status === "ready_for_pickup" && (
-
-  <span
-    className="
-      inline-flex
-      items-center
-      rounded-lg
-      bg-orange-100
-      px-4
-      py-2
-      text-sm
-      font-bold
-      text-orange-700
-    "
-  >
-    Waiting for Rider
-  </span>
-
-)}
-
-{order.status === "assigned" && (
-
-  <span
-    className="
-      inline-flex
-      items-center
-      rounded-lg
-      bg-blue-100
-      px-4
-      py-2
-      text-sm
-      font-bold
-      text-blue-700
-    "
-  >
-    ✓ Rider Assigned
-  </span>
-
-)}
-
-{order.status === "picked_up" && (
-
-  <span
-    className="
-      inline-flex
-      items-center
-      rounded-lg
-      bg-indigo-100
-      px-4
-      py-2
-      text-sm
-      font-bold
-      text-indigo-700
-    "
-  >
-    ✓ Picked Up by Rider
-  </span>
-
-)}
-
-{order.status === "delivered" && (
-
-  <span
-    className="
-      inline-flex
-      items-center
-      rounded-lg
-      bg-emerald-100
-      px-4
-      py-2
-      text-sm
-      font-bold
-      text-emerald-700
-    "
-  >
-    ✓ Delivered
-  </span>
-
-)}
-
-{order.status === "cancelled" && (
-
-  <span
-    className="
-      inline-flex
-      items-center
-      rounded-lg
-      bg-red-100
-      px-4
-      py-2
-      text-sm
-      font-bold
-      text-red-700
-    "
-  >
-    Cancelled
-  </span>
-
-)}
-
-</div>
-        </div>
-
-      ))
-    }
-
-  </div>
-
-)}
-
+        {currentTab === "orders" && (
+          <VendorOrdersTab
+            orders={orders}
+            loadingOrders={loadingOrders}
+            updateOrderStatus={updateOrderStatus}
+          />
+        )}
         {currentTab === "menu" && (
-
-  <div className="bg-white rounded-3xl p-8">
-
-    <div className="flex justify-between items-center mb-6">
-
-      <h2 className="text-2xl font-bold">
-        Menu Management
-      </h2>
-
-      <button
-        onClick={() => {
-          setEditingId(null);
-
-          setForm({
-            name: "",
-            description: "",
-            category: "Rice",
-            image: "",
-            price: "",
-            available: true,
-          });
-
-          setShowForm(true);
-        }}
-        className="
-          bg-orange-500
-          text-white
-          px-4
-          py-2
-          rounded-xl
-        "
-      >
-        Add Item
-      </button>
-
-    </div>
-
-    {showForm && (
-
-      <div className="
-        border
-        rounded-xl
-        p-4
-        mb-6
-        space-y-3
-      ">
-
-        <input
-          placeholder="Food Name"
-          value={form.name}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              name: e.target.value,
-            })
-          }
-          className="
-            w-full
-            border
-            p-3
-            rounded-lg
-          "
-        />
-
-        <textarea
-          placeholder="Description"
-          value={form.description}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              description: e.target.value,
-            })
-          }
-          className="
-            w-full
-            border
-            p-3
-            rounded-lg
-          "
-        />
-
-        <input
-          placeholder="Category"
-          value={form.category}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              category: e.target.value,
-            })
-          }
-          className="
-            w-full
-            border
-            p-3
-            rounded-lg
-          "
-        />
-
-<input
-  type="file"
-  accept="image/png,image/jpeg,image/jpg"
-  onChange={(e)=>{
-
-    const file =
-      e.target.files?.[0];
-
-    if(!file) return;
-
-    if(
-      file.size >
-      5 * 1024 * 1024
-    ){
-
-      alert(
-        "Image must be less than 5MB"
-      );
-
-      return;
-
-    }
-
-    setImageFile(file);
-
-  }}
-  className="
-    w-full
-    border
-    p-3
-    rounded-lg
-  "
-/>
-
-        <input
-          type="number"
-          placeholder="Price"
-          value={form.price}
-          onChange={(e) =>
-            setForm({
-              ...form,
-              price: e.target.value,
-            })
-          }
-          className="
-            w-full
-            border
-            p-3
-            rounded-lg
-          "
-        />
-{imageFile && (
-
-  <img
-    src={URL.createObjectURL(imageFile)}
-    alt="Preview"
-    className="
-      w-40
-      h-40
-      object-cover
-      rounded-xl
-    "
-  />
-
-)}
-       <button
-  type="button"
-  onClick={saveMenuItem}
-  className="
-    bg-green-600
-    text-white
-    px-5
-    py-2
-    rounded-xl
-  "
->
-  {editingId
-    ? "Update Item"
-    : "Save Item"}
-</button>
-
-      </div>
-
-    )}
-
-    <div className="space-y-3">
-
-      {menuItems.length === 0 ? (
-
-        <p className="text-gray-500">
-          No menu items found.
-        </p>
-
-      ) : (
-
-        menuItems.map((item) => (
-
-  <div
-    key={item.id}
-    className="
-      bg-white
-      rounded-2xl
-      shadow-sm
-      border
-      p-4
-      flex
-      justify-between
-      items-center
-      mb-4
-    "
-  >
-
-    <div className="flex items-center gap-4">
-
-      <img
-        src={
-          item.image ||
-          "/placeholder.jpg"
-        }
-        alt={item.name}
-        className="
-          w-24
-          h-24
-          rounded-xl
-          object-cover
-        "
-      />
-
-      <div>
-
-        <h3 className="
-          font-bold
-          text-xl
-        ">
-          {item.name}
-        </h3>
-
-        <p className="
-          text-gray-500
-        ">
-          {item.category}
-        </p>
-
-        <p className="
-          text-orange-600
-          font-bold
-          text-lg
-        ">
-          ₦{Number(item.price).toLocaleString()}
-        </p>
-
-      </div>
-
-    </div>
-
-    <div className="
-      flex
-      items-center
-      gap-3
-    ">
-
-      <button
-        onClick={() =>
-          toggleAvailability(item)
-        }
-        className={`
-          px-4
-          py-2
-          rounded-full
-          text-sm
-          font-semibold
-          ${
-            item.available
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
-          }
-        `}
-      >
-        {item.available
-          ? "Available"
-          : "Out Of Stock"}
-      </button>
-
-      <button
-        onClick={() =>
-          editMenuItem(item)
-        }
-        className="
-          bg-blue-500
-          text-white
-          px-4
-          py-2
-          rounded-lg
-        "
-      >
-        Edit
-      </button>
-
-      <button
-        onClick={() =>
-          deleteMenuItem(item.id)
-        }
-        className="
-          bg-red-500
-          text-white
-          px-4
-          py-2
-          rounded-lg
-        "
-      >
-        Delete
-      </button>
-
-    </div>
-
-  </div>
-
-))
-
-      )}
-
-    </div>
-
-  </div>
-
-)}
-
+          <VendorMenuTab
+            menuItems={menuItems}
+            showForm={showForm}
+            setShowForm={setShowForm}
+            editingId={editingId}
+            setEditingId={setEditingId}
+            form={form}
+            setForm={setForm}
+            imageFile={imageFile}
+            setImageFile={setImageFile}
+            saveMenuItem={saveMenuItem}
+            editMenuItem={editMenuItem}
+            deleteMenuItem={deleteMenuItem}
+            toggleAvailability={toggleAvailability}
+          />
+        )}
        {currentTab === "earnings" && (
 
   <div className="space-y-6">
@@ -2498,6 +1691,7 @@ useEffect(() => {
 
 )}
 
+{currentTab === "earnings" && (
 <div
   className="
     bg-white
@@ -2590,436 +1784,49 @@ useEffect(() => {
   )}
 
 </div>
+)}
 
        {currentTab === "kyc" && (
-
-  <div className="space-y-6">
-
-    <div>
-
-      <h1 className="text-5xl font-bold">
-        KYC Verification
-      </h1>
-{
-  kycStatus !== "Not Submitted" && (
-
-    <div
-      className="
-        bg-yellow-50
-        border
-        border-yellow-300
-        rounded-2xl
-        p-6
-        mb-6
-      "
-    >
-
-      <h3 className="font-bold text-xl">
-
-        KYC Status
-
-      </h3>
-
-      <p className="mt-2 text-lg">
-
-        {kycStatus}
-
+  <>
+    <VendorKYCTab kycStatus={kycStatus} reviewNotes={kycReviewNotes} onResubmit={submitKyc} submitting={submittingKyc} />
+    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-bold">Vendor Store Photo</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        Upload a PNG or JPG photo of your store for KYC review. This updates the current KYC submission only; it does not change your verification status or storefront image.
       </p>
-
-    </div>
-
-  )
-}
-      <p className="text-gray-500 text-lg">
-        Complete your business verification
-      </p>
-
-    </div>
-
-{kycStatus === "Not Submitted" && (
-    <div className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-    ">
-
-      <div className="
-        flex
-        justify-between
-        items-center
-        mb-6
-      ">
-
-        <h2 className="
-          text-2xl
-          font-bold
-        ">
-          Verification Status
-        </h2>
-
-        <span
-          className="
-            bg-yellow-100
-            text-yellow-700
-            px-4
-            py-2
-            rounded-full
-            font-semibold
-          "
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input
+          type="file"
+          accept="image/png,image/jpeg"
+          disabled={kycStorePhotoUploading}
+          className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:font-semibold"
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null;
+            event.target.value = "";
+            setKycStorePhotoFile(file);
+            setKycStorePhotoMessage("");
+            setKycStorePhotoError("");
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => void uploadKycStorePhoto()}
+          disabled={!kycStorePhotoFile || !kycSource || !kycSourceRecordId || kycStorePhotoUploading || ["Verified", "Rejected"].includes(kycStatus)}
+          className="shrink-0 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {kycStatus}
-        </span>
-
+          {kycStorePhotoUploading ? "Uploadingâ€¦" : "Upload Store Photo"}
+        </button>
       </div>
-    
-      <div className="
-        grid
-        grid-cols-1
-        md:grid-cols-2
-        gap-6
-      ">
-
-        <div>
-
-          <label className="
-            block
-            font-semibold
-            mb-2
-          ">
-            CAC Certificate
-          </label>
-
-          <input
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg"
-            onChange={(e)=>
-              setCacFile(
-                e.target.files?.[0] || null
-              )
-            }
-            className="
-              w-full
-              border
-              p-3
-              rounded-xl
-            "
-          />
-
-        </div>
-
-        <div>
-
-          <label className="
-            block
-            font-semibold
-            mb-2
-          ">
-            National ID
-          </label>
-
-          <input
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg"
-            onChange={(e)=>
-              setIdFile(
-                e.target.files?.[0] || null
-              )
-            }
-            className="
-              w-full
-              border
-              p-3
-              rounded-xl
-            "
-          />
-
-        </div>
-
-        <div>
-
-          <label className="
-            block
-            font-semibold
-            mb-2
-          ">
-            Selfie Verification
-          </label>
-
-          <input
-            type="file"
-            accept=".png,.jpg,.jpeg"
-            onChange={(e)=>
-              setSelfieFile(
-                e.target.files?.[0] || null
-              )
-            }
-            className="
-              w-full
-              border
-              p-3
-              rounded-xl
-            "
-          />
-
-        </div>
-
-         </div>
-
-    </div>
-
+      <p className="mt-2 text-xs text-slate-500">PNG or JPG, maximum 5 MB. Photo-only updates are for submissions awaiting review; rejected submissions must use the corrected-document resubmission flow.</p>
+      {kycStorePhotoMessage && <p role="status" className="mt-3 text-sm font-medium text-green-700">{kycStorePhotoMessage}</p>}
+      {kycStorePhotoError && <p role="alert" className="mt-3 text-sm font-medium text-red-700">{kycStorePhotoError}</p>}
+    </section>
+  </>
 )}
 
-    <div className="
-      bg-white
-      rounded-3xl
-      p-6
-      shadow-sm
-    ">
-
-   {kycStatus === "Not Submitted" && (
-
-<div>
-
-  <h2 className="
-    text-2xl
-    font-bold
-    mb-6
-  ">
-    Bank Account Details
-  </h2>
-
-      <div className="
-        grid
-        grid-cols-1
-        md:grid-cols-3
-        gap-4
-      ">
-
-    <select
-  value={selectedBank}
-  onChange={(e)=>
-    setSelectedBank(
-      e.target.value
-    )
-  }
-  className="
-    border
-    p-4
-    rounded-xl
-  "
->
-
-  <option value="">
-  Select Bank
-</option>
-
-<option value="044">
-  Access Bank
-</option>
-
-<option value="058">
-  GTBank
-</option>
-
-<option value="011">
-  First Bank
-</option>
-
-<option value="033">
-  UBA
-</option>
-
-<option value="057">
-  Zenith Bank
-</option>
-
-<option value="070">
-  Fidelity Bank
-</option>
-
-<option value="999992">
-  Opay
-</option>
-
-<option value="50515">
-  Moniepoint
-</option>
-
-<option value="999991">
-  PalmPay
-</option>
-
-</select>
-
-<input
-  placeholder="Account Number"
-  value={accountNumber}
-  onChange={(e)=>
-    setAccountNumber(
-      e.target.value
-    )
-  }
-  className="
-    border
-    p-4
-    rounded-xl
-  "
-/>
-
-<div
-  className="
-    border
-    p-4
-    rounded-xl
-    bg-gray-50
-  "
->
-
-  {verifiedAccountName || "Account name will appear here"}
-
-</div>
-
-      </div>
-
-<button
-  type="button"
-   onClick={async () => {
-
-    if(
-      accountNumber.length !== 10
-    ){
-
-      alert(
-        "Enter a valid 10-digit account number"
-      );
-
-      return;
-
-    }
-
-    setVerifyingAccount(true);
-
-try {
-
-  const response =
-    await fetch(
-      "/api/verify-account",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
-
-        body: JSON.stringify({
-
-          accountNumber,
-
-          bankCode:
-            selectedBank
-
-        })
-
-      }
-    );
-
-  const data =
-    await response.json();
-
-  if (!data.success) {
-
-    alert(
-      data.message ||
-      "Verification failed"
-    );
-
-    setVerifiedAccountName("");
-
-    return;
-
-  }
-
-  setVerifiedAccountName(
-    data.accountName
-  );
-
-}
-catch(error){
-
-  console.error(error);
-
-  alert(
-    "Unable to verify account"
-  );
-
-}
-finally{
-
-  setVerifyingAccount(false);
-
-}
-
-  }}
-  className="
-    mt-4
-    bg-blue-600
-    text-white
-    px-6
-    py-3
-    rounded-xl
-    font-semibold
-  "
->
-
-  {
-    verifyingAccount
-      ? "Verifying..."
-      : "Verify Account"
-  }
-
-</button>
-
-     <button
-  onClick={submitKyc}
-  disabled={submittingKyc}
-  className="
-    mt-6
-    bg-orange-500
-    text-white
-    px-6
-    py-3
-    rounded-xl
-    font-semibold
-    disabled:opacity-50
-    disabled:cursor-not-allowed
-  "
->
-
-  {
-    submittingKyc
-      ? "Submitting..."
-      : "Submit Verification"
-  }
-
-
-</button>
-
-</div>
-
-)}
-
-</div>
-
-</div>
-
-)}
-
-      </div> {/* End Main Content */}
-
-    </div> {/* End Flex Layout */}
-
+          </div> {/* End Page Content */}
+        </div> {/* End Main Content */}
+      </div> {/* End Flex Layout */}
     </main>
 
   );

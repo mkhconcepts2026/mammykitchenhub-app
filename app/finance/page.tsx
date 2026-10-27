@@ -10,10 +10,21 @@ import SettlementCentre from "./SettlementCentre";
 import RecentFinancialActivity from "./RecentFinancialActivity";
 import { createClient } from "@/lib/supabase/client";
 
+type FinanceOrderRow = {
+  total: number | string | null;
+  mkh_amount: number | string | null;
+  platform_fee: number | string | null;
+  delivery_fee: number | string | null;
+  created_at: string;
+};
+
 export default function FinancePage() {
 
   const supabase =
     createClient();
+
+  const [ordersLoadError, setOrdersLoadError] =
+    useState(false);
 
   const [stats, setStats] =
     useState({
@@ -151,17 +162,23 @@ export default function FinancePage() {
     );
 
     const {
-      data: orders
-    } =
-      await supabase
-        .from("orders")
-        .select(`
-    total,
-    mkh_amount,
-    platform_fee,
-    delivery_fee,
-    created_at
-  `);
+      data: orderRows,
+      error: ordersError,
+    } = await (supabase as any).rpc(
+      "finance_get_order_financial_rows"
+    );
+
+    const orders: FinanceOrderRow[] =
+      (orderRows ?? []) as FinanceOrderRow[];
+
+    setOrdersLoadError(Boolean(ordersError));
+
+    if (ordersError) {
+      console.error(
+        "Finance order reporting query failed:",
+        ordersError
+      );
+    }
 
     const {
       data: pendingPayouts
@@ -648,106 +665,127 @@ export default function FinancePage() {
 
   }, []);
 
-  async function markProcessing(
-    request: any
+  async function runPayoutAction(
+    request: any,
+    action: string,
+    reason?: string,
+    transferReference?: string
   ) {
-
-    const confirmed =
-      confirm(
-        `Move ₦${Number(
-          request.amount
-        ).toLocaleString()} to Processing?`
-      );
-
-    if (!confirmed) {
-
-      return;
-
+    if (request.requester_type !== "vendor") {
+      alert("This action is available only for vendor payout requests.");
+      return false;
     }
 
-    const {
-      error
-    } =
-      await supabase
-        .from(
-          "payout_requests"
-        )
-        .update({
-
-          status:
-            "processing"
-
-        })
-        .eq(
-          "id",
-          request.id
-        );
+    const { data: result, error } = await supabase.rpc(
+      "resolve_vendor_payout",
+      {
+        p_payout_request_id: request.id,
+        p_action: action,
+        p_reason: reason ?? null,
+        p_transfer_reference: transferReference ?? null,
+      }
+    );
 
     if (error) {
-
-      alert(
-        error.message
-      );
-
-      return;
-
+      alert(`Payout action failed: ${error.message}`);
+      return false;
     }
 
-    loadFinanceStats();
+    if (!result?.success) {
+      alert(result?.message ?? "Payout action could not be completed.");
+      return false;
+    }
 
+    alert(result.message ?? "Payout action completed.");
+    await loadFinanceStats();
+    return true;
   }
 
-  async function markPaid(
-    request: any
-  ) {
+  async function approvePayout(request: any) {
+    if (request.status !== "pending") return;
+    if (!confirm("Approve this vendor payout request?")) return;
+    await runPayoutAction(request, "approve");
+  }
 
-    const confirmed =
-      confirm(
-        `Mark ₦${Number(
-          request.amount
-        ).toLocaleString()} as Paid?`
-      );
+  async function startProcessing(request: any) {
+    if (request.status !== "approved") return;
+    if (!confirm("Start processing this approved payout?")) return;
+    await runPayoutAction(request, "start_processing");
+  }
 
-    if (!confirmed) {
+  async function submitTransfer(request: any) {
+    if (request.status !== "processing") return;
 
+    const reference = window.prompt(
+      "Enter the bank transfer reference after initiating the transfer. Do not mark the payout paid until success is verified."
+    );
+    if (!reference?.trim()) {
+      alert("A transfer reference is required.");
       return;
-
     }
+    if (!confirm(
+      `Record transfer reference "${reference.trim()}" and mark this payout as transfer submitted?`
+    )) return;
 
-    const {
-      error
-    } =
-      await supabase
-        .from(
-          "payout_requests"
-        )
-        .update({
+    await runPayoutAction(
+      request,
+      "submit_transfer",
+      undefined,
+      reference.trim()
+    );
+  }
 
-          status:
-            "paid",
-
-          processed_at:
-            new Date()
-              .toISOString()
-
-        })
-        .eq(
-          "id",
-          request.id
-        );
-
-    if (error) {
-
-      alert(
-        error.message
-      );
-
+  async function markPaid(request: any) {
+    if (request.status !== "transfer_submitted") return;
+    if (!request.transfer_reference) {
+      alert("A transfer reference is missing. Do not mark this payout as paid.");
       return;
-
     }
+    if (!confirm(
+      `Have you independently verified that the transfer succeeded for reference "${request.transfer_reference}"?`
+    )) return;
 
-    loadFinanceStats();
+    await runPayoutAction(request, "mark_paid");
+  }
 
+  async function holdPayout(request: any) {
+    const reason = window.prompt("Enter the reason for placing this payout on hold:");
+    if (!reason?.trim()) {
+      alert("A reason is required to place a payout on hold.");
+      return;
+    }
+    if (!confirm("Place this payout on hold? Its reserved funds will remain reserved.")) return;
+    await runPayoutAction(request, "hold", reason.trim());
+  }
+
+  async function resumePayout(request: any) {
+    if (request.status !== "on_hold") return;
+    if (!confirm("Resume this payout to its previous status? Only do this after any transfer uncertainty has been resolved.")) return;
+    await runPayoutAction(request, "resume");
+  }
+
+  async function rejectPayout(request: any) {
+    if (!["pending", "approved"].includes(request.status)) return;
+    const reason = window.prompt("Enter the reason for rejecting this payout:");
+    if (!reason?.trim()) {
+      alert("A rejection reason is required.");
+      return;
+    }
+    if (!confirm("Reject this payout and restore its reserved funds?")) return;
+    await runPayoutAction(request, "reject", reason.trim());
+  }
+
+  async function reportTransferFailure(request: any) {
+    if (!["processing", "transfer_submitted"].includes(request.status)) return;
+    const reason = window.prompt(
+      "Describe the verified transfer failure. Use this only after confirming the transfer did not succeed."
+    );
+    if (!reason?.trim()) {
+      alert("A reason is required.");
+      return;
+    }
+    if (!confirm("Confirm the transfer failed and the reserved funds should be restored?")) return;
+    await runPayoutAction(request, "confirm_transfer_failure", reason.trim());
   }
 
   return (
@@ -768,6 +806,16 @@ export default function FinancePage() {
       >
 
         <FinanceHeader />
+
+        {ordersLoadError && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          >
+            Order financial data could not be loaded. Revenue figures may
+            be incomplete. Please contact the system administrator.
+          </div>
+        )}
 
 
         <RevenueOverview
@@ -850,13 +898,14 @@ export default function FinancePage() {
               vendorsMap
             }
 
-            markProcessing={
-              markProcessing
-            }
-
-            markPaid={
-              markPaid
-            }
+            approvePayout={approvePayout}
+            startProcessing={startProcessing}
+            submitTransfer={submitTransfer}
+            markPaid={markPaid}
+            holdPayout={holdPayout}
+            resumePayout={resumePayout}
+            rejectPayout={rejectPayout}
+            reportTransferFailure={reportTransferFailure}
 
           />
 

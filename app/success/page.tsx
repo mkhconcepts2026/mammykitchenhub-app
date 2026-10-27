@@ -1,277 +1,203 @@
-"use client";
+﻿"use client";
 
-import {
-  Suspense,
-  useEffect,
-  useState
-} from "react";
-
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CheckCircle, Receipt, Clock, ShieldCheck } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-import { useSearchParams }
-from "next/navigation";
-
-import {
-  CheckCircle,
-  Receipt,
-  Clock,
-} from "lucide-react";
-
-import { createClient }
-from "@/lib/supabase/client";
+type Order = {
+  id: string;
+  status: string;
+  total: number | string;
+};
 
 function SuccessContent() {
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get("order");
 
-  const searchParams =
-    useSearchParams();
-
-  const orderId =
-    searchParams.get("order");
-
-  const supabase =
-    createClient();
-
-  const [order,
-    setOrder] =
-    useState<any>(null);
-
-  const [loading,
-    setLoading] =
-    useState(true);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [otp, setOtp] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [orderNotFound, setOrderNotFound] = useState(false);
 
   useEffect(() => {
+    if (!orderId) {
+      return;
+    }
 
-    async function loadOrder() {
+    let cancelled = false;
 
-      if (!orderId) {
+    async function refreshOrder() {
+      const supabase = createClient();
 
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id, status, total")
+        .eq("id", orderId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        setOrderNotFound(true);
         setLoading(false);
-
         return;
       }
 
-      const {
-        data,
-        error,
-      } =
-        await supabase
-          .from("orders")
-          .select("*")
-          .eq(
-            "id",
-            orderId
-          )
-          .single();
+      setOrderNotFound(false);
+      setOrder(data as Order);
 
-      if (!error) {
+      const eligibleStatuses = ["accepted", "assigned", "picked_up"];
 
-        setOrder(data);
+      if (eligibleStatuses.includes(data.status)) {
+        const { data: code, error: otpError } = await supabase.rpc(
+          "get_my_delivery_otp",
+          { p_order_id: orderId }
+        );
+
+        if (!cancelled) {
+          setOtp(!otpError && code ? String(code) : null);
+        }
+      } else {
+        setOtp(null);
       }
 
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
 
-    loadOrder();
+    void refreshOrder();
 
+    const intervalId = window.setInterval(() => {
+      void refreshOrder();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [orderId]);
 
   if (loading) {
-
     return (
-
-      <main className="min-h-screen flex items-center justify-center">
-
-        <h1 className="text-2xl font-bold">
-
-          Loading Order...
-
-        </h1>
-
+      <main className="flex min-h-screen items-center justify-center">
+        <p className="text-lg font-semibold">Loading your order...</p>
       </main>
-
     );
   }
 
   return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+      <div className="w-full max-w-xl rounded-3xl bg-white p-8 text-center shadow-lg sm:p-10">
+        <CheckCircle className="mx-auto mb-5 h-16 w-16 text-green-500" />
 
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-
-      <div className="bg-white rounded-3xl shadow-lg p-10 max-w-xl w-full text-center">
-
-        <CheckCircle
-          className="
-            w-20
-            h-20
-            text-green-500
-            mx-auto
-            mb-6
-          "
-        />
-
-        <h1 className="text-4xl font-bold mb-4">
-
-          Order Successful 🎉
-
+        <h1 className="mb-3 text-3xl font-bold text-gray-900">
+          Order Successful!
         </h1>
 
-        <p className="text-gray-500 mb-8">
-
+        <p className="mb-8 text-gray-600">
           Your order has been placed successfully.
-
         </p>
 
+        {orderNotFound && (
+          <p className="mb-6 rounded-xl bg-amber-50 p-4 text-amber-800">
+            We could not load your order details. Please check My Orders.
+          </p>
+        )}
+
         {order && (
-
-          <div className="space-y-5 mb-10">
-
-            <div className="bg-gray-50 rounded-2xl p-5 flex gap-4 items-center">
-
-              <Receipt
-                className="
-                  text-orange-500
-                  w-8
-                  h-8
-                "
-              />
-
-              <div className="text-left">
-
-                <p className="font-semibold">
-
-                  Order ID
-
-                </p>
-
-                <p className="text-gray-500 break-all">
-
-                  {order.id}
-
-                </p>
-
+          <div className="mb-8 space-y-4 text-left">
+            <div className="flex items-center gap-4 rounded-2xl bg-gray-50 p-5">
+              <Receipt className="h-8 w-8 shrink-0 text-orange-500" />
+              <div className="min-w-0">
+                <p className="font-semibold">Order ID</p>
+                <p className="break-all text-sm text-gray-500">{order.id}</p>
               </div>
-
             </div>
 
-            <div className="bg-gray-50 rounded-2xl p-5 flex gap-4 items-center">
-
-              <Clock
-                className="
-                  text-orange-500
-                  w-8
-                  h-8
-                "
-              />
-
-              <div className="text-left">
-
-                <p className="font-semibold">
-
-                  Status
-
+            <div className="flex items-center gap-4 rounded-2xl bg-gray-50 p-5">
+              <Clock className="h-8 w-8 shrink-0 text-orange-500" />
+              <div>
+                <p className="font-semibold">Order Status</p>
+                <p className="capitalize text-gray-600">
+                  {order.status.replaceAll("_", " ")}
                 </p>
-
-                <p className="text-gray-500 capitalize">
-
-                  {order.status}
-
-                </p>
-
               </div>
-
             </div>
 
-            <div className="bg-gray-50 rounded-2xl p-5">
-
-              <p className="font-semibold mb-2">
-
-                Total
-
-              </p>
-
+            <div className="rounded-2xl bg-gray-50 p-5">
+              <p className="mb-2 font-semibold">Order Total</p>
               <p className="text-2xl font-bold text-orange-500">
-
-                ₦
-                {order.total.toLocaleString()}
-
+                {"\u20A6"}
+                {Number(order.total ?? 0).toLocaleString("en-NG", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </p>
-
             </div>
 
-          </div>
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 p-6 text-center">
+              <ShieldCheck className="mx-auto mb-3 h-9 w-9 text-orange-600" />
 
+              {otp ? (
+                <>
+                  <p className="font-semibold text-gray-900">
+                    Your Delivery Verification Code
+                  </p>
+                  <p className="my-3 text-4xl font-bold tracking-[0.35em] text-orange-600">
+                    {otp}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Keep this code private and give it to your rider when
+                    your order arrives, so the delivery can be verified.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-gray-900">
+                    Your Delivery Code
+                  </p>
+                  <p className="mt-2 text-sm text-gray-600">
+                    Your code will appear here after a rider accepts your
+                    order. This page checks automatically every 10 seconds.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         <div className="space-y-4">
-
           <Link
             href="/orders"
-            className="
-              block
-              bg-orange-500
-              text-white
-              px-8
-              py-4
-              rounded-2xl
-              font-semibold
-              hover:bg-orange-600
-            "
+            className="block rounded-2xl bg-orange-500 px-8 py-4 font-semibold text-white hover:bg-orange-600"
           >
-
             View My Orders
-
           </Link>
 
           <Link
             href="/dashboard"
-            className="
-              block
-              border
-              border-gray-300
-              text-gray-700
-              px-8
-              py-4
-              rounded-2xl
-              font-semibold
-              hover:bg-gray-100
-            "
+            className="block rounded-2xl border border-gray-300 px-8 py-4 font-semibold text-gray-700 hover:bg-gray-100"
           >
-
             Continue Shopping
-
           </Link>
-
         </div>
-
       </div>
-
     </main>
-
   );
 }
+
 export default function SuccessPage() {
-
   return (
-
     <Suspense
       fallback={
-
-        <main className="min-h-screen flex items-center justify-center">
-
-          <h1 className="text-2xl font-bold">
-
-            Loading...
-
-          </h1>
-
+        <main className="flex min-h-screen items-center justify-center">
+          <p className="text-lg font-semibold">Loading...</p>
         </main>
-
       }
     >
-
       <SuccessContent />
-
     </Suspense>
-
   );
-
 }
+

@@ -1,115 +1,75 @@
+
 "use client";
 
 interface ExecutiveSummaryProps {
-
   totalOrders: number;
-
   averageRevenue: number;
-
   pendingRequests: number;
-
   completedPayouts: number;
-
 }
 
 export default function ExecutiveSummary({
-
   totalOrders,
-
   averageRevenue,
-
   pendingRequests,
-
-  completedPayouts
-
+  completedPayouts,
 }: ExecutiveSummaryProps) {
+  const metrics = [
+    {
+      label: "Total Orders",
+      value: totalOrders.toLocaleString("en-NG"),
+      accent: "border-l-slate-900",
+    },
+    {
+      label: "Average MKH Revenue",
+      value: `₦${averageRevenue.toLocaleString("en-NG")}`,
+      accent: "border-l-emerald-600",
+    },
+    {
+      label: "Pending Requests",
+      value: pendingRequests.toLocaleString("en-NG"),
+      accent: "border-l-amber-400",
+    },
+    {
+      label: "Completed Payouts",
+      value: completedPayouts.toLocaleString("en-NG"),
+      accent: "border-l-emerald-600",
+    },
+  ];
 
   return (
-
-    <div
-      className="
-        bg-white
-        rounded-3xl
-        p-8
-        shadow-sm
-        border
-        border-gray-100
-        mb-8
-      "
+    <section
+      aria-labelledby="finance-executive-summary"
+      className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
     >
-
-      <h2
-        className="
-          text-3xl
-          font-bold
-          mb-6
-        "
-      >
-        Executive Summary
-      </h2>
-
-      <div
-        className="
-          grid
-          grid-cols-1
-          md:grid-cols-2
-          xl:grid-cols-4
-          gap-6
-        "
-      >
-
-        <div>
-
-          <p className="text-gray-500">
-            Total Orders
-          </p>
-
-          <h3 className="text-3xl font-bold mt-2">
-            {totalOrders}
-          </h3>
-
-        </div>
-
-        <div>
-
-          <p className="text-gray-500">
-            Average MKH Revenue
-          </p>
-
-          <h3 className="text-3xl font-bold mt-2">
-            ₦{averageRevenue.toLocaleString()}
-          </h3>
-
-        </div>
-
-        <div>
-
-          <p className="text-gray-500">
-            Pending Requests
-          </p>
-
-          <h3 className="text-3xl font-bold mt-2">
-            {pendingRequests}
-          </h3>
-
-        </div>
-
-        <div>
-
-          <p className="text-gray-500">
-            Completed Payouts
-          </p>
-
-          <h3 className="text-3xl font-bold mt-2">
-            {completedPayouts}
-          </h3>
-
-        </div>
-
+      <div className="mb-6">
+        <h2
+          id="finance-executive-summary"
+          className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl"
+        >
+          Executive Summary
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          A snapshot of orders and payout activity.
+        </p>
       </div>
 
-    </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <article
+            key={metric.label}
+            className={`min-w-0 rounded-xl border border-slate-200 border-l-4 bg-slate-50/70 p-5 ${metric.accent}`}
+          >
+            <p className="text-sm font-medium text-slate-500">
+              {metric.label}
+            </p>
 
+            <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-950 tabular-nums sm:text-3xl">
+              {metric.value}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
-
 }

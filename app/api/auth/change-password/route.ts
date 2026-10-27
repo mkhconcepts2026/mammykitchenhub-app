@@ -23,6 +23,26 @@ export async function POST(request: Request) {
       );
     }
 
+    // Only active accounts may change their password.
+    const { data: passwordProfile, error: passwordProfileError } =
+      await adminClient
+        .from("profiles")
+        .select("status")
+        .eq("id", user.id)
+        .single();
+
+    if (
+      passwordProfileError ||
+      String(passwordProfile?.status ?? "").trim().toLowerCase() !== "active"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "This account is not active. Please contact MKH Human Resources.",
+        },
+        { status: 403 }
+      );
+    }
     const { newPassword } = await request.json();
 
     if (!newPassword) {

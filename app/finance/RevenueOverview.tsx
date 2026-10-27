@@ -1,178 +1,80 @@
+
 "use client";
 
 interface RevenueOverviewProps {
-
   totalRevenue: number;
-
   platformRevenue: number;
-
   deliveryRevenue: number;
-
   pendingPayouts: number;
-
   processingPayouts: number;
-
   paidPayouts: number;
-
 }
 
+const formatNaira = (amount: number) =>
+  `₦${amount.toLocaleString("en-NG", {
+    maximumFractionDigits: 0,
+  })}`;
+
 export default function RevenueOverview({
-
   totalRevenue,
-
   platformRevenue,
-
   deliveryRevenue,
-
   pendingPayouts,
-
   processingPayouts,
-
-  paidPayouts
-
+  paidPayouts,
 }: RevenueOverviewProps) {
+  const cards = [
+    {
+      label: "Total MKH Revenue",
+      value: totalRevenue,
+      accent: "border-t-slate-950",
+    },
+    {
+      label: "Platform Fees",
+      value: platformRevenue,
+      accent: "border-t-emerald-600",
+    },
+    {
+      label: "MKH Delivery Share",
+      value: deliveryRevenue,
+      accent: "border-t-amber-400",
+    },
+    {
+      label: "Pending Payouts",
+      value: pendingPayouts,
+      accent: "border-t-amber-400",
+    },
+    {
+      label: "Processing Payouts",
+      value: processingPayouts,
+      accent: "border-t-slate-700",
+    },
+    {
+      label: "Paid Payouts",
+      value: paidPayouts,
+      accent: "border-t-emerald-600",
+    },
+  ];
 
   return (
-
-    <div
-      className="
-        grid
-        grid-cols-1
-        md:grid-cols-2
-        xl:grid-cols-3
-        gap-6
-        mb-10
-      "
+    <section
+      aria-label="Revenue and payout overview"
+      className="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
     >
+      {cards.map((card) => (
+        <article
+          key={card.label}
+          className={`rounded-2xl border border-t-4 border-slate-200 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md ${card.accent}`}
+        >
+          <p className="text-sm font-semibold tracking-wide text-slate-500">
+            {card.label}
+          </p>
 
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border
-          border-gray-100
-        "
-      >
-
-        <p className="text-gray-500">
-          Total MKH Revenue
-        </p>
-
-        <h2 className="text-4xl font-bold mt-3">
-          ₦{totalRevenue.toLocaleString()}
-        </h2>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border
-          border-gray-100
-        "
-      >
-
-        <p className="text-gray-500">
-          Platform Fees
-        </p>
-
-        <h2 className="text-4xl font-bold mt-3">
-          ₦{platformRevenue.toLocaleString()}
-        </h2>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border
-          border-gray-100
-        "
-      >
-
-        <p className="text-gray-500">
-          MKH Delivery Share
-        </p>
-
-        <h2 className="text-4xl font-bold mt-3">
-          ₦{deliveryRevenue.toLocaleString()}
-        </h2>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border
-          border-gray-100
-        "
-      >
-
-        <p className="text-gray-500">
-          Pending Payouts
-        </p>
-
-        <h2 className="text-4xl font-bold mt-3">
-          ₦{pendingPayouts.toLocaleString()}
-        </h2>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border
-          border-gray-100
-        "
-      >
-
-        <p className="text-gray-500">
-          Processing Payouts
-        </p>
-
-        <h2 className="text-4xl font-bold mt-3">
-          ₦{processingPayouts.toLocaleString()}
-        </h2>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border
-          border-gray-100
-        "
-      >
-
-        <p className="text-gray-500">
-          Paid Payouts
-        </p>
-
-        <h2 className="text-4xl font-bold mt-3">
-          ₦{paidPayouts.toLocaleString()}
-        </h2>
-
-      </div>
-
-    </div>
-
+          <p className="mt-3 break-words text-3xl font-bold tracking-tight text-slate-950 tabular-nums sm:text-4xl">
+            {formatNaira(card.value)}
+          </p>
+        </article>
+      ))}
+    </section>
   );
-
 }

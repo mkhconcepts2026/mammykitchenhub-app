@@ -1,0 +1,141 @@
+"use client";
+
+import {
+  Activity,
+  ClipboardList,
+  Clock3,
+  Wallet,
+  Star,
+} from "lucide-react";
+
+type DashboardOrder = {
+  status?: string | null;
+};
+
+type VendorDashboardTabProps = {
+  vendorName: string;
+  orders: DashboardOrder[];
+};
+
+/**
+ * UI-only candidate for the MKH Vendor Dashboard overview.
+ * Keeps the existing Overview metrics and inputs; no Supabase or business
+ * operations are added here. Review before applying to the live component.
+ */
+export default function VendorDashboardTab({
+  vendorName,
+  orders,
+}: VendorDashboardTabProps) {
+  const pendingOrders = orders.filter((order) => order.status === "pending").length;
+
+  const metrics = [
+    {
+      label: "Today's Revenue",
+      value: "₦127,500",
+      note: "+12.5% from yesterday",
+      Icon: Wallet,
+      tone: "text-emerald-600",
+      accent: "bg-emerald-500",
+    },
+    {
+      label: "Total Orders",
+      value: orders.length.toLocaleString(),
+      note: "Orders recorded for your kitchen",
+      Icon: ClipboardList,
+      tone: "text-slate-500",
+      accent: "bg-[#ff6b00]",
+    },
+    {
+      label: "Pending Orders",
+      value: pendingOrders.toLocaleString(),
+      note: pendingOrders > 0 ? "Requires your attention" : "No orders waiting for action",
+      Icon: Clock3,
+      tone: pendingOrders > 0 ? "text-[#d45b00]" : "text-emerald-600",
+      accent: "bg-[#ff6b00]",
+    },
+    {
+      label: "Average Rating",
+      value: "4.8",
+      note: "+0.2 this week",
+      Icon: Star,
+      tone: "text-emerald-600",
+      accent: "bg-emerald-500",
+    },
+  ];
+
+  return (
+    <div className="space-y-8 font-sans">
+      <section className="relative isolate overflow-hidden rounded-[28px] bg-[#0b1220] px-6 py-8 text-white shadow-[0_18px_45px_rgba(11,18,32,0.16)] sm:px-8 sm:py-10 lg:px-10">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-24 -z-10 h-72 w-72 rounded-full bg-[#ff6b00]/20 blur-3xl" />
+        <div aria-hidden="true" className="pointer-events-none absolute bottom-[-140px] right-[22%] -z-10 h-64 w-64 rounded-full bg-blue-400/10 blur-3xl" />
+
+        <div className="flex flex-col gap-7 md:flex-row md:items-end md:justify-between">
+          <div className="max-w-3xl">
+            <p className="mb-3 text-[11px] font-extrabold uppercase tracking-[0.28em] text-[#ff8a26]">
+              Vendor workspace
+            </p>
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+              Welcome back{vendorName ? `, ${vendorName}` : ""}
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+              Your kitchen operations at a glance. Keep orders moving, maintain your menu, and follow your business performance from one place.
+            </p>
+          </div>
+
+          <div className="inline-flex w-fit shrink-0 items-center gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+              <Activity size={18} />
+            </span>
+            <span>
+              <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">Workspace status</span>
+              <span className="mt-1 block text-sm font-bold text-white">Operational</span>
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="vendor-overview-heading">
+        <div className="mb-5">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.25em] text-[#ff6b00]">At a glance</p>
+          <h2 id="vendor-overview-heading" className="mt-2 text-2xl font-extrabold tracking-tight text-[#0b1220] sm:text-3xl">
+            Business Overview
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+          {metrics.map(({ label, value, note, Icon, tone, accent }) => {
+            const isPending = label === "Pending Orders" && pendingOrders > 0;
+            return (
+              <article
+                key={label}
+                className={`group relative flex min-h-[166px] flex-col overflow-hidden rounded-2xl border p-5 shadow-[0_2px_5px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(15,23,42,0.09)] sm:p-6 ${
+                  isPending
+                    ? "border-[#ff6b00] bg-[#ff6b00] text-white"
+                    : "border-slate-200/90 bg-white text-[#0b1220]"
+                }`}
+              >
+                <div className="mb-5 flex items-start justify-between gap-3">
+                  <p className={`text-sm font-semibold ${isPending ? "text-orange-50" : "text-slate-500"}`}>
+                    {label}
+                  </p>
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isPending ? "bg-white/15 text-white" : "bg-slate-100 text-[#0b1220]"}`}>
+                    <Icon size={18} strokeWidth={2.1} />
+                  </span>
+                </div>
+                <p className="text-3xl font-black tracking-tight sm:text-[2.15rem]">{value}</p>
+                <p className={`mt-2 text-xs font-semibold leading-5 ${isPending ? "text-orange-50" : tone}`}>
+                  {note}
+                </p>
+                <div className={`mt-auto pt-5`}>
+                  <div className={`h-1.5 w-full rounded-full ${isPending ? "bg-white/20" : "bg-slate-100"}`}>
+                    <div className={`h-1.5 w-full rounded-full ${isPending ? "bg-white" : accent}`} />
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}

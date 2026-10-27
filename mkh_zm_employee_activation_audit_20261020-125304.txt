@@ -1,0 +1,762 @@
+﻿MKH ZM EMPLOYEE ACTIVATION WORKFLOW AUDIT (READ-ONLY)
+Project: C:\MKH\mkh-app
+Generated: 2026-10-20 12:53:15
+Scanned source files: 238
+Excluded: dependencies, build output, backups, retired Manager Dashboard V3 paths.
+No files or Supabase database objects were modified.
+
+IMPORTANT: This is a local source-code audit. It does not prove live Supabase state or execute any activation workflow.
+
+====================================================================================================
+FILE: app\admin-dashboard\EmployeeProvisioningWizard.tsx
+MATCHING LINES: 6
+--- line 121 | matched: Onboarding ---
+  118:     if (error || !data) return;
+  119: 
+  120:     const resume = window.confirm(
+  121:       "An incomplete employee onboarding was found.\n\nWould you like to resume it?"
+  122:     );
+  123: 
+  124:     if (!resume) return;
+--- line 291 | matched: createEmployee ---
+  288: }));
+  289: 
+  290: }
+  291: async function createEmployee() {
+  292: 
+  293:   // =====================================================
+  294:   // REQUIRED FIELD VALIDATION
+--- line 347 | matched: employees/create ---
+  344: 
+  345:     const response = await fetch(
+  346: 
+  347:       "/api/admin/employees/create",
+  348: 
+  349:       {
+  350: 
+--- line 435 | matched: employee_roles ---
+  432:     .order("name");
+  433: 
+  434:   const { data: roleData } = await supabase
+  435:     .from("employee_roles")
+  436:     .select("*")
+  437:     .order("name");
+  438: 
+--- line 480 | matched: Onboarding ---
+  477: 
+  478:   <h1 className="text-3xl font-bold text-orange-600">
+  479: 
+  480:     MKH Employee Onboarding
+  481: 
+  482:   </h1>
+  483: 
+--- line 2077 | matched: createEmployee ---
+ 2074:     {/* RIGHT */}
+ 2075: 
+ 2076:     <button
+ 2077:       onClick={step === 5 ? createEmployee : nextStep}
+ 2078:       className="
+ 2079:         rounded-xl
+ 2080:         bg-orange-500
+
+====================================================================================================
+FILE: app\admin-dashboard\page.tsx
+MATCHING LINES: 4
+--- line 600 | matched: status.*active ---
+  597:           phone: app.phone,
+  598:           vendor_type: app.vendor_type,
+  599:           owner_name: app.owner_name,
+  600:           status: "active"
+  601:         }
+  602:       ]);
+  603: 
+--- line 706 | matched: status.*active ---
+  703:           )
+  704:         `)
+  705:         .eq("vendor_id", vendor.id)
+  706:         .eq("status", "active")
+  707:         .maybeSingle();
+  708: 
+  709:     if (assignmentError) {
+--- line 832 | matched: status.*active ---
+  829:       const { error: deactivateError } = await supabase
+  830:         .from("zone_vendors")
+  831:         .update({
+  832:           status: "inactive",
+  833:           unassigned_at: new Date().toISOString(),
+  834:         })
+  835:         .eq("id", currentVendorZone.id);
+--- line 846 | matched: status.*active ---
+  843:       .insert({
+  844:         vendor_id: selectedVendor.vendor_id,
+  845:         zone_id: selectedZoneId,
+  846:         status: "active",
+  847:         assigned_at: new Date().toISOString(),
+  848:       })
+  849:       .select(`
+
+====================================================================================================
+FILE: app\api\admin\employees\create\route.ts
+MATCHING LINES: 9
+--- line 80 | matched: employee_roles ---
+   77:       data: role,
+   78:       error: roleError,
+   79:     } = await adminClient
+   80:       .from("employee_roles")
+   81:       .select("name, system_role")
+   82:       .eq("id", employee.roleId)
+   83:       .single();
+--- line 81 | matched: system_role ---
+   78:       error: roleError,
+   79:     } = await adminClient
+   80:       .from("employee_roles")
+   81:       .select("name, system_role")
+   82:       .eq("id", employee.roleId)
+   83:       .single();
+   84: 
+--- line 86 | matched: system_role ---
+   83:       .single();
+   84: 
+   85:     console.log("ROLE RECORD:", role);
+   86:     console.log("SYSTEM ROLE:", role?.system_role);
+   87: 
+   88:     if (roleError) {
+   89:       return NextResponse.json(
+--- line 156 | matched: system_role ---
+  153:             employee.username,
+  154: 
+  155:           role:
+  156:             role.system_role,
+  157: 
+  158:           // NEW: Link profile to operational territory
+  159:           territory_id:
+--- line 165 | matched: must_change_password ---
+  162:           status:
+  163:             "active",
+  164: 
+  165:           must_change_password:
+  166:             true,
+  167:         });
+  168: 
+--- line 193 | matched: profile_id ---
+  190:     } = await adminClient
+  191:       .from("employees")
+  192:       .insert({
+  193:         profile_id: authUserId,
+  194: 
+  195:         employee_number:
+  196:           employee.employeeNumber,
+--- line 224 | matched: reports_to ---
+  221:         role_id:
+  222:           employee.roleId,
+  223: 
+  224:         reports_to:
+  225:           employee.reportsTo || null,
+  226: 
+  227:         state_id:
+--- line 245 | matched: employment_status ---
+  242:         hire_date:
+  243:           employee.hireDate || null,
+  244: 
+  245:         employment_status:
+  246:           "Pending Activation",
+  247: 
+  248:         email:
+--- line 246 | matched: Pending Activation, pending activation, activation ---
+  243:           employee.hireDate || null,
+  244: 
+  245:         employment_status:
+  246:           "Pending Activation",
+  247: 
+  248:         email:
+  249:           employee.email,
+
+====================================================================================================
+FILE: app\api\admin\employees\reset-password\route.ts
+MATCHING LINES: 3
+--- line 83 | matched: profile_id ---
+   80:     const { data: employee, error: employeeError } =
+   81:       await adminClient
+   82:         .from("employees")
+   83:         .select("profile_id")
+   84:         .eq("profile_id", profileId)
+   85:         .maybeSingle();
+   86: 
+--- line 84 | matched: profile_id ---
+   81:       await adminClient
+   82:         .from("employees")
+   83:         .select("profile_id")
+   84:         .eq("profile_id", profileId)
+   85:         .maybeSingle();
+   86: 
+   87:     if (employeeError) {
+--- line 136 | matched: must_change_password ---
+  133:     const { error: profileError } =
+  134:       await adminClient
+  135:         .from("profiles")
+  136:         .update({ must_change_password: true })
+  137:         .eq("id", profileId);
+  138: 
+  139:     if (profileError) {
+
+====================================================================================================
+FILE: app\api\auth\change-password\route.ts
+MATCHING LINES: 1
+--- line 73 | matched: must_change_password ---
+   70:       await adminClient
+   71:         .from("profiles")
+   72:         .update({
+   73:           must_change_password: false,
+   74:         })
+   75:         .eq("id", user.id);
+   76: 
+
+====================================================================================================
+FILE: app\api\customer\wallet\activate\route.ts
+MATCHING LINES: 3
+--- line 42 | matched: status.*active ---
+   39:     if (
+   40:       !profile ||
+   41:       profile.role?.toLowerCase() !== "customer" ||
+   42:       profile.status?.toLowerCase() !== "active"
+   43:     ) {
+   44:       return NextResponse.json(
+   45:         { success: false, message: "An active customer account is required." },
+--- line 85 | matched: activation ---
+   82:       .single();
+   83: 
+   84:     if (createError) {
+   85:       // Handle concurrent activation requests without creating duplicates.
+   86:       if (createError.code === "23505") {
+   87:         const { data: concurrentWallet, error: retryError } =
+   88:           await adminClient
+--- line 115 | matched: activation ---
+  112:       { status: 201 }
+  113:     );
+  114:   } catch (error) {
+  115:     console.error("CUSTOMER WALLET ACTIVATION ERROR:", error);
+  116:     return NextResponse.json(
+  117:       { success: false, message: "An unexpected error occurred." },
+  118:       { status: 500 }
+
+====================================================================================================
+FILE: app\api\customer\wallet\checkout\route.ts
+MATCHING LINES: 1
+--- line 45 | matched: status.*active ---
+   42:     if (
+   43:       !profile ||
+   44:       profile.role?.toLowerCase() !== "customer" ||
+   45:       profile.status?.toLowerCase() !== "active"
+   46:     ) {
+   47:       return errorResponse("An active customer account is required.", 403);
+   48:     }
+
+====================================================================================================
+FILE: app\api\hr\employees\delete\route.ts
+MATCHING LINES: 3
+--- line 76 | matched: profile_id ---
+   73:     const { data: employee, error: employeeError } =
+   74:       await adminClient
+   75:         .from("employees")
+   76:         .select("id, profile_id")
+   77:         .eq("id", employeeId)
+   78:         .maybeSingle();
+   79: 
+--- line 122 | matched: profile_id ---
+  119: 
+  120:     // 6. If there is no linked profile, the employee record
+  121:     // is deleted; do not call Supabase Auth with a null ID.
+  122:     if (!employee.profile_id) {
+  123:       return NextResponse.json({
+  124:         success: true,
+  125:         message: "Employee record deleted. No linked profile existed.",
+--- line 132 | matched: profile_id ---
+  129:     // 7. Remove the linked Auth account.
+  130:     // The linked profile's FK relationships may prevent deletion.
+  131:     const { error: authDeleteError } =
+  132:       await adminClient.auth.admin.deleteUser(employee.profile_id);
+  133: 
+  134:     if (authDeleteError) {
+  135:       console.error(
+
+====================================================================================================
+FILE: app\hr\page.tsx
+MATCHING LINES: 6
+--- line 164 | matched: employee_roles ---
+  161:     }),
+  162: 
+  163:   supabase
+  164:     .from("employee_roles")
+  165:     .select("*", {
+  166:       count: "exact",
+  167:       head: true,
+--- line 264 | matched: Onboarding ---
+  261: 
+  262:               <p className="mt-2 max-w-2xl text-gray-500">
+  263: 
+  264:                Manage employee onboarding, roles, departments and workforce operations across MKH.
+  265: 
+  266:               </p>
+  267: 
+--- line 412 | matched: Onboarding ---
+  409: 
+  410:           <p className="mt-2 text-sm text-gray-500">
+  411: 
+  412:             Employees awaiting onboarding approval.
+  413: 
+  414:           </p>
+  415: 
+--- line 644 | matched: Onboarding ---
+  641:             </h2>
+  642: 
+  643:             <p className="mt-2 text-gray-500">
+  644:               Employee onboarding and HR actions will appear here.
+  645:             </p>
+  646: 
+  647:           </div>
+--- line 655 | matched: Onboarding ---
+  652: 
+  653:   <h3 className="mb-6 text-2xl font-bold text-orange-700">
+  654: 
+  655:     Incomplete Employee Onboardings
+  656: 
+  657:   </h3>
+  658: 
+--- line 676 | matched: Onboarding ---
+  673: 
+  674:       <p className="mt-3 text-gray-500">
+  675: 
+  676:         HR onboarding drafts will appear here.
+  677: 
+  678:       </p>
+  679: 
+
+====================================================================================================
+FILE: app\hr\departments\page.tsx
+MATCHING LINES: 2
+--- line 83 | matched: status.*active ---
+   80:       .insert({
+   81:         name: departmentName,
+   82:         description: departmentDescription,
+   83:         status: "active",
+   84:       }));
+   85: 
+   86:   }
+--- line 244 | matched: status.*active ---
+  241:                     <button
+  242:   onClick={async () => {
+  243:     const newStatus =
+  244:       dept.status === "active"
+  245:         ? "inactive"
+  246:         : "active";
+  247: 
+
+====================================================================================================
+FILE: app\hr\employees\page.tsx
+MATCHING LINES: 4
+--- line 47 | matched: profile_id ---
+   44:     state:state_id (
+   45:       name
+   46:     ),
+   47:     profiles:profile_id (
+   48:       must_change_password
+   49:     )
+   50:   `)
+--- line 48 | matched: must_change_password ---
+   45:       name
+   46:     ),
+   47:     profiles:profile_id (
+   48:       must_change_password
+   49:     )
+   50:   `)
+   51:   .order("created_at", {
+--- line 298 | matched: profile_id ---
+  295:         employee.email,
+  296: 
+  297:        profileId:
+  298:     employee.profile_id,
+  299: 
+  300:       temporaryPassword:
+  301:   employee.profiles?.must_change_password
+--- line 301 | matched: must_change_password ---
+  298:     employee.profile_id,
+  299: 
+  300:       temporaryPassword:
+  301:   employee.profiles?.must_change_password
+  302:     ? "First Login Pending"
+  303:     : "Password Already Changed",
+  304: 
+
+====================================================================================================
+FILE: app\hr\roles\page.tsx
+MATCHING LINES: 10
+--- line 61 | matched: employee_roles ---
+   58:   if (editingRole) {
+   59: 
+   60:     ({ error } = await supabase
+   61:       .from("employee_roles")
+   62:       .update({
+   63:         name: roleName,
+   64:         description: roleDescription,
+--- line 66 | matched: system_role ---
+   63:         name: roleName,
+   64:         description: roleDescription,
+   65:         dashboard,
+   66:         system_role: systemRole,
+   67:       })
+   68:       .eq("id", editingRole.id));
+   69: 
+--- line 73 | matched: employee_roles ---
+   70:   } else {
+   71: 
+   72:     ({ error } = await supabase
+   73:       .from("employee_roles")
+   74:       .insert({
+   75:         name: roleName,
+   76:         description: roleDescription,
+--- line 78 | matched: system_role ---
+   75:         name: roleName,
+   76:         description: roleDescription,
+   77:         dashboard,
+   78:         system_role: systemRole,
+   79:         status: "active",
+   80:       }));
+   81: 
+--- line 79 | matched: status.*active ---
+   76:         description: roleDescription,
+   77:         dashboard,
+   78:         system_role: systemRole,
+   79:         status: "active",
+   80:       }));
+   81: 
+   82:   }
+--- line 110 | matched: employee_roles ---
+  107: 
+  108:   async function loadRoles() {
+  109:     const { data, error } = await supabase
+  110:       .from("employee_roles")
+  111:       .select("*")
+  112:       .order("name");
+  113: 
+--- line 240 | matched: system_role ---
+  237: 
+  238:                 <td className="p-5">
+  239: 
+  240:                   {role.system_role}
+  241: 
+  242:                 </td>
+  243: 
+--- line 270 | matched: system_role ---
+  267:     setRoleName(role.name || "");
+  268:     setRoleDescription(role.description || "");
+  269:     setDashboard(role.dashboard || "");
+  270:     setSystemRole(role.system_role || "");
+  271:     setShowModal(true);
+  272:   }}
+  273:   className="rounded-xl bg-blue-50 p-2 hover:bg-blue-100"
+--- line 281 | matched: status.*active ---
+  278:                   <button
+  279:   onClick={async () => {
+  280:     const newStatus =
+  281:       role.status === "active" ? "inactive" : "active";
+  282: 
+  283:     console.log("Role ID:", role.id);
+  284:     console.log("Changing to:", newStatus);
+--- line 287 | matched: employee_roles ---
+  284:     console.log("Changing to:", newStatus);
+  285: 
+  286:     const { data, error } = await supabase
+  287:       .from("employee_roles")
+  288:       .update({ status: newStatus })
+  289:       .eq("id", role.id)
+  290:       .select();
+
+====================================================================================================
+FILE: app\login\page.tsx
+MATCHING LINES: 2
+--- line 100 | matched: must_change_password ---
+   97:       } =
+   98:       await supabase
+   99:         .from("profiles")
+  100:         .select("role, must_change_password")
+  101:         .eq(
+  102:           "id",
+  103:           data.user.id
+--- line 122 | matched: must_change_password ---
+  119: 
+  120:       }
+  121: 
+  122:      if (profile?.must_change_password) {
+  123: 
+  124:   await delay(700);
+  125: 
+
+====================================================================================================
+FILE: app\rider\onboarding\page.tsx
+MATCHING LINES: 2
+--- line 1 | matched: Onboarding ---
+    1: export default function RiderOnboardingPage() {
+    2:   return <div>Rider Onboarding Page - Coming Soon</div>;
+    3: }
+--- line 2 | matched: Onboarding ---
+    1: export default function RiderOnboardingPage() {
+    2:   return <div>Rider Onboarding Page - Coming Soon</div>;
+    3: }
+
+====================================================================================================
+FILE: app\territory-relationship-manager\page.tsx
+MATCHING LINES: 2
+--- line 62 | matched: status.*active ---
+   59:           .from("profiles")
+   60:           .select("*", { count: "exact", head: true })
+   61:           .eq("role", "rider")
+   62:           .eq("status", "active");
+   63: 
+   64:       if (ridersError) {
+   65:         console.error(
+--- line 79 | matched: status.*active ---
+   76:         await supabase
+   77:           .from("vendors")
+   78:           .select("*", { count: "exact", head: true })
+   79:           .eq("status", "active");
+   80: 
+   81:       if (vendorsError) {
+   82:         console.error(
+
+====================================================================================================
+FILE: app\territory-relationship-manager\live-operations\page.tsx
+MATCHING LINES: 1
+--- line 136 | matched: status.*active ---
+  133:   .from("profiles")
+  134:   .select("*", { count: "exact", head: true })
+  135:   .eq("role", "rider")
+  136:   .eq("status", "active");
+  137: const activeDeliveries = data.filter(
+  138:   (order: any) => order.status === "picked_up"
+  139: ).length;
+
+====================================================================================================
+FILE: app\territory-relationship-manager\vendors\page.tsx
+MATCHING LINES: 2
+--- line 118 | matched: status.*active ---
+  115:     () =>
+  116:       vendors.filter(
+  117:         (vendor) =>
+  118:           vendor.status === "active"
+  119:       ).length,
+  120:     [vendors]
+  121:   );
+--- line 156 | matched: Onboarding ---
+  153: 
+  154:           <p className="mt-4 max-w-2xl text-orange-100">
+  155:             Manage vendors, supervise operational
+  156:             performance, monitor wallets and onboarding
+  157:             activities across your territory.
+  158:           </p>
+  159: 
+
+====================================================================================================
+FILE: app\vendor-onboarding\page.tsx
+MATCHING LINES: 3
+--- line 8 | matched: Onboarding ---
+    5: 
+    6: const supabase = createClient();
+    7: 
+    8: export default function VendorOnboarding() {
+    9:   const [step, setStep] = useState(1);
+   10: 
+   11:    const totalSteps = 10;
+--- line 761 | matched: Onboarding ---
+  758:   <div className="flex justify-between mb-2">
+  759: 
+  760:     <span className="text-sm font-medium">
+  761:       Onboarding Progress
+  762:     </span>
+  763: 
+  764:     <span className="text-sm font-bold text-orange-500">
+--- line 1943 | matched: Onboarding ---
+ 1940:             kitchen_photo_url:
+ 1941:               kitchenPhotoUrl,
+ 1942: 
+ 1943:             onboarding_status:
+ 1944:               "pending",
+ 1945: 
+ 1946:             kyc_status:
+
+====================================================================================================
+FILE: components\admin\business-rules\RuleHistory.tsx
+MATCHING LINES: 1
+--- line 15 | matched: activation ---
+   12: 
+   13:         <p className="mt-2 text-slate-500">
+   14:           Complete audit history of every business rule, approval,
+   15:           activation and governance event across the MKH platform.
+   16:         </p>
+   17: 
+   18:       </div>
+
+====================================================================================================
+FILE: components\customer\CustomerWallet.tsx
+MATCHING LINES: 3
+--- line 37 | matched: activation ---
+   34:   created_at: string;
+   35: };
+   36: 
+   37: type ActivationResponse = {
+   38:   success: boolean;
+   39:   message?: string;
+   40:   wallet?: WalletRecord;
+--- line 139 | matched: activation ---
+  136:         },
+  137:       });
+  138: 
+  139:       const result = (await response.json()) as ActivationResponse;
+  140: 
+  141:       if (!response.ok || !result.success) {
+  142:         throw new Error(
+--- line 149 | matched: activation ---
+  146: 
+  147:       await loadWallet();
+  148:     } catch (err) {
+  149:       console.error("CUSTOMER WALLET ACTIVATION ERROR:", err);
+  150: 
+  151:       setError(
+  152:         err instanceof Error
+
+====================================================================================================
+FILE: components\territory-manager\VendorTable.tsx
+MATCHING LINES: 1
+--- line 190 | matched: status.*active ---
+  187: 
+  188:                     <span
+  189:                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
+  190:                         vendor.status === "active"
+  191:                           ? "bg-emerald-100 text-emerald-700"
+  192:                           : vendor.status === "pending"
+  193:                           ? "bg-orange-100 text-orange-700"
+
+====================================================================================================
+FILE: lib\auth\roleRoutes.ts
+MATCHING LINES: 1
+--- line 19 | matched: employee_roles ---
+   16: 
+   17: };
+   18: 
+   19: export const EMPLOYEE_ROLES = [
+   20: 
+   21:   "managing_director",
+   22: 
+
+====================================================================================================
+FILE: lib\employees\createEmployee.ts
+MATCHING LINES: 4
+--- line 11 | matched: createEmployee ---
+    8:   process.env.SUPABASE_SERVICE_ROLE_KEY!
+    9: );
+   10: 
+   11: export async function createEmployee(data: any) {
+   12: 
+   13:   const employee =
+   14:     await prepareEmployee(data);
+--- line 84 | matched: profile_id ---
+   81:       .from("employees")
+   82:       .insert({
+   83: 
+   84:         profile_id: profileId,
+   85: 
+   86:         employee_number:
+   87:           employee.employeeNumber,
+--- line 122 | matched: reports_to ---
+  119:         territory_id:
+  120:           employee.territoryId || null,
+  121: 
+  122:         reports_to:
+  123:           employee.reportsTo || null,
+  124: 
+  125:         employment_type:
+--- line 131 | matched: employment_status ---
+  128:         hire_date:
+  129:           new Date(),
+  130: 
+  131:         employment_status:
+  132:           "Active",
+  133: 
+  134:         photo_url:
+
+====================================================================================================
+FILE: lib\employees\create\route.ts
+MATCHING LINES: 2
+--- line 3 | matched: createEmployee, employees/create ---
+    1: import { NextResponse } from "next/server";
+    2: 
+    3: import { createEmployee } from "@/lib/employees/createEmployee";
+    4: 
+    5: export async function POST(request: Request) {
+    6: 
+--- line 12 | matched: createEmployee ---
+    9:     const body = await request.json();
+   10: 
+   11:     const result =
+   12:       await createEmployee(body);
+   13: 
+   14:     return NextResponse.json(result);
+   15: 
+
+====================================================================================================
+FILE: lib\services\riders.ts
+MATCHING LINES: 1
+--- line 103 | matched: status.*active ---
+  100:   currentOrder: RiderCurrentOrder | null
+  101: ): RiderOperationalStatus {
+  102:   if (
+  103:     accountStatus === "inactive" ||
+  104:     accountStatus === "suspended"
+  105:   ) {
+  106:     return "offline";
+
+====================================================================================================
+FILE: lib\services\territory-map.ts
+MATCHING LINES: 1
+--- line 89 | matched: status.*active ---
+   86:     let operationalStatus: RiderOperationalStatus;
+   87: 
+   88:     if (
+   89:       accountStatus === "inactive" ||
+   90:       accountStatus === "suspended"
+   91:     ) {
+   92:       operationalStatus = "offline";
+
+====================================================================================================
+FILE: types\businessRules.ts
+MATCHING LINES: 3
+--- line 47 | matched: approved_by ---
+   44: 
+   45:   requires_approval: boolean;
+   46: 
+   47:   approved_by?: string | null;
+   48: 
+   49:   approved_at?: string | null;
+   50: 
+--- line 49 | matched: approved_at ---
+   46: 
+   47:   approved_by?: string | null;
+   48: 
+   49:   approved_at?: string | null;
+   50: 
+   51:   created_by: string;
+   52: 
+--- line 73 | matched: approval_status ---
+   70: 
+   71:   reason: string;
+   72: 
+   73:   approval_status:
+   74:     | "pending"
+   75:     | "approved"
+   76:     | "rejected";
+
+====================================================================================================
+AUDIT SUMMARY
+Files examined: 238
+Files with relevant matches: 27
+Review: employee create API/service, approval/activation handlers, profile status changes, role definitions, and ZM-zone assignment workflow.
+No implementation or database changes were performed.

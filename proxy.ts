@@ -23,6 +23,7 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/vendor/:path*",
+    "/vendor-dashboard-v2/:path*",
     "/rider/:path*",
     "/manager/:path*",
     "/admin/:path*",

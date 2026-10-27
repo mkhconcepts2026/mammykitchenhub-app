@@ -1,4 +1,6 @@
 "use client";
+import DeliveryAllocationSettings from "@/components/admin/DeliveryAllocationSettings";
+import VendorCommissionSettings from "@/components/admin/VendorCommissionSettings";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -36,26 +38,14 @@ export default function AdminDashboard() {
        return;
      }
 
-     const { data: profile, error } = await supabase
-       .from("profiles")
-       .select("role")
-       .eq("id", user.id)
-       .single();
-     
+     const { data: effectiveRole, error: roleError } =
+       await (supabase as any).rpc("current_effective_app_role");
 
-    const role = String(
-  profile?.role || ""
-).toUpperCase();
+     const role = String(effectiveRole ?? "").toUpperCase();
 
-const allowedAdminRoles = [
-  "ADMIN",
-  "COO",
-];
+     const allowedAdminRoles = ["ADMIN", "COO"];
 
-if (
-  error ||
-  !allowedAdminRoles.includes(role)
-) {
+     if (roleError || !allowedAdminRoles.includes(role)) {
   router.replace("/login");
   return;
 }
@@ -583,6 +573,32 @@ const [stats, setStats] = useState({
   
   const approveVendor = async (app: any) => {
 
+  // KYC is a required gate. Read current database state, not possibly stale React state.
+  const { data: latestKyc, error: kycCheckError } = await supabase
+    .from("vendor_applications")
+    .select("kyc_status,vendor_type,cac_url,id_url,selfie_url,kitchen_photo_url")
+    .eq("id", app.id)
+    .maybeSingle();
+
+  if (kycCheckError || !latestKyc) {
+    console.error("Unable to verify KYC before vendor approval:", kycCheckError);
+    alert("Unable to verify KYC status. The vendor was not approved. Please retry.");
+    return;
+  }
+
+  if (!["approved", "verified"].includes(String(latestKyc.kyc_status ?? "").trim().toLowerCase())) {
+    alert("KYC must be reviewed and approved before this vendor application can be approved. Open Admin KYC Review at /admin-dashboard/kyc-review first.");
+    return;
+  }
+
+  const needsCac = /kitchen|restaurant/i.test(String(latestKyc.vendor_type ?? ""));
+  if (!latestKyc.id_url || !latestKyc.selfie_url || (needsCac && !latestKyc.cac_url)) {
+    alert(needsCac
+      ? "Vendor KYC is missing a required CAC, National ID, or selfie reference. The vendor was not approved."
+      : "Vendor KYC is missing the required National ID or selfie reference. The vendor was not approved.");
+    return;
+  }
+
   const { error: vendorError } =
     await supabase
       .from("vendors")
@@ -596,7 +612,8 @@ const [stats, setStats] = useState({
           email: app.email,
           phone: app.phone,
           vendor_type: app.vendor_type,
-          owner_name: app.owner_name,
+                   owner_name: app.owner_name,
+          image: latestKyc.kitchen_photo_url || null,
           status: "active"
         }
       ]);
@@ -957,41 +974,67 @@ const openRiderDetails = async (rider: any) => {
   }
 };
 
- const assignRider = async () => {
-
-  // Prevent reassignment of delivered orders
-  if (selectedOrder?.status === "delivered") {
-    alert("A delivered order cannot be assigned to another rider.");
+ 
+const assignRider = async () => {
+  if (!selectedOrder?.id) {
+    alert("Select an order first.");
     return;
   }
 
-  // Make sure a rider has been selected
   if (!selectedRiderId) {
-    alert("Select a rider first");
+    alert("Select a rider first.");
     return;
   }
 
-  const { error } = await supabase
-    .from("orders")
-    .update({
-      rider_id: selectedRiderId,
-      status: "assigned"
-    })
-    .eq("id", selectedOrder.id);
-
-  if (error) {
-    console.error(error);
-    alert("Assignment failed");
+  if (
+    !["ready_for_pickup", "assigned"].includes(selectedOrder.status) ||
+    selectedOrder.picked_up_at != null
+  ) {
+    alert(
+      "Only orders ready for pickup or already assigned, and not yet picked up, can be assigned or reassigned."
+    );
     return;
   }
 
-  alert("Rider assigned");
+  if (selectedOrder.rider_id === selectedRiderId) {
+    alert("This rider is already assigned to the order.");
+    return;
+  }
 
-  setShowAssignRider(false);
-  setSelectedOrder(null);
+  try {
+    const { data, error } = await supabase.rpc(
+      "admin_assign_rider",
+      {
+        p_order_id: selectedOrder.id,
+        p_rider_id: selectedRiderId,
+      }
+    );
 
-  loadDashboardStats();
+    if (error) {
+      console.error("ADMIN RIDER ASSIGNMENT ERROR:", error);
+      alert(error.message || "Rider assignment failed.");
+      return;
+    }
+
+    if (!data?.success) {
+      console.error("ASSIGNMENT NOT CONFIRMED:", data);
+      alert("The assignment could not be confirmed.");
+      return;
+    }
+
+    alert("Rider assigned successfully.");
+
+    setShowAssignRider(false);
+    setSelectedOrder(null);
+    setSelectedRiderId("");
+
+    await loadDashboardStats();
+  } catch (error) {
+    console.error("ADMIN RIDER ASSIGNMENT ERROR:", error);
+    alert("Unable to assign this rider. Please try again.");
+  }
 };
+
 
 
 useEffect(() => {
@@ -1199,39 +1242,33 @@ if (ordersData) {
             ========================================================= */}
         <aside className="hidden lg:flex lg:w-72 xl:w-80 shrink-0 flex-col bg-[#0b1220] text-white">
 
-          <div className="border-b border-white/10 px-6 py-7">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-white px-1 shadow-lg">
-                <Image
-                  src="/logo.png"
-                  alt="MKH Logo"
-                  width={180}
-                  height={52}
-                  priority
-                />
-              </div>
+         <div className="border-b border-white/10 px-6 py-7">
+  <div className="flex items-center">
+    <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-lg">
+      <Image
+        src="/logo.png"
+        alt="Mammy Kitchen Hub logo"
+        fill
+        sizes="64px"
+        className="object-contain"
+        priority
+      />
+    </div>
+  </div>
 
-              <div>
-                <p className="text-xl font-black tracking-tight">MKH</p>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-400">
-                  Mammy Kitchen Hub
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-7">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-400">
-                Administration
-              </p>
-              <h1 className="mt-1 text-lg font-bold">
-                Platform Control Center
-              </h1>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                System Active
-              </div>
-            </div>
-          </div>
+  <div className="mt-7">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-400">
+      Administration
+    </p>
+    <h1 className="mt-1 text-lg font-bold">
+      Platform Control Center
+    </h1>
+    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+      <span className="h-2 w-2 rounded-full bg-emerald-400" />
+      System Active
+    </div>
+  </div>
+</div>
 
           <nav className="flex-1 overflow-y-auto px-4 py-6">
             <p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
@@ -1246,10 +1283,13 @@ if (ordersData) {
                 ["riders", "Riders", Bike],
                 ["orders", "Orders", ShoppingBag],
                 ["revenue", "Revenue", Wallet],
+                ["delivery-allocations", "Delivery Allocations", Wallet],
+                ["vendor-commission", "Vendor Commission", Store],
+                ["staffRoleChanges", "Staff Role Changes", ShieldCheck],
               ].map(([key, label, Icon]: any) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key)}
+                  onClick={() => key === "staffRoleChanges" ? router.push("/admin-dashboard/role-changes") : setActiveTab(key)}
                   className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition-all ${
                     activeTab === key
                       ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
@@ -1369,6 +1409,8 @@ if (ordersData) {
                   ["riders", "Riders"],
                   ["orders", "Orders"],
                   ["revenue", "Revenue"],
+                  ["delivery-allocations", "Delivery Allocations"],
+                  ["vendor-commission", "Vendor Commission"],
                   ["territories", "Territories"],
                   ["zones", "Zones"],
                 ].map(([key, label]) => (
@@ -2717,6 +2759,8 @@ if (ordersData) {
 
 )}
 
+      {activeTab === "vendor-commission" && <VendorCommissionSettings />}
+      {activeTab === "delivery-allocations" && <DeliveryAllocationSettings />}
       {activeTab === "revenue" && (
 
   <div>
@@ -2935,7 +2979,14 @@ if (ordersData) {
 
             </div>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+          <div className="mt-8 grid gap-3 sm:grid-cols-4">
+
+            <button
+              onClick={() => router.push("/admin-dashboard/kyc-review")}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Review KYC
+            </button>
 
             <button
               onClick={async () => {

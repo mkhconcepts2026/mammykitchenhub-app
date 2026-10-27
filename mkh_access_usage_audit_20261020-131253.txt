@@ -1,0 +1,2564 @@
+﻿MKH TABLE ACCESS USAGE AUDIT — READ ONLY
+Project: C:\MKH\mkh-app
+Generated: 2026-10-20 13:12:58
+No source files or database objects modified.
+
+================================================================================
+FILE: app\page.tsx
+--- Context around line 31 ---
+   27:     return;
+   28:   }
+   29: 
+   30:   const { error: profileError } = await supabase
+   31:     .from("profiles")
+   32:     .insert([
+   33:       {
+   34:         id: data.user.id,
+   35:         email: data.user.email,
+   36:         full_name: "New User",
+   37:         role: "customer",
+   38:       },
+   39:     ]);
+   40: 
+   41:   if (profileError) {
+   42:     alert("PROFILE ERROR: " + profileError.message);
+   43:     return;
+   44:   }
+   45: 
+   46:   alert("Signup successful.");
+   47: }
+   48: 
+   49:   async function signIn() {
+
+================================================================================
+FILE: app\admin-dashboard\EmployeeProvisioningWizard.tsx
+--- Context around line 435 ---
+  431:     .select("*")
+  432:     .order("name");
+  433: 
+  434:   const { data: roleData } = await supabase
+  435:     .from("employee_roles")
+  436:     .select("*")
+  437:     .order("name");
+  438: 
+  439:     const { data: employeeData } = await supabase
+  440:   .from("employees")
+  441:   .select("id, first_name, last_name")
+  442:   .order("first_name");
+  443: 
+  444:   const { data: stateData } = await supabase
+  445:     .from("states")
+  446:     .select("*")
+  447:     .order("name");
+  448: 
+  449:   console.log("Departments:", departmentData);
+  450: console.log("Roles:", roleData);
+  451: console.log("States:", stateData);
+  452: 
+  453: setDepartments(departmentData || []);
+
+--- Context around line 440 ---
+  454: setRoles(roleData || []);
+  455: setStates(stateData || []);
+  456: 
+  457: setEmployees(employeeData || []);
+  458: 
+
+================================================================================
+FILE: app\admin-dashboard\page.tsx
+--- Context around line 40 ---
+   36:        return;
+   37:      }
+   38: 
+   39:      const { data: profile, error } = await supabase
+   40:        .from("profiles")
+   41:        .select("role")
+   42:        .eq("id", user.id)
+   43:        .single();
+   44:      
+   45: 
+   46:     const role = String(
+   47:   profile?.role || ""
+   48: ).toUpperCase();
+   49: 
+   50: const allowedAdminRoles = [
+   51:   "ADMIN",
+   52:   "COO",
+   53: ];
+   54: 
+   55: if (
+   56:   error ||
+   57:   !allowedAdminRoles.includes(role)
+   58: ) {
+
+--- Context around line 588 ---
+  584:   const approveVendor = async (app: any) => {
+  585: 
+  586:   const { error: vendorError } =
+  587:     await supabase
+  588:       .from("vendors")
+  589:       .insert([
+  590:         {
+  591:           name: app.kitchen_name,
+  592:           slug: app.kitchen_name
+  593:             .toLowerCase()
+  594:             .replaceAll(" ", "-"),
+  595:           cuisine: app.vendor_type,
+  596:           email: app.email,
+  597:           phone: app.phone,
+  598:           vendor_type: app.vendor_type,
+  599:           owner_name: app.owner_name,
+  600:           status: "active"
+  601:         }
+  602:       ]);
+  603: 
+  604:   if (vendorError) {
+  605:     return;
+  606:   }
+
+--- Context around line 661 ---
+  657: 
+  658:     // Resolve the real vendor record.
+  659:     const { data: vendor, error: vendorError } =
+  660:       await supabase
+  661:         .from("vendors")
+  662:         .select("*")
+  663:         .eq("email", vendorApplication.email)
+  664:         .maybeSingle();
+  665: 
+  666:     if (vendorError) {
+  667:       console.error("Vendor lookup error:", vendorError);
+  668:       return;
+  669:     }
+  670: 
+  671:     if (!vendor) {
+  672:       console.error(
+  673:         "Approved application has no matching vendor record:",
+  674:         vendorApplication.email
+  675:       );
+  676:       return;
+  677:     }
+  678: 
+  679:     setSelectedVendor({
+
+--- Context around line 688 ---
+  684: 
+  685:     // Load the vendor's current active Zone assignment.
+  686:     const { data: assignment, error: assignmentError } =
+  687:       await supabase
+  688:         .from("zone_vendors")
+  689:         .select(`
+  690:           id,
+  691:           vendor_id,
+  692:           zone_id,
+  693:           status,
+  694:           assigned_at,
+  695:           zones (
+  696:             id,
+  697:             name,
+  698:             territory_id,
+  699:             territories (
+  700:               id,
+  701:               name
+  702:             )
+  703:           )
+  704:         `)
+  705:         .eq("vendor_id", vendor.id)
+  706:         .eq("status", "active")
+
+--- Context around line 830 ---
+  826: 
+  827:     // Deactivate existing active Vendor → Zone assignment
+  828:     if (currentVendorZone?.id) {
+  829:       const { error: deactivateError } = await supabase
+  830:         .from("zone_vendors")
+  831:         .update({
+  832:           status: "inactive",
+  833:           unassigned_at: new Date().toISOString(),
+  834:         })
+  835:         .eq("id", currentVendorZone.id);
+  836: 
+  837:       if (deactivateError) throw deactivateError;
+  838:     }
+  839: 
+  840:     // Create the new active assignment
+  841:     const { data: newAssignment, error: insertError } = await supabase
+  842:       .from("zone_vendors")
+  843:       .insert({
+  844:         vendor_id: selectedVendor.vendor_id,
+  845:         zone_id: selectedZoneId,
+  846:         status: "active",
+  847:         assigned_at: new Date().toISOString(),
+  848:       })
+
+--- Context around line 842 ---
+  849:       .select(`
+  850:         id,
+  851:         vendor_id,
+  852:         zone_id,
+  853:         status,
+  854:         assigned_at,
+  855:         zones (
+  856:           id,
+  857:           name,
+  858:           territory_id,
+  859:           territories (
+  860:             id,
+
+--- Context around line 899 ---
+  895:     const {
+  896:       data: riderOrders,
+  897:       error: riderOrdersError,
+  898:     } = await supabase
+  899:       .from("orders")
+  900:       .select("id, rider_amount")
+  901:       .eq("rider_id", rider.id)
+  902:       .eq("status", "delivered");
+  903: 
+  904:     if (riderOrdersError) {
+  905:       console.error(
+  906:         "Rider orders load error:",
+  907:         riderOrdersError
+  908:       );
+  909: 
+  910:       setRiderDeliveries(0);
+  911:       setRiderEarnings(0);
+  912: 
+  913:       return;
+  914:     }
+  915: 
+  916:     // Number of completed deliveries
+  917:     const deliveryCount =
+
+--- Context around line 1051 ---
+ 1047:     .eq("status", "pending");
+ 1048: 
+ 1049:   const { count: vendors } =
+ 1050:     await supabase
+ 1051:       .from("vendors")
+ 1052:       .select("*", {
+ 1053:         count: "exact",
+ 1054:         head: true
+ 1055:       });
+ 1056: 
+ 1057:   const { count: riders } =
+ 1058:     await supabase
+ 1059:       .from("profiles")
+ 1060:       .select("*", {
+ 1061:         count: "exact",
+ 1062:         head: true
+ 1063:       })
+ 1064:       .eq("role", "rider");
+ 1065: 
+ 1066:   const { count: orders } =
+ 1067:     await supabase
+ 1068:       .from("orders")
+ 1069:       .select("*", {
+
+--- Context around line 1059 ---
+ 1070:         count: "exact",
+ 1071:         head: true      
+ 1072:       });
+ 1073: 
+ 1074:       const {
+ 1075:   data: revenueOrders
+ 1076: } =
+ 1077: await supabase
+
+--- Context around line 1068 ---
+ 1078:   .from("orders")
+ 1079:   .select(`
+ 1080:     mkh_amount,
+ 1081:     platform_fee
+ 1082:   `)
+ 1083:   .eq(
+ 1084:     "status",
+ 1085:     "delivered"
+ 1086:   );
+
+--- Context around line 1078 ---
+ 1087: 
+ 1088: const mkhRevenue =
+ 1089:   (revenueOrders || [])
+ 1090:     .reduce(
+ 1091: 
+ 1092:       (sum, order) =>
+ 1093: 
+ 1094:         sum +
+ 1095:         Number(
+ 1096:           order.mkh_amount || 0
+
+--- Context around line 1150 ---
+ 1146: );
+ 1147: const {
+ 1148:   data: ridersData
+ 1149: } = await supabase
+ 1150:   .from("profiles")
+ 1151:   .select("*")
+ 1152:   .eq("role", "rider");
+ 1153: 
+ 1154: setRiders(ridersData || []);
+ 1155: 
+ 1156: const {
+ 1157:   data: ordersData,
+ 1158:   error: ordersError
+ 1159: } = await supabase
+ 1160:   .from("orders")
+ 1161:   .select(`
+ 1162:     *,
+ 1163:     profiles:user_id (
+ 1164:       full_name,
+ 1165:       email
+ 1166:     ),
+ 1167:     vendors:vendor_id (
+ 1168:       name
+
+--- Context around line 1160 ---
+ 1169:     )
+ 1170:   `)
+ 1171:   .order("created_at", {
+ 1172:     ascending: false
+ 1173:   });
+ 1174: 
+ 1175: if (ordersError) {
+ 1176:   console.error(
+ 1177:     "Orders Load Error:",
+ 1178:     ordersError
+
+================================================================================
+FILE: app\api\admin\employees\create\route.ts
+--- Context around line 41 ---
+   37:     const {
+   38:       data: callerProfile,
+   39:       error: callerProfileError,
+   40:     } = await adminClient
+   41:       .from("profiles")
+   42:       .select("role")
+   43:       .eq("id", user.id)
+   44:       .single();
+   45: 
+   46:     if (
+   47:       callerProfileError ||
+   48:       !callerProfile ||
+   49:       !["HR", "ADMIN"].includes(
+   50:         String(callerProfile.role).toUpperCase()
+   51:       )
+   52:     ) {
+   53:       return NextResponse.json(
+   54:         {
+   55:           success: false,
+   56:           message: "Forbidden.",
+   57:         },
+   58:         {
+   59:           status: 403,
+
+--- Context around line 80 ---
+   76:     const {
+   77:       data: role,
+   78:       error: roleError,
+   79:     } = await adminClient
+   80:       .from("employee_roles")
+   81:       .select("name, system_role")
+   82:       .eq("id", employee.roleId)
+   83:       .single();
+   84: 
+   85:     console.log("ROLE RECORD:", role);
+   86:     console.log("SYSTEM ROLE:", role?.system_role);
+   87: 
+   88:     if (roleError) {
+   89:       return NextResponse.json(
+   90:         {
+   91:           success: false,
+   92:           message: "Employee role could not be found.",
+   93:         },
+   94:         {
+   95:           status: 400,
+   96:         }
+   97:       );
+   98:     }
+
+--- Context around line 140 ---
+  136:     // ---------------------------------------
+  137: 
+  138:     const { error: profileError } =
+  139:       await adminClient
+  140:         .from("profiles")
+  141:         .insert({
+  142:           id: authUserId,
+  143: 
+  144:           full_name:
+  145:             `${employee.firstName} ${employee.lastName}`,
+  146: 
+  147:           email:
+  148:             employee.email,
+  149: 
+  150:           //phone: employee.phone,
+  151: 
+  152:           username:
+  153:             employee.username,
+  154: 
+  155:           role:
+  156:             role.system_role,
+  157: 
+  158:           // NEW: Link profile to operational territory
+
+--- Context around line 191 ---
+  187:     const {
+  188:       data,
+  189:       error: employeeError,
+  190:     } = await adminClient
+  191:       .from("employees")
+  192:       .insert({
+  193:         profile_id: authUserId,
+  194: 
+  195:         employee_number:
+  196:           employee.employeeNumber,
+  197: 
+  198:         first_name:
+  199:           employee.firstName,
+  200: 
+  201:         last_name:
+  202:           employee.lastName,
+  203: 
+  204:         gender:
+  205:           employee.gender,
+  206: 
+  207:         nationality:
+  208:           employee.nationality,
+  209: 
+
+--- Context around line 263 ---
+  259:       .single();
+  260: 
+  261:     if (employeeError) {
+  262:       await adminClient
+  263:         .from("profiles")
+  264:         .delete()
+  265:         .eq("id", authUserId);
+  266: 
+  267:       await adminClient.auth.admin.deleteUser(
+  268:         authUserId
+  269:       );
+  270: 
+  271:       return NextResponse.json(
+  272:         {
+  273:           success: false,
+  274:           message: employeeError.message,
+  275:         },
+  276:         {
+  277:           status: 400,
+  278:         }
+  279:       );
+  280:     }
+  281: 
+
+--- Context around line 323 ---
+  319: 
+  320:     if (authUserId) {
+  321: 
+  322:       await adminClient
+  323:         .from("profiles")
+  324:         .delete()
+  325:         .eq("id", authUserId);
+  326: 
+  327:       await adminClient.auth.admin.deleteUser(
+  328:         authUserId
+  329:       );
+  330:     }
+  331: 
+  332:     console.error(error);
+  333: 
+  334:     return NextResponse.json(
+  335:       {
+  336:         success: false,
+  337:         message:
+  338:           error.message ||
+  339:           "Employee creation failed.",
+  340:       },
+  341:       {
+
+================================================================================
+FILE: app\api\admin\employees\reset-password\route.ts
+--- Context around line 30 ---
+   26: 
+   27:     // 2. Authorize HR only. ADMIN is deliberately excluded.
+   28:     const { data: callerProfile, error: callerProfileError } =
+   29:       await adminClient
+   30:         .from("profiles")
+   31:         .select("role")
+   32:         .eq("id", user.id)
+   33:         .single();
+   34: 
+   35:     if (
+   36:       callerProfileError ||
+   37:       !callerProfile ||
+   38:       String(callerProfile.role).toUpperCase() !== "HR"
+   39:     ) {
+   40:       return NextResponse.json(
+   41:         {
+   42:           success: false,
+   43:           message: "Forbidden. Only HR users may reset employee passwords.",
+   44:         },
+   45:         { status: 403 }
+   46:       );
+   47:     }
+   48: 
+
+--- Context around line 82 ---
+   78: 
+   79:     // 4. Confirm the target belongs to an employee record.
+   80:     const { data: employee, error: employeeError } =
+   81:       await adminClient
+   82:         .from("employees")
+   83:         .select("profile_id")
+   84:         .eq("profile_id", profileId)
+   85:         .maybeSingle();
+   86: 
+   87:     if (employeeError) {
+   88:       console.error("Employee lookup failed:", employeeError);
+   89: 
+   90:       return NextResponse.json(
+   91:         {
+   92:           success: false,
+   93:           message: "Unable to verify the employee.",
+   94:         },
+   95:         { status: 500 }
+   96:       );
+   97:     }
+   98: 
+   99:     if (!employee) {
+  100:       return NextResponse.json(
+
+--- Context around line 135 ---
+  131: 
+  132:     // 7. Require a password change at the next login.
+  133:     const { error: profileError } =
+  134:       await adminClient
+  135:         .from("profiles")
+  136:         .update({ must_change_password: true })
+  137:         .eq("id", profileId);
+  138: 
+  139:     if (profileError) {
+  140:       console.error(
+  141:         "Failed to update password-change requirement:",
+  142:         profileError
+  143:       );
+  144: 
+  145:       return NextResponse.json(
+  146:         {
+  147:           success: false,
+  148:           message:
+  149:             "The password was reset, but the password-change requirement could not be updated. Contact support before retrying.",
+  150:         },
+  151:         { status: 500 }
+  152:       );
+  153:     }
+
+================================================================================
+FILE: app\api\auth\change-password\route.ts
+--- Context around line 71 ---
+   67:     }
+   68: 
+   69:     const { error: profileError } =
+   70:       await adminClient
+   71:         .from("profiles")
+   72:         .update({
+   73:           must_change_password: false,
+   74:         })
+   75:         .eq("id", user.id);
+   76: 
+   77:     if (profileError) {
+   78:       return NextResponse.json(
+   79:         {
+   80:           success: false,
+   81:           message: profileError.message,
+   82:         },
+   83:         {
+   84:           status: 400,
+   85:         }
+   86:       );
+   87:     }
+   88: 
+   89:     return NextResponse.json({
+
+================================================================================
+FILE: app\api\customer\wallet\activate\route.ts
+--- Context around line 26 ---
+   22:     }
+   23: 
+   24:     // 2. Confirm this account has a customer profile.
+   25:     const { data: profile, error: profileError } = await adminClient
+   26:       .from("profiles")
+   27:       .select("id, role, status")
+   28:       .eq("id", user.id)
+   29:       .maybeSingle();
+   30: 
+   31:     if (profileError) {
+   32:       console.error("WALLET PROFILE LOOKUP ERROR:", profileError);
+   33:       return NextResponse.json(
+   34:         { success: false, message: "Unable to verify your account." },
+   35:         { status: 500 }
+   36:       );
+   37:     }
+   38: 
+   39:     if (
+   40:       !profile ||
+   41:       profile.role?.toLowerCase() !== "customer" ||
+   42:       profile.status?.toLowerCase() !== "active"
+   43:     ) {
+   44:       return NextResponse.json(
+
+================================================================================
+FILE: app\api\customer\wallet\checkout\route.ts
+--- Context around line 32 ---
+   28:     }
+   29: 
+   30:     // Never accept a customer ID or wallet balance from the browser.
+   31:     const { data: profile, error: profileError } = await adminClient
+   32:       .from("profiles")
+   33:       .select("id, role, status")
+   34:       .eq("id", user.id)
+   35:       .maybeSingle();
+   36: 
+   37:     if (profileError) {
+   38:       console.error("WALLET CHECKOUT PROFILE ERROR:", profileError);
+   39:       return errorResponse("Unable to verify your account.", 500);
+   40:     }
+   41: 
+   42:     if (
+   43:       !profile ||
+   44:       profile.role?.toLowerCase() !== "customer" ||
+   45:       profile.status?.toLowerCase() !== "active"
+   46:     ) {
+   47:       return errorResponse("An active customer account is required.", 403);
+   48:     }
+   49: 
+   50:     let body: unknown;
+
+================================================================================
+FILE: app\api\hr\employees\delete\route.ts
+--- Context around line 26 ---
+   22: 
+   23:     // 2. Authorize HR only.
+   24:     const { data: callerProfile, error: callerProfileError } =
+   25:       await adminClient
+   26:         .from("profiles")
+   27:         .select("role")
+   28:         .eq("id", user.id)
+   29:         .single();
+   30: 
+   31:     if (
+   32:       callerProfileError ||
+   33:       !callerProfile ||
+   34:       String(callerProfile.role).toUpperCase() !== "HR"
+   35:     ) {
+   36:       return NextResponse.json(
+   37:         {
+   38:           success: false,
+   39:           message: "Forbidden. Only HR users may delete employee records.",
+   40:         },
+   41:         { status: 403 }
+   42:       );
+   43:     }
+   44: 
+
+--- Context around line 75 ---
+   71: 
+   72:     // 4. Find the employee and linked profile, if any.
+   73:     const { data: employee, error: employeeError } =
+   74:       await adminClient
+   75:         .from("employees")
+   76:         .select("id, profile_id")
+   77:         .eq("id", employeeId)
+   78:         .maybeSingle();
+   79: 
+   80:     if (employeeError) {
+   81:       console.error("Employee lookup failed:", employeeError);
+   82: 
+   83:       return NextResponse.json(
+   84:         { success: false, message: "Unable to look up the employee." },
+   85:         { status: 500 }
+   86:       );
+   87:     }
+   88: 
+   89:     if (!employee) {
+   90:       return NextResponse.json(
+   91:         { success: false, message: "Employee not found." },
+   92:         { status: 404 }
+   93:       );
+
+--- Context around line 100 ---
+   96:     // 5. Delete the employee record first.
+   97:     // Foreign keys protect records that must not be deleted.
+   98:     const { error: deleteEmployeeError } =
+   99:       await adminClient
+  100:         .from("employees")
+  101:         .delete()
+  102:         .eq("id", employee.id);
+  103: 
+  104:     if (deleteEmployeeError) {
+  105:       console.error(
+  106:         "Employee deletion blocked:",
+  107:         deleteEmployeeError
+  108:       );
+  109: 
+  110:       return NextResponse.json(
+  111:         {
+  112:           success: false,
+  113:           message:
+  114:             "The employee could not be deleted because related records may still depend on it. Review the employee's assignments and relationships.",
+  115:         },
+  116:         { status: 409 }
+  117:       );
+  118:     }
+
+================================================================================
+FILE: app\auth\signup\page.tsx
+--- Context around line 65 ---
+   61:       }
+   62: 
+   63:       const { error:profileError } =
+   64:         await supabase
+   65:           .from("profiles")
+   66:           .insert({
+   67: 
+   68:             id:data.user.id,
+   69:             full_name:fullName,
+   70:             email,
+   71:             phone:`+234${phone}`,
+   72:             role:"customer"
+   73: 
+   74:           });
+   75: 
+   76:       if(profileError){
+   77: 
+   78:         alert(profileError.message);
+   79:         return;
+   80: 
+   81:       }
+   82: 
+   83:       alert("Account created successfully");
+
+================================================================================
+FILE: app\auth\signup-v2\page.tsx
+--- Context around line 92 ---
+   88:     const { error:profileError } =
+   89: 
+   90:       await supabase
+   91: 
+   92:       .from("profiles")
+   93: 
+   94:       .insert({
+   95: 
+   96:         id:data.user.id,
+   97: 
+   98:         full_name:fullName,
+   99: 
+  100:         email,
+  101: 
+  102:         phone:`+234${phone}`,
+  103: 
+  104:         role:"customer"
+  105: 
+  106:       });
+  107: 
+  108:     if(profileError){
+  109: 
+  110:       alert(profileError.message);
+
+================================================================================
+FILE: app\checkout\page.tsx
+--- Context around line 193 ---
+  189:       }
+  190: 
+  191:       // Existing Cash on Delivery flow is retained.
+  192:       const { data: order, error: orderError } = await supabase
+  193:         .from("orders")
+  194:         .insert({
+  195:           user_id: user.id,
+  196:           vendor_id: items[0].vendor_id,
+  197:           food_amount: subtotal,
+  198:           delivery_fee: deliveryFee,
+  199:           platform_fee: platformFee,
+  200:           vendor_amount: subtotal,
+  201:           rider_amount: 800,
+  202:           mkh_amount: 700,
+  203:           total,
+  204:           delivery_address: deliveryAddress.trim(),
+  205:           customer_notes: customerNotes.trim() || null,
+  206:           customer_phone: phoneNumber.trim(),
+  207:           status: "pending",
+  208:           payment_method: "cash_on_delivery",
+  209:           payment_status: "unpaid",
+  210:         })
+  211:         .select("id")
+
+================================================================================
+FILE: app\customer-dashboard\page.tsx
+--- Context around line 53 ---
+   49:         return;
+   50:       }
+   51: 
+   52:       const { data, error: profileError } = await supabase
+   53:         .from("profiles")
+   54:         .select("full_name, email, phone")
+   55:         .eq("id", user.id)
+   56:         .maybeSingle();
+   57: 
+   58:       if (profileError) {
+   59:         throw profileError;
+   60:       }
+   61: 
+   62:       if (!data) {
+   63:         setProfile({
+   64:           full_name: user.user_metadata?.full_name ?? null,
+   65:           email: user.email ?? null,
+   66:           phone: user.user_metadata?.phone ?? null,
+   67:         });
+   68:         return;
+   69:       }
+   70: 
+   71:       setProfile({
+
+================================================================================
+FILE: app\dashboard\page.tsx
+--- Context around line 157 ---
+  153:           return;
+  154:         }
+  155: 
+  156:         const { data: profile } = await supabase
+  157:           .from("profiles")
+  158:           .select("full_name")
+  159:           .eq("id", session.user.id)
+  160:           .maybeSingle();
+  161: 
+  162:         setCustomerName(profile?.full_name || "");
+  163: 
+  164:         const [
+  165:           { data: vendorData, error: vendorError },
+  166:           { data: menuData, error: menuError },
+  167:         ] = await Promise.all([
+  168:           supabase.from("vendors").select("*"),
+  169:           supabase
+  170:             .from("menu_items")
+  171:             .select("id, vendor_id, name, description, category, available"),
+  172:         ]);
+  173: 
+  174:         if (vendorError) {
+  175:           console.error("Unable to load vendors:", vendorError);
+
+--- Context around line 168 ---
+  176:           setVendors([]);
+  177:           return;
+  178:         }
+  179: 
+  180:         if (menuError) {
+  181:           console.error("Unable to load menu items:", menuError);
+  182:           setVendors([]);
+  183:           return;
+  184:         }
+  185: 
+  186:         setVendors((vendorData ?? []) as Vendor[]);
+
+================================================================================
+FILE: app\finance\page.tsx
+--- Context around line 129 ---
+  125:     const {
+  126:       data: vendors
+  127:     } =
+  128:       await supabase
+  129:         .from("vendors")
+  130:         .select(`
+  131:     id,
+  132:     name
+  133:   `);
+  134: 
+  135:     const map:
+  136:       Record<string, string> = {};
+  137: 
+  138:     (vendors || []).forEach(
+  139:       (vendor) => {
+  140: 
+  141:         map[
+  142:           vendor.id
+  143:         ] =
+  144:           vendor.name;
+  145: 
+  146:       }
+  147:     );
+
+--- Context around line 157 ---
+  153:     const {
+  154:       data: orders
+  155:     } =
+  156:       await supabase
+  157:         .from("orders")
+  158:         .select(`
+  159:     total,
+  160:     mkh_amount,
+  161:     platform_fee,
+  162:     delivery_fee,
+  163:     created_at
+  164:   `);
+  165: 
+  166:     const {
+  167:       data: pendingPayouts
+  168:     } =
+  169:       await supabase
+  170:         .from("payout_requests")
+  171:         .select("amount")
+  172:         .eq(
+  173:           "status",
+  174:           "pending"
+  175:         );
+
+================================================================================
+FILE: app\hr\page.tsx
+--- Context around line 55 ---
+   51: 
+   52:     }
+   53: 
+   54:     const { data: profile, error } = await supabase
+   55:       .from("profiles")
+   56:       .select("role")
+   57:       .eq("id", user.id)
+   58:       .single();
+   59: 
+   60:     if (error || profile?.role !== "HR") {
+   61: 
+   62:       router.replace("/login");
+   63: 
+   64: 
+   65:       
+   66:       return;
+   67: 
+   68:     }
+   69: 
+   70:   }
+   71: 
+   72:   verifyHRAccess();
+   73: 
+
+--- Context around line 142 ---
+  138:   departmentsResult,
+  139:   rolesResult,
+  140: ] = await Promise.all([
+  141:   supabase
+  142:     .from("employees")
+  143:     .select("*", {
+  144:       count: "exact",
+  145:       head: true,
+  146:     }),
+  147: 
+  148:   supabase
+  149:     .from("employees")
+  150:     .select("*", {
+  151:       count: "exact",
+  152:       head: true,
+  153:     })
+  154:     .eq("status", "pending"),
+  155: 
+  156:   supabase
+  157:     .from("departments")
+  158:     .select("*", {
+  159:       count: "exact",
+  160:       head: true,
+
+--- Context around line 149 ---
+  161:     }),
+  162: 
+  163:   supabase
+  164:     .from("employee_roles")
+  165:     .select("*", {
+  166:       count: "exact",
+  167:       head: true,
+
+--- Context around line 164 ---
+  168:     }),
+  169: ]);
+  170: 
+  171: setEmployeeCount(employeesResult.count || 0);
+  172: setPendingCount(pendingResult.count || 0);
+  173: setDepartmentCount(departmentsResult.count || 0);
+  174: setRoleCount(rolesResult.count || 0);
+  175: 
+  176:     setDrafts(data || []);
+  177: 
+  178:   }
+  179: 
+  180:   loadDashboard();
+  181: 
+  182: }, []);
+
+================================================================================
+FILE: app\hr\employees\page.tsx
+--- Context around line 35 ---
+   31:   }, []);
+   32: 
+   33:   async function loadEmployees() {
+   34:    const { data } = await supabase
+   35:   .from("employees")
+   36:   .select(`
+   37:     *,
+   38:     department:department_id (
+   39:       name
+   40:     ),
+   41:     role:role_id (
+   42:       name
+   43:     ),
+   44:     state:state_id (
+   45:       name
+   46:     ),
+   47:     profiles:profile_id (
+   48:       must_change_password
+   49:     )
+   50:   `)
+   51:   .order("created_at", {
+   52:     ascending: false,
+   53:   });
+
+================================================================================
+FILE: app\hr\roles\page.tsx
+--- Context around line 61 ---
+   57: 
+   58:   if (editingRole) {
+   59: 
+   60:     ({ error } = await supabase
+   61:       .from("employee_roles")
+   62:       .update({
+   63:         name: roleName,
+   64:         description: roleDescription,
+   65:         dashboard,
+   66:         system_role: systemRole,
+   67:       })
+   68:       .eq("id", editingRole.id));
+   69: 
+   70:   } else {
+   71: 
+   72:     ({ error } = await supabase
+   73:       .from("employee_roles")
+   74:       .insert({
+   75:         name: roleName,
+   76:         description: roleDescription,
+   77:         dashboard,
+   78:         system_role: systemRole,
+   79:         status: "active",
+
+--- Context around line 73 ---
+   80:       }));
+   81: 
+   82:   }
+   83: 
+   84:   if (error) {
+   85: 
+   86:     alert(error.message);
+   87: 
+   88:     return;
+   89: 
+   90:   }
+   91: 
+
+--- Context around line 110 ---
+  106: }
+  107: 
+  108:   async function loadRoles() {
+  109:     const { data, error } = await supabase
+  110:       .from("employee_roles")
+  111:       .select("*")
+  112:       .order("name");
+  113: 
+  114:     if (error) {
+  115:       console.error(error);
+  116:       return;
+  117:     }
+  118: 
+  119:     setRoles(data || []);
+  120:     setFiltered(data || []);
+  121:   }
+  122: 
+  123:   return (
+  124:     <div className="min-h-screen bg-orange-50 p-8">
+  125: 
+  126:       {/* Header */}
+  127: 
+  128:       <div className="mb-8 flex items-center justify-between">
+
+--- Context around line 287 ---
+  283:     console.log("Role ID:", role.id);
+  284:     console.log("Changing to:", newStatus);
+  285: 
+  286:     const { data, error } = await supabase
+  287:       .from("employee_roles")
+  288:       .update({ status: newStatus })
+  289:       .eq("id", role.id)
+  290:       .select();
+  291: 
+  292:     console.log("Result:", data);
+  293:     console.log("Error:", error);
+  294: 
+  295:     if (error) {
+  296:       alert(error.message);
+  297:       return;
+  298:     }
+  299: 
+  300:     await loadRoles();
+  301:   }}
+  302:   className="rounded-xl bg-red-50 p-2 hover:bg-red-100"
+  303: >
+  304:   <Power size={18} />
+  305: </button>
+
+================================================================================
+FILE: app\login\page.tsx
+--- Context around line 99 ---
+   95:         error:profileError
+   96: 
+   97:       } =
+   98:       await supabase
+   99:         .from("profiles")
+  100:         .select("role, must_change_password")
+  101:         .eq(
+  102:           "id",
+  103:           data.user.id
+  104:         )
+  105:         .single();
+  106: 
+  107:       console.log(
+  108:         "PROFILE:",
+  109:         profile
+  110:       );
+  111: 
+  112:       if (profileError) {
+  113: 
+  114:         setError(
+  115:           "Profile lookup failed."
+  116:         );
+  117: 
+
+================================================================================
+FILE: app\manager\page.tsx
+--- Context around line 59 ---
+   55:     const {
+   56:       count: vendors
+   57:     } =
+   58:     await supabase
+   59:       .from("vendors")
+   60:       .select("*", {
+   61:         count: "exact",
+   62:         head: true
+   63:       });
+   64: 
+   65:     const {
+   66:       count: riders
+   67:     } =
+   68:     await supabase
+   69:       .from("profiles")
+   70:       .select("*", {
+   71:         count: "exact",
+   72:         head: true
+   73:       })
+   74:       .eq(
+   75:         "role",
+   76:         "rider"
+   77:       );
+
+--- Context around line 69 ---
+   78: 
+   79:     const {
+   80:       count: readyOrders
+   81:     } =
+   82:     await supabase
+   83:       .from("orders")
+   84:       .select("*", {
+   85:         count: "exact",
+   86:         head: true
+   87:       })
+
+--- Context around line 83 ---
+   88:       .eq(
+   89:         "status",
+   90:         "ready_for_pickup"
+   91:       );
+   92: 
+   93:     const {
+   94:       count: deliveries
+   95:     } =
+   96:     await supabase
+   97:       .from("orders")
+   98:       .select("*", {
+   99:         count: "exact",
+  100:         head: true
+  101:       })
+
+--- Context around line 97 ---
+  102:       .eq(
+  103:         "status",
+  104:         "delivered"
+  105:       );
+  106: 
+  107:     setStats({
+  108:       vendors:
+  109:         vendors || 0,
+  110: 
+  111:       riders:
+  112:         riders || 0,
+  113: 
+  114:       readyOrders:
+  115:         readyOrders || 0,
+
+--- Context around line 130 ---
+  126:       data,
+  127:       error
+  128:     } =
+  129:     await supabase
+  130:       .from("orders")
+  131:       .select(`
+  132:         *,
+  133:         vendors (
+  134:           name
+  135:         )
+  136:       `)
+  137:       .eq(
+  138:         "status",
+  139:         "ready_for_pickup"
+  140:       )
+  141:       .order(
+  142:         "created_at",
+  143:         {
+  144:           ascending:false
+  145:         }
+  146:       );
+  147: 
+  148:     if(error){
+
+--- Context around line 168 ---
+  164:       data,
+  165:       error
+  166:     } =
+  167:     await supabase
+  168:       .from("profiles")
+  169:       .select("*")
+  170:       .eq(
+  171:         "role",
+  172:         "rider"
+  173:       );
+  174: 
+  175:     if(error){
+  176: 
+  177:       console.error(error);
+  178:       return;
+  179: 
+  180:     }
+  181: 
+  182:     setRiders(
+  183:       data || []
+  184:     );
+  185: 
+  186:   }
+
+--- Context around line 200 ---
+  196:     const {
+  197:       error
+  198:     } =
+  199:     await supabase
+  200:       .from("orders")
+  201:       .update({
+  202:         rider_id:
+  203:           riderId,
+  204: 
+  205:         status:
+  206:           "assigned"
+  207:       })
+  208:       .eq(
+  209:         "id",
+  210:         selectedOrder.id
+  211:       );
+  212: 
+  213:     if(error){
+  214: 
+  215:       console.error(error);
+  216: 
+  217:       alert(
+  218:         "Assignment failed"
+
+================================================================================
+FILE: app\orders\page.tsx
+--- Context around line 90 ---
+   86:         return;
+   87:       }
+   88: 
+   89:       const { data, error } = await supabase
+   90:         .from("orders")
+   91:         .select(`
+   92:           id,
+   93:           status,
+   94:           total,
+   95:           created_at,
+   96:           delivery_address,
+   97:           customer_notes,
+   98:           order_items (
+   99:             id,
+  100:             name,
+  101:             quantity,
+  102:             price
+  103:           ),
+  104:           rider:profiles!orders_rider_id_fkey (
+  105:             full_name,
+  106:             phone
+  107:           )
+  108:         `)
+
+================================================================================
+FILE: app\portal\login\page.tsx
+--- Context around line 66 ---
+   62:   error: profileError
+   63: 
+   64: } = await supabase
+   65: 
+   66:   .from("profiles")
+   67: 
+   68:   .select("role")
+   69: 
+   70:   .eq("id", user.id)
+   71: 
+   72:   .single();
+   73: 
+   74: if (profileError) {
+   75: 
+   76:   alert(profileError.message);
+   77: 
+   78:   return;
+   79: 
+   80: }
+   81: 
+   82: const route = ROLE_ROUTES[profile.role];
+   83: 
+   84: if (route) {
+
+================================================================================
+FILE: app\rider-dashboard\page.tsx
+--- Context around line 78 ---
+   74:         const { data: authData, error: authError } = await supabase.auth.getUser();
+   75:         if (authError || !authData.user) return;
+   76: 
+   77:         const { data: riderProfile, error: profileError } = await supabase
+   78:           .from("profiles")
+   79:           .select("full_name")
+   80:           .eq("id", authData.user.id)
+   81:           .maybeSingle();
+   82: 
+   83:         const profileName = !profileError && typeof riderProfile?.full_name === "string"
+   84:           ? riderProfile.full_name
+   85:           : "";
+   86:         const metadataName = typeof authData.user.user_metadata?.full_name === "string"
+   87:           ? authData.user.user_metadata.full_name
+   88:           : typeof authData.user.user_metadata?.name === "string"
+   89:             ? authData.user.user_metadata.name
+   90:             : "";
+   91:         const fullName = (profileName || metadataName).trim();
+   92:         const firstName = fullName.split(/\s+/)[0];
+   93: 
+   94:         if (!cancelled && firstName) {
+   95:           setRiderFirstName(firstName);
+   96:         }
+
+--- Context around line 186 ---
+  182:     const {
+  183:       data: queue,
+  184:       error: queueError,
+  185:     } = await supabase
+  186:       .from("orders")
+  187:       .select(orderFields)
+  188:       .eq("status", "ready_for_pickup")
+  189:       .is("rider_id", null)
+  190:       .order("created_at", {
+  191:         ascending: false,
+  192:       });
+  193: 
+  194:     if (queueError) {
+  195:       console.error("AVAILABLE ORDERS ERROR:", queueError);
+  196:     }
+  197: 
+  198:     /* RIDER ACTIVE JOBS */
+  199: 
+  200:     const {
+  201:       data: active,
+  202:       error: activeError,
+  203:     } = await supabase
+  204:       .from("orders")
+
+--- Context around line 204 ---
+  205:       .select(orderFields)
+  206:       .eq("rider_id", user.id)
+  207:       .neq("status", "delivered")
+  208:       .order("created_at", {
+  209:         ascending: false,
+  210:       });
+  211: 
+  212:     if (activeError) {
+  213:       console.error("ACTIVE ORDERS ERROR:", activeError);
+  214:     }
+  215: 
+  216:     setAvailableOrders(
+  217:   (queue || []).map((order) => ({
+  218:     ...order,
+  219:     vendors: Array.isArray(order.vendors)
+  220:       ? order.vendors[0] ?? undefined
+  221:       : order.vendors,
+  222:     profiles: Array.isArray(order.profiles)
+
+--- Context around line 246 ---
+  242:     const {
+  243:       data: completed,
+  244:       error: completedError,
+  245:     } = await supabase
+  246:       .from("orders")
+  247:       .select(`
+  248:         id,
+  249:         user_id,
+  250:         vendor_id,
+  251:         rider_id,
+  252:         status,
+  253:         total,
+  254:         food_amount,
+  255:         delivery_fee,
+  256:         platform_fee,
+  257:         mkh_amount,
+  258:         vendor_amount,
+  259:         rider_amount,
+  260:         created_at,
+  261:         delivery_address,
+  262:         customer_notes,
+  263:         payment_status,
+  264:         otp_verified,
+
+--- Context around line 338 ---
+  334:       const {
+  335:         data: profile,
+  336:         error: profileError,
+  337:       } = await supabase
+  338:         .from("profiles")
+  339:         .select("role")
+  340:         .eq("id", user.id)
+  341:         .single();
+  342: 
+  343:       if (isLoggingOut.current || profileError || profile?.role !== "rider") {
+  344:         return;
+  345:       }
+  346: 
+  347:       const {
+  348:         latitude,
+  349:         longitude,
+  350:         accuracy,
+  351:         heading,
+  352:         speed,
+  353:       } = position.coords;
+  354: 
+  355:       const { error } = await supabase
+  356:         .from("rider_locations")
+
+--- Context around line 500 ---
+  496:         } = await supabase.auth.getUser();
+  497: 
+  498:         if (user) {
+  499:           const { error: eventError } = await supabase
+  500:             .from("order_events")
+  501:             .insert({
+  502:               order_id: orderId,
+  503:               event_type: "picked_up",
+  504:               title: "Rider Picked Up Order",
+  505:               description: "Order picked up by rider.",
+  506:               actor_type: "rider",
+  507:               actor_id: user.id,
+  508:             });
+  509: 
+  510:           if (eventError) {
+  511:             console.error("PICKUP EVENT ERROR:", eventError);
+  512:           }
+  513:         }
+  514: 
+  515:         await loadDashboard();
+  516:         return;
+  517:       }
+  518: 
+
+--- Context around line 548 ---
+  544:         } = await supabase.auth.getUser();
+  545: 
+  546:         if (user) {
+  547:           const { error: eventError } = await supabase
+  548:             .from("order_events")
+  549:             .insert({
+  550:               order_id: orderId,
+  551:               event_type: "delivered",
+  552:               title: "Order Delivered",
+  553:               description:
+  554:                 "Delivery completed after customer OTP verification.",
+  555:               actor_type: "rider",
+  556:               actor_id: user.id,
+  557:             });
+  558: 
+  559:           if (eventError) {
+  560:             console.error("DELIVERY EVENT ERROR:", eventError);
+  561:           }
+  562:         }
+  563: 
+  564:         alert("Delivery completed successfully.");
+  565:         await loadDashboard();
+  566:         return;
+
+================================================================================
+FILE: app\rider-dashboard\page1.tsx
+--- Context around line 92 ---
+   88:       return;
+   89:     }
+   90: 
+   91:     const { data: profile } = await supabase
+   92:       .from("profiles")
+   93:       .select("id, role")
+   94:       .eq("id", user.id)
+   95:       .single();
+   96: 
+   97:     console.log("PROFILE:", profile);
+   98: 
+   99:     const orderFields = `
+  100:       id,
+  101:       user_id,
+  102:       vendor_id,
+  103:       rider_id,
+  104:       status,
+  105:       total,
+  106:       food_amount,
+  107:       delivery_fee,
+  108:       platform_fee,
+  109:       mkh_amount,
+  110:       vendor_amount,
+
+--- Context around line 142 ---
+  138:     const {
+  139:       data: queue,
+  140:       error: queueError,
+  141:     } = await supabase
+  142:       .from("orders")
+  143:       .select(orderFields)
+  144:       .eq("status", "ready_for_pickup")
+  145:       .is("rider_id", null)
+  146:       .order("created_at", {
+  147:         ascending: false,
+  148:       });
+  149: 
+  150:     if (queueError) {
+  151:       console.error("AVAILABLE ORDERS ERROR:", queueError);
+  152:     }
+  153: 
+  154:     /* RIDER ACTIVE JOBS */
+  155: 
+  156:     const {
+  157:       data: active,
+  158:       error: activeError,
+  159:     } = await supabase
+  160:       .from("orders")
+
+--- Context around line 160 ---
+  161:       .select(orderFields)
+  162:       .eq("rider_id", user.id)
+  163:       .neq("status", "delivered")
+  164:       .order("created_at", {
+  165:         ascending: false,
+  166:       });
+  167: 
+  168:     if (activeError) {
+  169:       console.error("ACTIVE ORDERS ERROR:", activeError);
+  170:     }
+  171: 
+  172:     setAvailableOrders(
+  173:   (queue || []).map((order) => ({
+  174:     ...order,
+  175:     vendors: Array.isArray(order.vendors)
+  176:       ? order.vendors[0] ?? undefined
+  177:       : order.vendors,
+  178:     profiles: Array.isArray(order.profiles)
+
+--- Context around line 202 ---
+  198:     const {
+  199:       data: completed,
+  200:       error: completedError,
+  201:     } = await supabase
+  202:       .from("orders")
+  203:       .select(`
+  204:         id,
+  205:         user_id,
+  206:         vendor_id,
+  207:         rider_id,
+  208:         status,
+  209:         total,
+  210:         food_amount,
+  211:         delivery_fee,
+  212:         platform_fee,
+  213:         mkh_amount,
+  214:         vendor_amount,
+  215:         rider_amount,
+  216:         created_at,
+  217:         delivery_address,
+  218:         customer_notes,
+  219:         payment_status,
+  220:         otp_verified,
+
+--- Context around line 291 ---
+  287:       const {
+  288:         data: profile,
+  289:         error: profileError,
+  290:       } = await supabase
+  291:         .from("profiles")
+  292:         .select("role")
+  293:         .eq("id", user.id)
+  294:         .single();
+  295: 
+  296:       if (profileError || profile?.role !== "rider") {
+  297:         return;
+  298:       }
+  299: 
+  300:       const {
+  301:         latitude,
+  302:         longitude,
+  303:         accuracy,
+  304:         heading,
+  305:         speed,
+  306:       } = position.coords;
+  307: 
+  308:       const { error } = await supabase
+  309:         .from("rider_locations")
+
+--- Context around line 450 ---
+  446:         } = await supabase.auth.getUser();
+  447: 
+  448:         if (user) {
+  449:           const { error: eventError } = await supabase
+  450:             .from("order_events")
+  451:             .insert({
+  452:               order_id: orderId,
+  453:               event_type: "picked_up",
+  454:               title: "Rider Picked Up Order",
+  455:               description: "Order picked up by rider.",
+  456:               actor_type: "rider",
+  457:               actor_id: user.id,
+  458:             });
+  459: 
+  460:           if (eventError) {
+  461:             console.error("PICKUP EVENT ERROR:", eventError);
+  462:           }
+  463:         }
+  464: 
+  465:         await loadDashboard();
+  466:         return;
+  467:       }
+  468: 
+
+--- Context around line 498 ---
+  494:         } = await supabase.auth.getUser();
+  495: 
+  496:         if (user) {
+  497:           const { error: eventError } = await supabase
+  498:             .from("order_events")
+  499:             .insert({
+  500:               order_id: orderId,
+  501:               event_type: "delivered",
+  502:               title: "Order Delivered",
+  503:               description:
+  504:                 "Delivery completed after customer OTP verification.",
+  505:               actor_type: "rider",
+  506:               actor_id: user.id,
+  507:             });
+  508: 
+  509:           if (eventError) {
+  510:             console.error("DELIVERY EVENT ERROR:", eventError);
+  511:           }
+  512:         }
+  513: 
+  514:         alert("Delivery completed successfully.");
+  515:         await loadDashboard();
+  516:         return;
+
+================================================================================
+FILE: app\success\page.tsx
+--- Context around line 35 ---
+   31:     async function refreshOrder() {
+   32:       const supabase = createClient();
+   33: 
+   34:       const { data, error } = await supabase
+   35:         .from("orders")
+   36:         .select("id, status, total")
+   37:         .eq("id", orderId)
+   38:         .maybeSingle();
+   39: 
+   40:       if (cancelled) return;
+   41: 
+   42:       if (error || !data) {
+   43:         setOrderNotFound(true);
+   44:         setLoading(false);
+   45:         return;
+   46:       }
+   47: 
+   48:       setOrderNotFound(false);
+   49:       setOrder(data as Order);
+   50: 
+   51:       const eligibleStatuses = ["accepted", "assigned", "picked_up"];
+   52: 
+   53:       if (eligibleStatuses.includes(data.status)) {
+
+================================================================================
+FILE: app\territory-relationship-manager\page.tsx
+--- Context around line 42 ---
+   38:       // ----------------------------------
+   39: 
+   40:       const { count: todayOrders, error: ordersCountError } =
+   41:         await supabase
+   42:           .from("orders")
+   43:           .select("*", { count: "exact", head: true })
+   44:           .gte("created_at", todayISO);
+   45: 
+   46:       if (ordersCountError) {
+   47:         console.error(
+   48:           "Today's Orders Error:",
+   49:           ordersCountError
+   50:         );
+   51:       }
+   52: 
+   53:       // ----------------------------------
+   54:       // Active Riders
+   55:       // ----------------------------------
+   56: 
+   57:       const { count: activeRiders, error: ridersError } =
+   58:         await supabase
+   59:           .from("profiles")
+   60:           .select("*", { count: "exact", head: true })
+
+--- Context around line 59 ---
+   61:           .eq("role", "rider")
+   62:           .eq("status", "active");
+   63: 
+   64:       if (ridersError) {
+   65:         console.error(
+   66:           "Active Riders Error:",
+   67:           ridersError
+   68:         );
+   69:       }
+   70: 
+   71:       // ----------------------------------
+   72:       // Active Vendors
+   73:       // ----------------------------------
+   74: 
+   75:       const { count: activeVendors, error: vendorsError } =
+   76:         await supabase
+   77:           .from("vendors")
+
+--- Context around line 77 ---
+   78:           .select("*", { count: "exact", head: true })
+   79:           .eq("status", "active");
+   80: 
+   81:       if (vendorsError) {
+   82:         console.error(
+   83:           "Active Vendors Error:",
+   84:           vendorsError
+   85:         );
+   86:       }
+   87: 
+   88:       // ----------------------------------
+   89:       // Open Exceptions
+   90:       // ----------------------------------
+   91: 
+   92:       const { count: openExceptions, error: exceptionsError } =
+   93:         await supabase
+   94:           .from("exceptions")
+   95:           .select("*", { count: "exact", head: true })
+
+--- Context around line 111 ---
+  107:       // ----------------------------------
+  108: 
+  109:       const { data: revenueRows, error: revenueError } =
+  110:         await supabase
+  111:           .from("orders")
+  112:           .select("total")
+  113:           .eq("status", "delivered")
+  114:           .gte("created_at", todayISO);
+  115: 
+  116:       if (revenueError) {
+  117:         console.error(
+  118:           "Today's Revenue Error:",
+  119:           revenueError
+  120:         );
+  121:       }
+  122: 
+  123:       const todayRevenue =
+  124:         revenueRows?.reduce(
+  125:           (sum, row) => sum + Number(row.total || 0),
+  126:           0
+  127:         ) ?? 0;
+  128: 
+  129:       // ----------------------------------
+
+--- Context around line 138 ---
+  134:       const {
+  135:         data: deliveredOrders,
+  136:         error: slaError,
+  137:       } = await supabase
+  138:         .from("orders")
+  139:         .select("accepted_at, delivered_at")
+  140:         .eq("status", "delivered")
+  141:         .gte("created_at", todayISO)
+  142:         .not("accepted_at", "is", null)
+  143:         .not("delivered_at", "is", null);
+  144: 
+  145:       if (slaError) {
+  146:         console.error(
+  147:           "Average SLA Error:",
+  148:           slaError
+  149:         );
+  150:       }
+  151: 
+  152:       let averageSLA = 0;
+  153: 
+  154:       if (deliveredOrders && deliveredOrders.length > 0) {
+  155:         const totalMinutes = deliveredOrders.reduce(
+  156:           (sum, order) => {
+
+--- Context around line 214 ---
+  210: 
+  211:   async function loadLiveEvents() {
+  212:     try {
+  213:       const { data, error } = await supabase
+  214:         .from("order_events")
+  215:         .select("*")
+  216:         .order("created_at", {
+  217:           ascending: false,
+  218:         })
+  219:         .limit(10);
+  220: 
+  221:       if (error) {
+  222:         console.error(
+  223:           "Live Events Error:",
+  224:           error
+  225:         );
+  226:         return;
+  227:       }
+  228: 
+  229:       console.log(
+  230:         "LIVE EVENTS FROM SUPABASE:",
+  231:         data
+  232:       );
+
+================================================================================
+FILE: app\territory-relationship-manager\live-operations\page.tsx
+--- Context around line 44 ---
+   40:         setOrders(data);
+   41: 
+   42: const { data: events, error: eventsError } =
+   43:   await supabase
+   44:     .from("order_events")
+   45:     .select(`
+   46:       id,
+   47:       title,
+   48:       created_at,
+   49:       orders(
+   50:         order_number,
+   51:         vendors(name)
+   52:       )
+   53:     `)
+   54:     .order("created_at", {
+   55:       ascending: false,
+   56:     })
+   57:     .limit(20);
+   58: 
+   59: if (eventsError) {
+   60:   console.error(eventsError);
+   61: } else {
+   62:   console.log(events);
+
+--- Context around line 133 ---
+  129: 
+  130: setAlerts(generatedAlerts);
+  131: 
+  132: const { count: ridersOnline } = await supabase
+  133:   .from("profiles")
+  134:   .select("*", { count: "exact", head: true })
+  135:   .eq("role", "rider")
+  136:   .eq("status", "active");
+  137: const activeDeliveries = data.filter(
+  138:   (order: any) => order.status === "picked_up"
+  139: ).length;
+  140: 
+  141: const readyOrders = data.filter(
+  142:   (order: any) => order.status === "ready_for_pickup"
+  143: ).length;
+  144: 
+  145: setSnapshot({
+  146:   ridersOnline: ridersOnline ?? 0,
+  147:   activeDeliveries,
+  148:   readyOrders,
+  149:   operationalHealth: "Healthy",
+  150: });
+  151: 
+
+================================================================================
+FILE: app\territory-relationship-manager\orders\page.tsx
+--- Context around line 25 ---
+   21:   async function loadOrders() {
+   22:     setLoading(true);
+   23: 
+   24:     const { data, error } = await supabase
+   25:       .from("orders")
+   26:       .select(`
+   27:         *,
+   28:         vendors (
+   29:           id,
+   30:           name,
+   31:           cuisine,
+   32:           location,
+   33:           status
+   34:         ),
+   35:         rider:profiles!orders_rider_id_fkey (
+   36:           id,
+   37:           full_name,
+   38:           phone
+   39:         ),
+   40:         profiles!orders_user_id_fkey (
+   41:           id,
+   42:           full_name,
+   43:           email,
+
+================================================================================
+FILE: app\vendor-dashboard\page.tsx
+--- Context around line 109 ---
+  105:   
+  106: async function saveMenuItem() {
+  107:   const { data:{ user } } = await supabase.auth.getUser();
+  108:   if(!user) return;
+  109:   const { data:profile } = await supabase.from("profiles").select("vendor_id").eq("id",user.id).single();
+  110:   if(!profile?.vendor_id) return;
+  111: 
+  112:   if(editingMenuId){
+  113:     await supabase.from("menu_items").update({
+  114:       name:menuForm.name,
+  115:       description:menuForm.description,
+  116:       category:menuForm.category,
+  117:       image:menuForm.image,
+  118:       price:Number(menuForm.price),
+  119:       available:menuForm.available
+  120:     }).eq("id",editingMenuId);
+  121:   } else {
+  122:     await supabase.from("menu_items").insert({
+  123:       vendor_id:profile.vendor_id,
+  124:       name:menuForm.name,
+  125:       description:menuForm.description,
+  126:       category:menuForm.category,
+  127:       image:menuForm.image,
+
+--- Context around line 197 ---
+  193:         data:profile
+  194: 
+  195:       } =
+  196:       await supabase
+  197:         .from("profiles")
+  198:         .select(
+  199:           "vendor_id"
+  200:         )
+  201:         .eq(
+  202:           "id",
+  203:           user.id
+  204:         )
+  205:         .single();
+  206: 
+  207:       if (
+  208:         !profile?.vendor_id
+  209:       ) {
+  210: 
+  211:         setLoading(false);
+  212: 
+  213:         return;
+  214: 
+  215:       }
+
+--- Context around line 224 ---
+  220:         error
+  221: 
+  222:       } =
+  223:       await supabase
+  224:         .from("orders")
+  225:        .select(`
+  226:   *,
+  227:   order_items(
+  228:     id,
+  229:     name,
+  230:     quantity,
+  231:     price
+  232:   ),
+  233:   profiles!orders_user_id_fkey(
+  234:     full_name,
+  235:     email,
+  236:     phone
+  237:   )
+  238: `)
+  239:         .eq(
+  240:           "vendor_id",
+  241:           profile.vendor_id
+  242:         )
+
+--- Context around line 285 ---
+  281:     const { data:{ user } } = await supabase.auth.getUser();
+  282:     if(!user) return;
+  283: 
+  284:     const { data:profile } = await supabase
+  285:       .from("profiles")
+  286:       .select("vendor_id")
+  287:       .eq("id", user.id)
+  288:       .single();
+  289: 
+  290:     if(!profile?.vendor_id) return;
+  291: 
+  292:     const { data } = await supabase
+  293:       .from("menu_items")
+  294:       .select("*")
+  295:       .eq("vendor_id", profile.vendor_id)
+  296:       .order("created_at",{ascending:false});
+  297: 
+  298:     setMenuItems(data || []);
+  299:   }
+  300: 
+  301: 
+  302:   useEffect(()=>{
+  303: 
+
+--- Context around line 347 ---
+  343: 
+  344:   ) {
+  345: 
+  346:     await supabase
+  347:       .from("orders")
+  348:       .update({
+  349:         status
+  350:       })
+  351:       .eq(
+  352:         "id",
+  353:         orderId
+  354:       );
+  355: 
+  356:     loadOrders();
+  357: 
+  358:   }
+  359: 
+  360:   async function handleLogout() {
+  361: 
+  362:     await supabase
+  363:       .auth
+  364:       .signOut();
+  365: 
+
+================================================================================
+FILE: app\vendor-dashboard-v2\page.tsx
+--- Context around line 161 ---
+  157:       const {
+  158:         data:profile
+  159:       } =
+  160:       await supabase
+  161:         .from("profiles")
+  162:         .select("vendor_id")
+  163:         .eq("id",user.id)
+  164:         .single();
+  165:         console.log("PROFILE:", profile);
+  166: 
+  167:       if(!profile?.vendor_id){
+  168: 
+  169:         setLoading(false);
+  170:         return;
+  171: 
+  172:       }
+  173: 
+  174:    const {
+  175:   data: wallet
+  176: } =
+  177: await supabase
+  178:   .from("vendor_wallets")
+  179:   .select("*")
+
+--- Context around line 287 ---
+  283:       const {
+  284:         data:vendor
+  285:       } =
+  286:       await supabase
+  287:         .from("vendors")
+  288:         .select("name")
+  289:         .eq(
+  290:           "id",
+  291:           profile.vendor_id
+  292:         )
+  293:         .single();
+  294: 
+  295:       setVendorName(
+  296:         vendor?.name || ""
+  297:       );
+  298: 
+  299:     }
+  300: 
+  301:     catch(error){
+  302: 
+  303:       console.error(error);
+  304: 
+  305:     }
+
+--- Context around line 325 ---
+  321: 
+  322:   const {
+  323:     data:profile
+  324:   } = await supabase
+  325:     .from("profiles")
+  326:     .select("vendor_id")
+  327:     .eq("id", user.id)
+  328:     .single();
+  329: 
+  330:   if(!profile?.vendor_id) return;
+  331: 
+  332:   const { data } = await supabase
+  333:     .from("menu_items")
+  334:     .select("*")
+  335:     .eq("vendor_id", profile.vendor_id)
+  336:     .order("created_at", {
+  337:       ascending:false
+  338:     });
+  339: 
+  340:   setMenuItems(data || []);
+  341: 
+  342: }
+  343: 
+
+--- Context around line 439 ---
+  435:     const {
+  436:       data:profile
+  437:     } =
+  438:     await supabase
+  439:       .from("profiles")
+  440:       .select("vendor_id")
+  441:       .eq("id", user.id)
+  442:       .single();
+  443: 
+  444:     if(!profile?.vendor_id){
+  445: 
+  446:       setLoadingOrders(false);
+  447:       return;
+  448: 
+  449:     }
+  450: 
+  451:     const {
+  452:       data,
+  453:       error
+  454:     } =
+  455:    await supabase
+  456:   .from("orders")
+  457:   .select(`
+
+--- Context around line 456 ---
+  458:     *,
+  459:     profiles!orders_user_id_fkey(
+  460:       full_name,
+  461:       phone,
+  462:       email
+  463:     )
+  464:   `)
+  465:       .eq(
+  466:         "vendor_id",
+  467:         profile.vendor_id
+  468:       )
+  469:       .order(
+  470:         "created_at",
+  471:         {
+  472:           ascending:false
+  473:         }
+  474:       );
+
+--- Context around line 587 ---
+  583: 
+  584:   const {
+  585:     data:profile
+  586:   } = await supabase
+  587:     .from("profiles")
+  588:     .select("vendor_id")
+  589:     .eq("id", user.id)
+  590:     .single();
+  591: console.log("PROFILE:", profile);
+  592: console.log("FORM:", form);
+  593:   if(!profile?.vendor_id) return;
+  594: 
+  595:   let imageUrl =
+  596:   form.image;
+  597:   if(imageFile){
+  598: 
+  599:   const fileExt =
+  600:     imageFile.name
+  601:       .split(".")
+  602:       .pop();
+  603: 
+  604:   const fileName =
+  605:     `${Date.now()}.${fileExt}`;
+
+--- Context around line 1027 ---
+ 1023:     const {
+ 1024:       data: profile
+ 1025:     } =
+ 1026:     await supabase
+ 1027:       .from("profiles")
+ 1028:       .select("vendor_id")
+ 1029:       .eq(
+ 1030:         "id",
+ 1031:         user.id
+ 1032:       )
+ 1033:       .single();
+ 1034: 
+ 1035:     if(
+ 1036:       !profile?.vendor_id
+ 1037:     ){
+ 1038: 
+ 1039:       alert(
+ 1040:         "Vendor not found"
+ 1041:       );
+ 1042: 
+ 1043:       return;
+ 1044: 
+ 1045:     }
+
+================================================================================
+FILE: app\vendor-onboarding\page.tsx
+--- Context around line 837 ---
+  833: 
+  834:   }
+  835: 
+  836:   const { data } = await supabase
+  837:     .from("vendors")
+  838:     .select("id")
+  839:     .eq("slug", slug);
+  840: 
+  841:   setSlugAvailable(
+  842:     !data || data.length === 0
+  843:   );
+  844: 
+  845: }}
+  846:         className="
+  847:           w-full
+  848:           border
+  849:           p-4
+  850:           rounded-xl
+  851:         "
+  852:       />
+  853: <div
+  854:   className="
+  855:     bg-orange-50
+
+================================================================================
+FILE: app\vendors\[slug]\page.tsx
+--- Context around line 44 ---
+   40:       const {
+   41:         data: vendorData,
+   42:       } =
+   43:         await supabase
+   44:           .from("vendors")
+   45:           .select("*")
+   46:           .eq(
+   47:             "slug",
+   48:             slug
+   49:           )
+   50:           .single();
+   51: 
+   52:       if (!vendorData) {
+   53: 
+   54:         setLoading(false);
+   55: 
+   56:         return;
+   57:       }
+   58: 
+   59:       setVendor(
+   60:         vendorData
+   61:       );
+   62: 
+
+================================================================================
+FILE: components\territory-manager\AuditTrail.tsx
+--- Context around line 21 ---
+   17:   if (!order?.id) return;
+   18: 
+   19:   async function loadOrderEvents() {
+   20:     const { data, error } = await supabase
+   21:       .from("order_events")
+   22:       .select("*")
+   23:       .eq("order_id", order.id)
+   24:       .order("created_at", {
+   25:         ascending: true,
+   26:       });
+   27: 
+   28:     if (error) {
+   29:       console.error(error);
+   30:       return;
+   31:     }
+   32: 
+   33:     setOrderEvents(data || []);
+   34:   }
+   35: 
+   36:   loadOrderEvents();
+   37: }, [order?.id]);
+   38: 
+   39:   if (!order) return null;
+
+================================================================================
+FILE: lib\employees\authProvisioning.ts
+--- Context around line 25 ---
+   21:       username
+   22:     );
+   23: 
+   24:     const { data } = await adminClient
+   25:       .from("profiles")
+   26:       .select("id")
+   27:       .eq("email", email)
+   28:       .maybeSingle();
+   29: 
+   30:     if (!data) {
+   31:       return {
+   32:         username,
+   33:         email,
+   34:       };
+   35:     }
+   36: 
+   37:     username = `${baseUsername}${counter}`;
+   38:     counter++;
+   39:   }
+   40: }
+
+================================================================================
+FILE: lib\employees\createEmployee.ts
+--- Context around line 51 ---
+   47:   // ===================================================
+   48: 
+   49:   const { error: profileError } =
+   50:     await supabase
+   51:       .from("profiles")
+   52:       .insert({
+   53: 
+   54:         id: profileId,
+   55: 
+   56:         full_name:
+   57:           `${employee.firstName} ${employee.lastName}`,
+   58: 
+   59:         email: employee.email,
+   60: 
+   61:         phone: employee.phone,
+   62: 
+   63:         role: "employee",
+   64: 
+   65:       });
+   66: 
+   67:   if (profileError) {
+   68: 
+   69:     await supabase.auth.admin.deleteUser(profileId);
+
+--- Context around line 81 ---
+   77:   // ===================================================
+   78: 
+   79:   const { data: employeeRow, error: employeeError } =
+   80:     await supabase
+   81:       .from("employees")
+   82:       .insert({
+   83: 
+   84:         profile_id: profileId,
+   85: 
+   86:         employee_number:
+   87:           employee.employeeNumber,
+   88: 
+   89:         first_name:
+   90:           employee.firstName,
+   91: 
+   92:         last_name:
+   93:           employee.lastName,
+   94: 
+   95:         phone:
+   96:           employee.phone,
+   97: 
+   98:         gender:
+   99:           employee.gender,
+
+--- Context around line 158 ---
+  154: 
+  155:   if (employeeError) {
+  156: 
+  157:     await supabase
+  158:       .from("profiles")
+  159:       .delete()
+  160:       .eq("id", profileId);
+  161: 
+  162:     await supabase.auth.admin.deleteUser(profileId);
+  163: 
+  164:     throw new Error(employeeError.message);
+  165: 
+  166:   }
+  167: 
+  168:   return {
+  169: 
+  170:     success: true,
+  171: 
+  172:     employee: employeeRow,
+  173: 
+  174:     temporaryPassword,
+  175: 
+  176:   };
+
+================================================================================
+FILE: lib\services\orders.ts
+--- Context around line 5 ---
+    1: import { supabase } from "@/lib/supabase";
+    2: 
+    3: export async function getOrders() {
+    4:   const { data, error } = await supabase
+    5:     .from("orders")
+    6:     .select(`
+    7:       *,
+    8:        vendors(name),
+    9:   profiles!orders_user_id_fkey(full_name),
+   10:   riders:profiles!orders_rider_id_fkey(full_name)
+   11:       ),
+   12:       rider:profiles!orders_rider_id_fkey (
+   13:         id,
+   14:         full_name,
+   15:         phone
+   16:       ),
+   17:       profiles!orders_user_id_fkey (
+   18:         id,
+   19:         full_name,
+   20:         email,
+   21:         phone
+   22:       )
+   23:     `)
+
+--- Context around line 40 ---
+   36:   orderId: string,
+   37:   riderId: string
+   38: ) {
+   39:   const { error } = await supabase
+   40:     .from("orders")
+   41:     .update({
+   42:       rider_id: riderId,
+   43:       status: "assigned",
+   44:     })
+   45:     .eq("id", orderId);
+   46: 
+   47:   if (error) {
+   48:     throw error;
+   49:   }
+   50: 
+   51:   return true;
+   52: }
+
+================================================================================
+FILE: lib\services\riders.ts
+--- Context around line 9 ---
+    5: } from "@/types/rider";
+    6: 
+    7: export async function getRiders() {
+    8:   const { data, error } = await supabase
+    9:     .from("profiles")
+   10:     .select("*")
+   11:     .eq("role", "rider")
+   12:     .order("created_at", { ascending: false });
+   13: 
+   14:   if (error) throw error;
+   15: 
+   16:   return data ?? [];
+   17: }
+   18: 
+   19: export async function getRiderLocations() {
+   20:   const { data, error } = await supabase
+   21:     .from("rider_locations")
+   22:     .select("*");
+   23: 
+   24:   if (error) throw error;
+   25: 
+   26:   return data ?? [];
+   27: }
+
+--- Context around line 61 ---
+   57:  * it is no longer an active delivery.
+   58:  */
+   59: export async function getRiderCurrentOrders() {
+   60:   const { data, error } = await supabase
+   61:     .from("orders")
+   62:     .select(
+   63:       `
+   64:         id,
+   65:         order_number,
+   66:         status,
+   67:         vendor_id,
+   68:         rider_id,
+   69:         total,
+   70:         created_at
+   71:       `
+   72:     )
+   73:     .in("status", ["assigned", "picked_up"])
+   74:     .not("rider_id", "is", null);
+   75: 
+   76:   if (error) throw error;
+   77: 
+   78:   return (data ?? []) as RiderCurrentOrder[];
+   79: }
+
+================================================================================
+FILE: lib\services\territory-map.ts
+--- Context around line 52 ---
+   48:       `)
+   49:       .order("updated_at", { ascending: false }),
+   50: 
+   51:     supabase
+   52:       .from("orders")
+   53:       .select(`
+   54:         id,
+   55:         order_number,
+   56:         status,
+   57:         vendor_id,
+   58:         rider_id,
+   59:         total,
+   60:         created_at
+   61:       `)
+   62:       .in("status", ["assigned", "picked_up"])
+   63:       .not("rider_id", "is", null),
+   64:   ]);
+   65: 
+   66:   if (locationError) {
+   67:     throw locationError;
+   68:   }
+   69: 
+   70:   if (orderError) {
+
+================================================================================
+FILE: lib\services\vendors.ts
+--- Context around line 6 ---
+    2: import { VendorTransaction } from "@/types/vendor";
+    3: 
+    4: export async function getVendors() {
+    5:   const { data, error } = await supabase
+    6:     .from("vendors")
+    7:     .select("*")
+    8:     .order("created_at", { ascending: false });
+    9: 
+   10:   if (error) throw error;
+   11: 
+   12:   return data ?? [];
+   13: }
+   14: 
+   15: export async function getVendorWallets() {
+   16:   const { data, error } = await supabase
+   17:     .from("vendor_wallets")
+   18:     .select("*");
+   19: 
+   20:   if (error) throw error;
+   21: 
+   22:   return data ?? [];
+   23: }
+   24: 
+
+================================================================================
+Source files scanned: 229
+Table-access locations found: 107
+Read-only audit complete.

@@ -1,0 +1,1503 @@
+﻿MKH RIDER REASSIGNMENT â€” PART 2 READ-ONLY AUDIT
+Project: C:\MKH\mkh-app
+Generated: 2026-10-20 12:17:34
+Scanned source files: 220
+No project files or Supabase policies were modified.
+
+====================================================================================================
+FILE: app\admin-dashboard\EmployeeProvisioningWizard.tsx
+MATCHING LINES: 4
+--- lines 100-112 ---
+  100: 
+  101: hasCheckedDraft.current = true;
+  102: 
+  103:     const {
+  104:       data: { user },
+  105:     } = await supabase.auth.getUser();
+  106: 
+  107:     if (!user) return;
+  108: 
+  109:     const { data, error } = await supabase
+  110:       .from("employee_drafts")
+  111:       .select("*")
+  112:       .eq("created_by", user.id)
+--- lines 338-350 ---
+  338: 
+  339:   try {
+  340: 
+  341: const {
+  342:   data: { user },
+  343: } = await supabase.auth.getUser();
+  344: 
+  345:     const response = await fetch(
+  346: 
+  347:       "/api/admin/employees/create",
+  348: 
+  349:       {
+  350: 
+--- lines 420-432 ---
+  420: 
+  421: async function loadMasterData() {
+  422: 
+  423:   const {
+  424:   data: { user },
+  425: } = await supabase.auth.getUser();
+  426: 
+  427: console.log("CURRENT USER:", user);
+  428: 
+  429:   const { data: departmentData } = await supabase
+  430:     .from("departments")
+  431:     .select("*")
+  432:     .order("name");
+--- lines 1963-1975 ---
+ 1963:     <button
+ 1964:   onClick={async () => {
+ 1965: 
+ 1966:     const {
+ 1967:       data: { user },
+ 1968:     } = await supabase.auth.getUser();
+ 1969: 
+ 1970:     if (!user) {
+ 1971:       alert("You must be logged in.");
+ 1972:       return;
+ 1973:     }
+ 1974: 
+ 1975:    // --------------------------------------
+
+====================================================================================================
+FILE: app\admin-dashboard\page.tsx
+MATCHING LINES: 19
+--- lines 27-39 ---
+   27: 
+   28:    async function verifyAdminAccess() {
+   29: 
+   30:      const {
+   31:        data: { user },
+   32:      } = await supabase.auth.getUser();
+   33: 
+   34:      if (!user) {
+   35:        router.replace("/login");
+   36:        return;
+   37:      }
+   38: 
+   39:      const { data: profile, error } = await supabase
+--- lines 561-573 ---
+  561:   useState<any[]>([]);
+  562: 
+  563:   const [selectedOrder, setSelectedOrder] =
+  564:   useState<any>(null);
+  565: 
+  566:   const [showAssignRider, setShowAssignRider] =
+  567:   useState(false);
+  568: 
+  569: const [selectedRiderId, setSelectedRiderId] =
+  570:   useState("");
+  571: 
+  572: const [stats, setStats] = useState({
+  573:   applications: 0,
+--- lines 676-712 ---
+  676:       return;
+  677:     }
+  678: 
+  679:     setSelectedVendor({
+  680:       ...vendorApplication,
+  681:       vendor_id: vendor.id,
+  682:       vendor_record: vendor,
+  683:     });
+  684: 
+  685:     // Load the vendor's current active Zone assignment.
+  686:     const { data: assignment, error: assignmentError } =
+  687:       await supabase
+  688:         .from("zone_vendors")
+  689:         .select(`
+  690:           id,
+  691:           vendor_id,
+  692:           zone_id,
+  693:           status,
+  694:           assigned_at,
+  695:           zones (
+  696:             id,
+  697:             name,
+  698:             territory_id,
+  699:             territories (
+  700:               id,
+  701:               name
+  702:             )
+  703:           )
+  704:         `)
+  705:         .eq("vendor_id", vendor.id)
+  706:         .eq("status", "active")
+  707:         .maybeSingle();
+  708: 
+  709:     if (assignmentError) {
+  710:       console.error(
+  711:         "Vendor Zone lookup error:",
+  712:         assignmentError
+--- lines 793-805 ---
+  793: 
+  794:   setLoadingZoneAssignment(false);
+  795: };
+  796: 
+  797: const saveVendorZone = async () => {
+  798:   if (!selectedVendor?.vendor_id) {
+  799:     alert("Vendor record not found.");
+  800:     return;
+  801:   }
+  802: 
+  803:   if (!selectedTerritoryId || !selectedZoneId) {
+  804:     alert("Please select a Territory and Zone.");
+  805:     return;
+--- lines 839-858 ---
+  839: 
+  840:     // Create the new active assignment
+  841:     const { data: newAssignment, error: insertError } = await supabase
+  842:       .from("zone_vendors")
+  843:       .insert({
+  844:         vendor_id: selectedVendor.vendor_id,
+  845:         zone_id: selectedZoneId,
+  846:         status: "active",
+  847:         assigned_at: new Date().toISOString(),
+  848:       })
+  849:       .select(`
+  850:         id,
+  851:         vendor_id,
+  852:         zone_id,
+  853:         status,
+  854:         assigned_at,
+  855:         zones (
+  856:           id,
+  857:           name,
+  858:           territory_id,
+--- lines 956-996 ---
+  956: 
+  957:   }
+  958: };
+  959: 
+  960:  
+  961: const assignRider = async () => {
+  962:   if (!selectedOrder?.id) {
+  963:     alert("Select an order first.");
+  964:     return;
+  965:   }
+  966: 
+  967:   if (!selectedRiderId) {
+  968:     alert("Select a rider first.");
+  969:     return;
+  970:   }
+  971: 
+  972:   if (
+  973:     !["ready_for_pickup", "assigned"].includes(selectedOrder.status) ||
+  974:     selectedOrder.picked_up_at != null
+  975:   ) {
+  976:     alert(
+  977:       "Only orders ready for pickup or already assigned, and not yet picked up, can be assigned or reassigned."
+  978:     );
+  979:     return;
+  980:   }
+  981: 
+  982:   if (selectedOrder.rider_id === selectedRiderId) {
+  983:     alert("This rider is already assigned to the order.");
+  984:     return;
+  985:   }
+  986: 
+  987:   try {
+  988:     const { data, error } = await supabase.rpc(
+  989:       "admin_assign_rider",
+  990:       {
+  991:         p_order_id: selectedOrder.id,
+  992:         p_rider_id: selectedRiderId,
+  993:       }
+  994:     );
+  995: 
+  996:     if (error) {
+--- lines 1005-1017 ---
+ 1005:       return;
+ 1006:     }
+ 1007: 
+ 1008:     alert("Rider assigned successfully.");
+ 1009: 
+ 1010:     setShowAssignRider(false);
+ 1011:     setSelectedOrder(null);
+ 1012:     setSelectedRiderId("");
+ 1013: 
+ 1014:     await loadDashboardStats();
+ 1015:   } catch (error) {
+ 1016:     console.error("ADMIN RIDER ASSIGNMENT ERROR:", error);
+ 1017:     alert("Unable to assign this rider. Please try again.");
+--- lines 1162-1174 ---
+ 1162:     *,
+ 1163:     profiles:user_id (
+ 1164:       full_name,
+ 1165:       email
+ 1166:     ),
+ 1167:     vendors:vendor_id (
+ 1168:       name
+ 1169:     )
+ 1170:   `)
+ 1171:   .order("created_at", {
+ 1172:     ascending: false
+ 1173:   });
+ 1174: 
+--- lines 5028-5040 ---
+ 5028:       >
+ 5029: 
+ 5030:      <button
+ 5031:   onClick={() => {
+ 5032:     if (selectedOrder?.status === "delivered") return;
+ 5033:     setShowAssignRider(true);
+ 5034:   }}
+ 5035:   disabled={selectedOrder?.status === "delivered"}
+ 5036:   className={`
+ 5037:     py-3
+ 5038:     rounded-xl
+ 5039:     font-semibold
+ 5040:     ${
+--- lines 5069-5081 ---
+ 5069:     </div>
+ 5070: 
+ 5071:   </div>
+ 5072: 
+ 5073: )}
+ 5074: {showAssignRider && (
+ 5075: 
+ 5076:   <div
+ 5077:     className="
+ 5078:       fixed
+ 5079:       inset-0
+ 5080:       bg-black/60 backdrop-blur-sm
+ 5081:       flex
+--- lines 5135-5161 ---
+ 5135:       </select>
+ 5136: 
+ 5137:       <div className="flex gap-3">
+ 5138: 
+ 5139:         <button
+ 5140:           onClick={assignRider}
+ 5141:           className="
+ 5142:             flex-1
+ 5143:             bg-orange-500
+ 5144:             text-white
+ 5145:             py-3
+ 5146:             rounded-xl
+ 5147:           "
+ 5148:         >
+ 5149:           Assign
+ 5150:         </button>
+ 5151: 
+ 5152:         <button
+ 5153:           onClick={() =>
+ 5154:             setShowAssignRider(false)
+ 5155:           }
+ 5156:           className="
+ 5157:             flex-1
+ 5158:             bg-gray-500
+ 5159:             text-white
+ 5160:             py-3
+ 5161:             rounded-xl
+
+====================================================================================================
+FILE: app\manager-v3\page.tsx
+MATCHING LINES: 23
+--- lines 22-34 ---
+   22:   id: string;
+   23:   status: string;
+   24:   total: number;
+   25:   delivery_address: string | null;
+   26:   created_at: string;
+   27:   vendor_id: string;
+   28:   rider_id: string | null;
+   29: 
+   30:   vendors?: {
+   31:   id: string;
+   32:   name: string;
+   33: };
+   34: 
+--- lines 246-258 ---
+  246:       .from(
+  247:         "vendor_wallets"
+  248:       )
+  249:       .select("*")
+  250:       .eq(
+  251:         "vendor_id",
+  252:         request.requester_id
+  253:       )
+  254:       .single();
+  255: 
+  256:     if(!wallet){
+  257: 
+  258:       alert(
+--- lines 306-318 ---
+  306:     accrued_balance:
+  307:       newAccruedBalance
+  308: 
+  309:   })
+  310:   .eq(
+  311:     "vendor_id",
+  312:     request.requester_id
+  313:   );
+  314: 
+  315: if(walletError){
+  316: 
+  317:   console.error(
+  318:     walletError
+--- lines 477-489 ---
+  477:       .from(
+  478:         "vendor_wallets"
+  479:       )
+  480:       .select("*")
+  481:       .eq(
+  482:         "vendor_id",
+  483:         request.requester_id
+  484:       )
+  485:       .single();
+  486: 
+  487:     if(!wallet){
+  488: 
+  489:       alert(
+--- lines 524-536 ---
+  524:         available_balance:
+  525:           newBalance
+  526: 
+  527:       })
+  528:       .eq(
+  529:         "vendor_id",
+  530:         request.requester_id
+  531:       );
+  532: 
+  533:     if(walletError){
+  534: 
+  535:       alert(
+  536:         walletError.message
+--- lines 690-702 ---
+  690: const {
+  691:   data: riderLocationsData,
+  692:   error: riderLocationsError
+  693: } =
+  694: await supabase
+  695:   .from("rider_locations")
+  696:   .select("*");
+  697: 
+  698: if (riderLocationsError) {
+  699: 
+  700:   console.error(
+  701:     "RIDER LOCATIONS:",
+  702:     riderLocationsError
+--- lines 715-727 ---
+  715: 
+  716:     const {
+  717:   data: riderLocations
+  718: } =
+  719: await supabase
+  720:   .from("rider_locations")
+  721:   .select("*");
+  722: 
+  723: console.log(
+  724:   "PAYOUT REQUESTS:",
+  725:   payoutRequests
+  726: );
+  727: 
+--- lines 756-768 ---
+  756:     (vendor) => {
+  757: 
+  758:       const vendorOrders =
+  759:         (ordersData || []).filter(
+  760:           (order) =>
+  761:             order.vendor_id ===
+  762:             vendor.id
+  763:         );
+  764: 
+  765:       const totalOrders =
+  766:         vendorOrders.length;
+  767: 
+  768:       const totalRevenue =
+--- lines 937-949 ---
+  937: 
+  938:   const ready =
+  939:     ordersData?.filter(
+  940:       o =>
+  941:         o.status ===
+  942:         "ready_for_pickup"
+  943:     ).length || 0;
+  944: 
+  945:   const assigned =
+  946:     ordersData?.filter(
+  947:       o =>
+  948:         o.status ===
+  949:         "assigned"
+--- lines 1128-1140 ---
+ 1128:       return true;
+ 1129:     }
+ 1130: 
+ 1131:     if (
+ 1132:       order.status ===
+ 1133:         "ready_for_pickup" &&
+ 1134:       minutesOpen > 20
+ 1135:     ) {
+ 1136:       return true;
+ 1137:     }
+ 1138: 
+ 1139:     if (
+ 1140:       order.status ===
+--- lines 1152-1164 ---
+ 1152:   exceptionOrders
+ 1153: );
+ 1154: 
+ 1155: }
+ 1156: 
+ 1157: async function assignRider(
+ 1158:   orderId: string,
+ 1159:   riderId: string
+ 1160: ) {
+ 1161: 
+ 1162:   const { error } =
+ 1163:     await supabase
+ 1164:       .from("orders")
+--- lines 1230-1242 ---
+ 1230:       .on(
+ 1231:         "postgres_changes",
+ 1232:         {
+ 1233:           event: "*",
+ 1234:           schema: "public",
+ 1235:           table: "rider_locations"
+ 1236:         },
+ 1237:         () => {
+ 1238: 
+ 1239:   console.log(
+ 1240:     "RIDER LOCATION EVENT"
+ 1241:   );
+ 1242: 
+--- lines 1529-1541 ---
+ 1529:       </p>
+ 1530:     </>
+ 1531: 
+ 1532:   )}
+ 1533: 
+ 1534:   {order.status === "ready_for_pickup" && (
+ 1535: 
+ 1536:     <>
+ 1537:       <p className="text-sm text-red-600 font-medium">
+ 1538:         Order is waiting for rider assignment.
+ 1539:       </p>
+ 1540: 
+ 1541:       <p className="text-sm text-gray-500">
+--- lines 1588-1600 ---
+ 1588:       "
+ 1589:     >
+ 1590:       ðŸ‘ View Order
+ 1591:     </button>
+ 1592: 
+ 1593:     {order.status === "ready_for_pickup" && (
+ 1594: 
+ 1595:       <button
+ 1596:         onClick={() => {
+ 1597: 
+ 1598:           setSelectedOrder(order);
+ 1599: 
+ 1600:           setShowAssignModal(true);
+--- lines 2855-2867 ---
+ 2855:   >
+ 2856:     CRITICAL
+ 2857:   </div>
+ 2858: )}
+ 2859: 
+ 2860: {order.status === "ready_for_pickup" && (
+ 2861:   <div
+ 2862:     className="
+ 2863:       text-xs
+ 2864:       text-orange-600
+ 2865:       font-bold
+ 2866:     "
+ 2867:   >
+--- lines 2967-2979 ---
+ 2967: 
+ 2968:     <option value="preparing">
+ 2969:       Preparing
+ 2970:     </option>
+ 2971: 
+ 2972:     <option value="ready_for_pickup">
+ 2973:       Ready For Pickup
+ 2974:     </option>
+ 2975: 
+ 2976:     <option value="assigned">
+ 2977:       Assigned
+ 2978:     </option>
+ 2979: 
+--- lines 3150-3162 ---
+ 3150:       Accepted
+ 3151:     </span>
+ 3152: 
+ 3153:   )}
+ 3154: 
+ 3155:   {order.status === "ready_for_pickup" && (
+ 3156: 
+ 3157:     <span
+ 3158:       className="
+ 3159:         bg-orange-100
+ 3160:         text-orange-700
+ 3161:         px-3
+[Further matching context omitted for this file to keep the report manageable.]
+
+====================================================================================================
+FILE: app\rider-dashboard\page.tsx
+MATCHING LINES: 15
+--- lines 35-47 ---
+   35:   platform_fee: number;
+   36:   vendor_amount: number;
+   37:   rider_amount: number;
+   38:   mkh_amount: number;
+   39:   created_at: string;
+   40:   vendor_id: string;
+   41:   rider_id: string | null;
+   42:   delivery_address: string | null;
+   43:   customer_notes?: string | null;
+   44:   delivery_otp?: string | null;
+   45:   otp_verified?: boolean;
+   46: 
+   47:   vendors?: {
+--- lines 69-81 ---
+   69:   useEffect(() => {
+   70:     let cancelled = false;
+   71: 
+   72:     const loadRiderFirstName = async () => {
+   73:       try {
+   74:         const { data: authData, error: authError } = await supabase.auth.getUser();
+   75:         if (authError || !authData.user) return;
+   76: 
+   77:         const { data: riderProfile, error: profileError } = await supabase
+   78:           .from("profiles")
+   79:           .select("full_name")
+   80:           .eq("id", authData.user.id)
+   81:           .maybeSingle();
+--- lines 130-153 ---
+  130:   try {
+  131:     setLoading(true);
+  132: 
+  133:     const {
+  134:       data: { user },
+  135:     } = await supabase.auth.getUser();
+  136: 
+  137:     if (!user) {
+  138:       router.push("/login");
+  139:       return;
+  140:     }
+  141: 
+  142: 
+  143:     const orderFields = `
+  144:       id,
+  145:       user_id,
+  146:       vendor_id,
+  147:       rider_id,
+  148:       status,
+  149:       total,
+  150:       food_amount,
+  151:       delivery_fee,
+  152:       platform_fee,
+  153:       mkh_amount,
+--- lines 156-176 ---
+  156:       created_at,
+  157:       delivery_address,
+  158:       customer_notes,
+  159:       payment_status,
+  160:       otp_verified,
+  161:       picked_up_at,
+  162:       delivered_at,
+  163:       order_items!order_items_order_id_fkey(
+  164:         id,
+  165:         name,
+  166:         quantity,
+  167:         price
+  168:       ),
+  169:       vendors:vendors!orders_vendor_id_fkey(
+  170:         name,
+  171:         location
+  172:       ),
+  173:       profiles:profiles!orders_user_id_fkey(
+  174:         full_name,
+  175:         email,
+  176:         phone
+--- lines 183-195 ---
+  183:       data: queue,
+  184:       error: queueError,
+  185:     } = await supabase
+  186:       .from("orders")
+  187:       .select(orderFields)
+  188:       .eq("status", "ready_for_pickup")
+  189:       .is("rider_id", null)
+  190:       .order("created_at", {
+  191:         ascending: false,
+  192:       });
+  193: 
+  194:     if (queueError) {
+  195:       console.error("AVAILABLE ORDERS ERROR:", queueError);
+--- lines 245-257 ---
+  245:     } = await supabase
+  246:       .from("orders")
+  247:       .select(`
+  248:         id,
+  249:         user_id,
+  250:         vendor_id,
+  251:         rider_id,
+  252:         status,
+  253:         total,
+  254:         food_amount,
+  255:         delivery_fee,
+  256:         platform_fee,
+  257:         mkh_amount,
+--- lines 260-274 ---
+  260:         created_at,
+  261:         delivery_address,
+  262:         customer_notes,
+  263:         payment_status,
+  264:         otp_verified,
+  265:         picked_up_at,
+  266:         delivered_at,
+  267:         vendors:vendors!orders_vendor_id_fkey(
+  268:           name,
+  269:           location
+  270:         )
+  271:       `)
+  272:       .eq("rider_id", user.id)
+  273:       .eq("status", "delivered")
+  274:       .order("delivered_at", {
+--- lines 323-335 ---
+  323:       );
+  324: 
+  325:       const {
+  326:         data: { user },
+  327:         error: authError,
+  328:       } = await supabase.auth.getUser();
+  329: 
+  330:       if (isLoggingOut.current || authError || !user) {
+  331:         return;
+  332:       }
+  333: 
+  334:       const {
+  335:         data: profile,
+--- lines 351-363 ---
+  351:         heading,
+  352:         speed,
+  353:       } = position.coords;
+  354: 
+  355:       const { error } = await supabase
+  356:         .from("rider_locations")
+  357:         .upsert(
+  358:           {
+  359:             rider_id: user.id,
+  360:             latitude,
+  361:             longitude,
+  362:             accuracy: accuracy ?? 0,
+  363:             heading: heading ?? 0,
+--- lines 460-472 ---
+  460:     status: string
+  461:   ) {
+  462:     try {
+  463:       const {
+  464:         data: { user },
+  465:       } = await supabase.auth.getUser();
+  466: 
+  467:       if (!user) {
+  468:         alert("Rider session not found.");
+  469:         return;
+  470:       }
+  471: 
+  472:       /* ----------------------------------
+--- lines 491-503 ---
+  491:           return;
+  492:         }
+  493: 
+  494:         const {
+  495:           data: { user },
+  496:         } = await supabase.auth.getUser();
+  497: 
+  498:         if (user) {
+  499:           const { error: eventError } = await supabase
+  500:             .from("order_events")
+  501:             .insert({
+  502:               order_id: orderId,
+  503:               event_type: "picked_up",
+--- lines 539-551 ---
+  539:           return;
+  540:         }
+  541: 
+  542:         const {
+  543:           data: { user },
+  544:         } = await supabase.auth.getUser();
+  545: 
+  546:         if (user) {
+  547:           const { error: eventError } = await supabase
+  548:             .from("order_events")
+  549:             .insert({
+  550:               order_id: orderId,
+  551:               event_type: "delivered",
+
+====================================================================================================
+FILE: app\rider-dashboard\page1.tsx
+MATCHING LINES: 14
+--- lines 24-36 ---
+   24:   platform_fee: number;
+   25:   vendor_amount: number;
+   26:   rider_amount: number;
+   27:   mkh_amount: number;
+   28:   created_at: string;
+   29:   vendor_id: string;
+   30:   rider_id: string | null;
+   31:   delivery_address: string | null;
+   32:   customer_notes?: string | null;
+   33:   delivery_otp?: string | null;
+   34:   otp_verified?: boolean;
+   35: 
+   36:   vendors?: {
+--- lines 79-91 ---
+   79:   try {
+   80:     setLoading(true);
+   81: 
+   82:     const {
+   83:       data: { user },
+   84:     } = await supabase.auth.getUser();
+   85: 
+   86:     if (!user) {
+   87:       router.push("/login");
+   88:       return;
+   89:     }
+   90: 
+   91:     const { data: profile } = await supabase
+--- lines 97-109 ---
+   97:     console.log("PROFILE:", profile);
+   98: 
+   99:     const orderFields = `
+  100:       id,
+  101:       user_id,
+  102:       vendor_id,
+  103:       rider_id,
+  104:       status,
+  105:       total,
+  106:       food_amount,
+  107:       delivery_fee,
+  108:       platform_fee,
+  109:       mkh_amount,
+--- lines 112-132 ---
+  112:       created_at,
+  113:       delivery_address,
+  114:       customer_notes,
+  115:       payment_status,
+  116:       otp_verified,
+  117:       picked_up_at,
+  118:       delivered_at,
+  119:       order_items!order_items_order_id_fkey(
+  120:         id,
+  121:         name,
+  122:         quantity,
+  123:         price
+  124:       ),
+  125:       vendors:vendors!orders_vendor_id_fkey(
+  126:         name,
+  127:         location
+  128:       ),
+  129:       profiles:profiles!orders_user_id_fkey(
+  130:         full_name,
+  131:         email,
+  132:         phone
+--- lines 139-151 ---
+  139:       data: queue,
+  140:       error: queueError,
+  141:     } = await supabase
+  142:       .from("orders")
+  143:       .select(orderFields)
+  144:       .eq("status", "ready_for_pickup")
+  145:       .is("rider_id", null)
+  146:       .order("created_at", {
+  147:         ascending: false,
+  148:       });
+  149: 
+  150:     if (queueError) {
+  151:       console.error("AVAILABLE ORDERS ERROR:", queueError);
+--- lines 201-213 ---
+  201:     } = await supabase
+  202:       .from("orders")
+  203:       .select(`
+  204:         id,
+  205:         user_id,
+  206:         vendor_id,
+  207:         rider_id,
+  208:         status,
+  209:         total,
+  210:         food_amount,
+  211:         delivery_fee,
+  212:         platform_fee,
+  213:         mkh_amount,
+--- lines 216-230 ---
+  216:         created_at,
+  217:         delivery_address,
+  218:         customer_notes,
+  219:         payment_status,
+  220:         otp_verified,
+  221:         picked_up_at,
+  222:         delivered_at,
+  223:         vendors:vendors!orders_vendor_id_fkey(
+  224:           name,
+  225:           location
+  226:         )
+  227:       `)
+  228:       .eq("rider_id", user.id)
+  229:       .eq("status", "delivered")
+  230:       .order("delivered_at", {
+--- lines 276-288 ---
+  276:       );
+  277: 
+  278:       const {
+  279:         data: { user },
+  280:         error: authError,
+  281:       } = await supabase.auth.getUser();
+  282: 
+  283:       if (authError || !user) {
+  284:         return;
+  285:       }
+  286: 
+  287:       const {
+  288:         data: profile,
+--- lines 304-316 ---
+  304:         heading,
+  305:         speed,
+  306:       } = position.coords;
+  307: 
+  308:       const { error } = await supabase
+  309:         .from("rider_locations")
+  310:         .upsert(
+  311:           {
+  312:             rider_id: user.id,
+  313:             latitude,
+  314:             longitude,
+  315:             accuracy: accuracy ?? 0,
+  316:             heading: heading ?? 0,
+--- lines 410-422 ---
+  410:     status: string
+  411:   ) {
+  412:     try {
+  413:       const {
+  414:         data: { user },
+  415:       } = await supabase.auth.getUser();
+  416: 
+  417:       if (!user) {
+  418:         alert("Rider session not found.");
+  419:         return;
+  420:       }
+  421: 
+  422:       /* ----------------------------------
+--- lines 441-453 ---
+  441:           return;
+  442:         }
+  443: 
+  444:         const {
+  445:           data: { user },
+  446:         } = await supabase.auth.getUser();
+  447: 
+  448:         if (user) {
+  449:           const { error: eventError } = await supabase
+  450:             .from("order_events")
+  451:             .insert({
+  452:               order_id: orderId,
+  453:               event_type: "picked_up",
+--- lines 489-501 ---
+  489:           return;
+  490:         }
+  491: 
+  492:         const {
+  493:           data: { user },
+  494:         } = await supabase.auth.getUser();
+  495: 
+  496:         if (user) {
+  497:           const { error: eventError } = await supabase
+  498:             .from("order_events")
+  499:             .insert({
+  500:               order_id: orderId,
+  501:               event_type: "delivered",
+
+====================================================================================================
+FILE: app\territory-relationship-manager\live-operations\page.tsx
+MATCHING LINES: 3
+--- lines 70-82 ---
+   70:   .filter((order: any) =>
+   71:     [
+   72:       "pending",
+   73:       "accepted",
+   74:       "preparing",
+   75:       "ready_for_pickup",
+   76:     ].includes(order.status)
+   77:   )
+   78:   .flatMap((order: any) => {
+   79:   const created = new Date(order.created_at).getTime();
+   80:   const waitingMinutes = Math.floor((now - created) / 60000);
+   81: 
+   82:   const alerts = [];
+--- lines 115-127 ---
+  115:       ? "Monitor Vendor"
+  116:       : order.status === "accepted"
+  117:       ? "Monitor Kitchen"
+  118:       : order.status === "preparing"
+  119:       ? "Follow Up"
+  120:       : order.status === "ready_for_pickup"
+  121:       ? "Assign Rider"
+  122:       : "Monitor",
+  123: 
+  124: });
+  125: 
+  126: return alerts;
+  127: 
+--- lines 137-149 ---
+  137: const activeDeliveries = data.filter(
+  138:   (order: any) => order.status === "picked_up"
+  139: ).length;
+  140: 
+  141: const readyOrders = data.filter(
+  142:   (order: any) => order.status === "ready_for_pickup"
+  143: ).length;
+  144: 
+  145: setSnapshot({
+  146:   ridersOnline: ridersOnline ?? 0,
+  147:   activeDeliveries,
+  148:   readyOrders,
+  149:   operationalHealth: "Healthy",
+
+====================================================================================================
+FILE: app\territory-relationship-manager\orders\page.tsx
+MATCHING LINES: 3
+--- lines 124-136 ---
+  124:   const preparingOrders = orders.filter(
+  125:     (order) => order.status === "preparing"
+  126:   ).length;
+  127: 
+  128:   const readyOrders = orders.filter(
+  129:     (order) => order.status === "ready_for_pickup"
+  130:   ).length;
+  131: 
+  132:   const outForDelivery = orders.filter(
+  133:     (order) => order.status === "picked_up"
+  134:   ).length;
+  135: 
+  136:   const exceptions = orders.filter((order) => {
+--- lines 335-347 ---
+  335: 
+  336:        <option value="all">All Status</option>
+  337: <option value="pending">Pending</option>
+  338: <option value="accepted">Accepted</option>
+  339: <option value="preparing">Preparing</option>
+  340: <option value="ready_for_pickup">Ready for Pickup</option>
+  341: <option value="picked_up">Out for Delivery</option>
+  342: <option value="delivered">Delivered</option>
+  343: <option value="cancelled">Cancelled</option>
+  344: 
+  345:       </select>
+  346: 
+  347:     </div>
+--- lines 409-421 ---
+  409:       ? "bg-slate-100 text-slate-700"
+  410:       : order.status === "accepted"
+  411:       ? "bg-blue-100 text-blue-700"
+  412:       : order.status === "preparing"
+  413:       ? "bg-orange-100 text-orange-700"
+  414:       : order.status === "ready_for_pickup"
+  415:       ? "bg-purple-100 text-purple-700"
+  416:       : order.status === "picked_up"
+  417:       ? "bg-emerald-100 text-emerald-700"
+  418:       : order.status === "delivered"
+  419:       ? "bg-green-100 text-green-700"
+  420:       : order.status === "cancelled"
+  421:       ? "bg-red-100 text-red-700"
+
+====================================================================================================
+FILE: app\territory-relationship-manager\page.tsx
+MATCHING LINES: 1
+--- lines 583-595 ---
+  583:                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+  584: 
+  585:                     {{
+  586:                       accepted: "âœ…",
+  587:                       preparing: "ðŸ³",
+  588:                       ready_for_pickup: "ðŸ“¦",
+  589:                       assigned: "ðŸ",
+  590:                       picked_up: "ðŸ",
+  591:                       delivered: "ðŸŽ‰",
+  592:                       cancelled: "âŒ",
+  593:                     }[event.event_type] ?? "ðŸ“"}
+  594: 
+  595:                   </div>
+
+====================================================================================================
+FILE: app\territory-relationship-manager\vendors\page.tsx
+MATCHING LINES: 2
+--- lines 48-66 ---
+   48: 
+   49:       const merged: VendorRecord[] =
+   50:         vendorRows.map((vendor) => {
+   51:           const wallet =
+   52:             walletRows.find(
+   53:               (w) => w.vendor_id === vendor.id
+   54:             );
+   55: 
+   56:           const transactions =
+   57:             transactionRows.filter(
+   58:               (transaction) =>
+   59:                 transaction.vendor_id === vendor.id
+   60:             );
+   61: 
+   62:           return {
+   63:             id: vendor.id,
+   64:             name: vendor.name,
+   65:             cuisine: vendor.cuisine,
+   66:             email: vendor.email,
+
+====================================================================================================
+FILE: app\vendor-dashboard\page.tsx
+MATCHING LINES: 17
+--- lines 15-40 ---
+   15:   description:string;
+   16:   price:number;
+   17:   category:string;
+   18:   image:string;
+   19:   available:boolean;
+   20:   vendor_id:string;
+   21: };
+   22: 
+   23: type Order = {
+   24: 
+   25:   id:string;
+   26: 
+   27:   total:number;
+   28: 
+   29:   status:string;
+   30: 
+   31:   created_at:string;
+   32: 
+   33:   vendor_id:string;
+   34: 
+   35:   rider_id:string | null;
+   36: 
+   37:   delivery_address?: string | null;
+   38: 
+   39: customer_notes?: string | null;
+   40: 
+--- lines 102-130 ---
+  102:   });
+  103: 
+  104: 
+  105:   
+  106: async function saveMenuItem() {
+  107:   const { data:{ user } } = await supabase.auth.getUser();
+  108:   if(!user) return;
+  109:   const { data:profile } = await supabase.from("profiles").select("vendor_id").eq("id",user.id).single();
+  110:   if(!profile?.vendor_id) return;
+  111: 
+  112:   if(editingMenuId){
+  113:     await supabase.from("menu_items").update({
+  114:       name:menuForm.name,
+  115:       description:menuForm.description,
+  116:       category:menuForm.category,
+  117:       image:menuForm.image,
+  118:       price:Number(menuForm.price),
+  119:       available:menuForm.available
+  120:     }).eq("id",editingMenuId);
+  121:   } else {
+  122:     await supabase.from("menu_items").insert({
+  123:       vendor_id:profile.vendor_id,
+  124:       name:menuForm.name,
+  125:       description:menuForm.description,
+  126:       category:menuForm.category,
+  127:       image:menuForm.image,
+  128:       price:Number(menuForm.price),
+  129:       available:menuForm.available
+  130:     });
+--- lines 174-186 ---
+  174:         }
+  175: 
+  176:       } =
+  177:       await supabase
+  178:         .auth
+  179:         .getUser();
+  180: 
+  181:       if (!user) {
+  182: 
+  183:         router.push(
+  184:           "/login"
+  185:         );
+  186: 
+--- lines 194-215 ---
+  194: 
+  195:       } =
+  196:       await supabase
+  197:         .from("profiles")
+  198:         .select(
+  199:           "vendor_id"
+  200:         )
+  201:         .eq(
+  202:           "id",
+  203:           user.id
+  204:         )
+  205:         .single();
+  206: 
+  207:       if (
+  208:         !profile?.vendor_id
+  209:       ) {
+  210: 
+  211:         setLoading(false);
+  212: 
+  213:         return;
+  214: 
+  215:       }
+--- lines 235-248 ---
+  235:     email,
+  236:     phone
+  237:   )
+  238: `)
+  239:         .eq(
+  240:           "vendor_id",
+  241:           profile.vendor_id
+  242:         )
+  243:         .order(
+  244:           "created_at",
+  245:           {
+  246:             ascending:false
+  247:           }
+  248:         );
+--- lines 276-302 ---
+  276:   }
+  277: 
+  278: 
+  279:   async function loadMenuItems() {
+  280: 
+  281:     const { data:{ user } } = await supabase.auth.getUser();
+  282:     if(!user) return;
+  283: 
+  284:     const { data:profile } = await supabase
+  285:       .from("profiles")
+  286:       .select("vendor_id")
+  287:       .eq("id", user.id)
+  288:       .single();
+  289: 
+  290:     if(!profile?.vendor_id) return;
+  291: 
+  292:     const { data } = await supabase
+  293:       .from("menu_items")
+  294:       .select("*")
+  295:       .eq("vendor_id", profile.vendor_id)
+  296:       .order("created_at",{ascending:false});
+  297: 
+  298:     setMenuItems(data || []);
+  299:   }
+  300: 
+  301: 
+  302:   useEffect(()=>{
+--- lines 412-424 ---
+  412: 
+  413:         o.status==="accepted" ||
+  414: 
+  415:         o.status==="preparing" ||
+  416: 
+  417:         o.status==="ready_for_pickup"
+  418: 
+  419:     ).length;
+  420:       if (loading) {
+  421: 
+  422:     return (
+  423: 
+  424:       <main className="
+--- lines 875-887 ---
+  875:                       <Button
+  876:                         onClick={()=>
+  877: 
+  878:                           updateStatus(
+  879:                             order.id,
+  880:                             "ready_for_pickup"
+  881:                           )
+  882: 
+  883:                         }
+  884:                       >
+  885: 
+  886:                         Ready For Pickup
+  887: 
+
+====================================================================================================
+FILE: components\territory-manager\RiderLocationPanel.tsx
+MATCHING LINES: 1
+--- lines 2-14 ---
+    2: 
+    3: interface CurrentOrder {
+    4:   id: string;
+    5:   order_number: string | null;
+    6:   status: string;
+    7:   vendor_id: string | null;
+    8:   rider_id: string | null;
+    9:   total: number;
+   10:   created_at: string;
+   11: }
+   12: 
+   13: interface Rider {
+   14:   id: string;
+
+====================================================================================================
+FILE: components\territory-manager\TerritoryMap.tsx
+MATCHING LINES: 1
+--- lines 4-16 ---
+    4: 
+    5: interface CurrentOrder {
+    6:   id: string;
+    7:   order_number: string | null;
+    8:   status: string;
+    9:   vendor_id: string | null;
+   10:   rider_id: string | null;
+   11:   total: number;
+   12:   created_at: string;
+   13: }
+   14: 
+   15: interface RiderLocation {
+   16:   id: string;
+
+====================================================================================================
+FILE: lib\services\finance.ts
+MATCHING LINES: 2
+--- lines 3-15 ---
+    3: export async function getVendorWallets() {
+    4:   const { data, error } = await supabase
+    5:     .from("vendor_wallets")
+    6:     .select(`
+    7:       *,
+    8:       vendors!vendor_wallets_vendor_id_fkey (
+    9:         id,
+   10:         name,
+   11:         status
+   12:       )
+   13:     `)
+   14:     .order("updated_at", { ascending: false });
+   15: 
+--- lines 21-33 ---
+   21: export async function getFinancialLedger() {
+   22:   const { data, error } = await supabase
+   23:     .from("financial_ledger")
+   24:     .select(`
+   25:       *,
+   26:       vendors:vendor_id (
+   27:         id,
+   28:         name,
+   29:         status
+   30:       ),
+   31:       profiles:rider_id (
+   32:         id,
+   33:         full_name,
+
+====================================================================================================
+FILE: lib\services\financialLedger.ts
+MATCHING LINES: 1
+--- lines 35-47 ---
+   35:   vendorId: string
+   36: ) {
+   37:   return await supabase
+   38:     .from("financial_ledger")
+   39:     .select("*")
+   40:     .eq("vendor_id", vendorId)
+   41:     .order("created_at", {
+   42:       ascending: false,
+   43:     });
+   44: }
+   45: 
+   46: export async function getRiderLedger(
+   47:   riderId: string
+
+====================================================================================================
+FILE: lib\services\orders.ts
+MATCHING LINES: 1
+--- lines 30-42 ---
+   30:   }
+   31: 
+   32:   return data ?? [];
+   33: }
+   34: 
+   35: export async function assignRider(
+   36:   orderId: string,
+   37:   riderId: string
+   38: ) {
+   39:   const { error } = await supabase
+   40:     .from("orders")
+   41:     .update({
+   42:       rider_id: riderId,
+
+====================================================================================================
+FILE: lib\services\reportingEngine.ts
+MATCHING LINES: 1
+--- lines 6-18 ---
+    6:   vendorId: string
+    7: ) {
+    8:   return await supabase
+    9:     .from("financial_ledger")
+   10:     .select("amount, entry_type")
+   11:     .eq("vendor_id", vendorId);
+   12: }
+   13: 
+   14: export async function getRiderFinancialSummary(
+   15:   riderId: string
+   16: ) {
+   17:   return await supabase
+   18:     .from("financial_ledger")
+
+====================================================================================================
+FILE: lib\services\riders.ts
+MATCHING LINES: 2
+--- lines 16-28 ---
+   16:   return data ?? [];
+   17: }
+   18: 
+   19: export async function getRiderLocations() {
+   20:   const { data, error } = await supabase
+   21:     .from("rider_locations")
+   22:     .select("*");
+   23: 
+   24:   if (error) throw error;
+   25: 
+   26:   return data ?? [];
+   27: }
+   28: 
+--- lines 62-74 ---
+   62:     .select(
+   63:       `
+   64:         id,
+   65:         order_number,
+   66:         status,
+   67:         vendor_id,
+   68:         rider_id,
+   69:         total,
+   70:         created_at
+   71:       `
+   72:     )
+   73:     .in("status", ["assigned", "picked_up"])
+   74:     .not("rider_id", "is", null);
+
+====================================================================================================
+FILE: lib\services\settlementEngine.ts
+MATCHING LINES: 2
+--- lines 17-29 ---
+   17:   ---------------------------------- */
+   18: 
+   19:   const {
+   20:     data: { user },
+   21:     error: authError,
+   22:   } = await supabase.auth.getUser();
+   23: 
+   24:   console.log("SETTLEMENT AUTH USER:", {
+   25:     userId: user?.id ?? null,
+   26:     authError,
+   27:   });
+   28: 
+   29:   if (authError) {
+--- lines 160-172 ---
+  160:     "Rider:",
+  161:     data.rider_id
+  162:   );
+  163:   console.log(
+  164:     "Vendor:",
+  165:     data.vendor_id
+  166:   );
+  167:   console.log(
+  168:     "Rider Amount:",
+  169:     data.rider_amount
+  170:   );
+  171:   console.log(
+  172:     "Vendor Amount:",
+
+====================================================================================================
+FILE: lib\services\territory-map.ts
+MATCHING LINES: 2
+--- lines 29-41 ---
+   29:   const [
+   30:     { data: locationRows, error: locationError },
+   31:     { data: orderRows, error: orderError },
+   32:   ] = await Promise.all([
+   33:     supabase
+   34:       .from("rider_locations")
+   35:       .select(`
+   36:         id,
+   37:         rider_id,
+   38:         latitude,
+   39:         longitude,
+   40:         speed,
+   41:         heading,
+--- lines 52-64 ---
+   52:       .from("orders")
+   53:       .select(`
+   54:         id,
+   55:         order_number,
+   56:         status,
+   57:         vendor_id,
+   58:         rider_id,
+   59:         total,
+   60:         created_at
+   61:       `)
+   62:       .in("status", ["assigned", "picked_up"])
+   63:       .not("rider_id", "is", null),
+   64:   ]);
+
+====================================================================================================
+FILE: lib\services\vendors.ts
+MATCHING LINES: 1
+--- lines 39-51 ---
+   39:     .from("vendor_transactions")
+   40:     .select("*")
+   41:     .order("created_at", { ascending: false });
+   42: 
+   43:   if (vendorId) {
+   44:     query = query.eq("vendor_id", vendorId);
+   45:   }
+   46: 
+   47:   const { data, error } = await query;
+   48: 
+   49:   if (error) throw error;
+   50: 
+   51:   return (data ?? []) as VendorTransaction[];
+
+====================================================================================================
+FILE: lib\services\walletEngine.ts
+MATCHING LINES: 2
+--- lines 10-22 ---
+   10:   vendorId: string
+   11: ) {
+   12:   return await supabase
+   13:     .from("vendor_wallets")
+   14:     .select("*")
+   15:     .eq("vendor_id", vendorId)
+   16:     .single();
+   17: }
+   18: 
+   19: export async function updateVendorWallet(
+   20:   vendorId: string,
+   21:   values: {
+   22:     available_balance?: number;
+--- lines 25-37 ---
+   25:   }
+   26: ) {
+   27:   return await supabase
+   28:     .from("vendor_wallets")
+   29:     .update(values)
+   30:     .eq("vendor_id", vendorId)
+   31:     .select()
+   32:     .single();
+   33: }
+   34: 
+   35: /* ----------------------------------
+   36:    Rider Wallet
+   37: ----------------------------------- */
+
+====================================================================================================
+FILE: types\rider.ts
+MATCHING LINES: 1
+--- lines 12-24 ---
+   12: 
+   13: export interface RiderCurrentOrder {
+   14:   id: string;
+   15:   order_number: string | null;
+   16:   status: string;
+   17:   vendor_id: string | null;
+   18:   rider_id: string | null;
+   19:   total: number;
+   20:   created_at: string;
+   21: }
+   22: 
+   23: export interface RiderRecord {
+   24:   id: string;
+

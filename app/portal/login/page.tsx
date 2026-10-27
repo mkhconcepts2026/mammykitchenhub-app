@@ -65,7 +65,7 @@ const {
 
   .from("profiles")
 
-  .select("role")
+  .select("role, status, must_change_password")
 
   .eq("id", user.id)
 
@@ -79,7 +79,70 @@ if (profileError) {
 
 }
 
-const route = ROLE_ROUTES[profile.role];
+const accountStatus = String(profile?.status ?? "")
+  .trim()
+  .toLowerCase()
+  .replace(/_/g, " ");
+
+if (
+  ["pending", "pending activation", "pending approval"].includes(accountStatus) ||
+  ["rejected", "inactive", "suspended", "disabled"].includes(accountStatus)
+) {
+  await supabase.auth.signOut();
+
+  alert(
+    ["pending", "pending activation", "pending approval"].includes(accountStatus)
+      ? "Your account is awaiting HR approval. Please contact MKH Human Resources."
+      : "Your account is not active. Please contact MKH Human Resources."
+  );
+
+  return;
+}
+
+if (profile?.must_change_password) {
+  router.push("/change-password");
+  return;
+}
+
+const { data: effectiveRole, error: effectiveRoleError } =
+  await (supabase as any).rpc("current_effective_app_role");
+
+if (effectiveRoleError) {
+  await supabase.auth.signOut();
+  alert("Unable to verify your dashboard access. Please try signing in again.");
+  return;
+}
+
+const rawRole = String(effectiveRole ?? "").trim().toUpperCase();
+
+if (!rawRole || rawRole === "NONE") {
+  await supabase.auth.signOut();
+  alert("Your account has no active dashboard access. Please contact MKH support.");
+  return;
+}
+
+const normalizedRole = rawRole.toLowerCase();
+
+const systemRoleRoutes: Record<string, string> = {
+  ADMIN: "/admin-dashboard",
+  COO: "/admin-dashboard",
+  HR: "/hr",
+  TERRITORY: "/territory-relationship-manager",
+  ZONAL_MANAGER: "/zonal-manager-dashboard",
+  FINANCE: "/finance",
+  RIDER: "/rider-dashboard",
+  VENDOR: "/vendor-dashboard-v2",
+  OPERATIONS: "/admin-dashboard",
+  EXECUTIVE: "/admin-dashboard",
+  DIVISION: "/admin-dashboard",
+  SUPPORT: "/admin-dashboard",
+  GROWTH: "/admin-dashboard",
+};
+
+const route =
+  rawRole === rawRole.toUpperCase()
+    ? systemRoleRoutes[rawRole] || ROLE_ROUTES[normalizedRole]
+    : ROLE_ROUTES[normalizedRole] || systemRoleRoutes[rawRole.toUpperCase()];
 
 if (route) {
 

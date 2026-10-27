@@ -371,6 +371,23 @@ if (loading) {
 
         </Link>
 
+        {/* Staff Role Changes */}
+        <Link
+          href="/hr/role-changes"
+          className="group rounded-3xl border bg-white p-7 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+        >
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-purple-100 text-3xl font-bold text-purple-700">
+              â†”
+            </div>
+            <ArrowRight className="text-gray-300 transition group-hover:text-purple-600" />
+          </div>
+          <h2 className="text-2xl font-bold">Role Changes</h2>
+          <p className="mt-2 text-sm font-semibold">Staff access requests</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Review role-change requests submitted by Admin/COO.
+          </p>
+        </Link>
         {/* Pending */}
 
         <Link

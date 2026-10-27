@@ -1,0 +1,2671 @@
+﻿"use client";
+import VendorSidebar from "@/components/vendor/VendorSidebar";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+
+
+type Tab =
+  | "dashboard"
+  | "orders"
+  | "menu"
+  | "earnings"
+  | "kyc";
+
+export default function VendorDashboardV2() {
+
+  const router =
+    useRouter();
+
+  const supabase =
+    createClient();
+
+  const [loading,setLoading] =
+    useState(true);
+
+  const [vendorName,setVendorName] =
+    useState("");
+
+  const [currentTab, setCurrentTab] =
+  useState<Tab>("dashboard");
+  
+    const [orders, setOrders] =
+  useState<any[]>([]);
+
+const [loadingOrders, setLoadingOrders] =
+  useState(false);
+
+    const [menuItems,setMenuItems] = useState<any[]>([]);
+const [showForm,setShowForm] = useState(false);
+const [editingId,setEditingId] = useState<string | null>(null);
+
+const [form,setForm] = useState({
+  name:"",
+  description:"",
+  category:"Rice",
+  image:"",
+  price:"",
+  available:true
+});
+const [imageFile,setImageFile] =
+  useState<File | null>(null);
+
+  const [availableBalance, setAvailableBalance] =
+  useState(0);
+
+const [pendingBalance, setPendingBalance] =
+  useState(0);
+
+const nextFriday = new Date();
+
+while (nextFriday.getDay() !== 5) {
+  nextFriday.setDate(
+    nextFriday.getDate() + 1
+  );
+}
+
+const nextFridayText =
+  nextFriday.toLocaleDateString(
+    "en-NG",
+    {
+      weekday: "long",
+      month: "short",
+      day: "numeric"
+    }
+  );
+
+const [totalEarned, setTotalEarned] =
+  useState(0);
+
+const successfulOrders =
+  orders.filter(
+    (order) =>
+      order.status === "delivered"
+  ).length;
+
+const [vendorWallet, setVendorWallet] =
+  useState<any>(null);
+
+  const [payoutHistory, setPayoutHistory] =
+  useState<any[]>([]);
+
+  const [cacFile, setCacFile] =
+  useState<File | null>(null);
+
+const [idFile, setIdFile] =
+  useState<File | null>(null);
+
+const [selfieFile, setSelfieFile] =
+  useState<File | null>(null);
+
+const [bankName, setBankName] =
+  useState("");
+
+const [accountNumber, setAccountNumber] =
+  useState("");
+
+  
+const [accountName, setAccountName] =
+  useState("");
+
+  const [selectedBank, setSelectedBank] =
+  useState("");
+
+const [verifiedAccountName,
+  setVerifiedAccountName] =
+  useState("");
+
+
+const [nextPayoutText, setNextPayoutText] =
+  useState("");
+
+const [verifyingAccount,
+  setVerifyingAccount] =
+  useState(false);
+
+const [kycStatus, setKycStatus] =
+  useState("Not Submitted");
+
+  const [submittingKyc, setSubmittingKyc] =
+  useState(false);
+
+  const [isSubmittingPayout, setIsSubmittingPayout] =
+  useState(false);
+const [isPayoutWindowOpen, setIsPayoutWindowOpen] =
+  useState(false);
+  const [hasPendingPayout, setHasPendingPayout] =
+  useState(false);
+
+  async function loadVendor() {
+
+    try {
+
+      const {
+        data:{ user }
+      } =
+      await supabase
+        .auth
+        .getUser();
+
+      if(!user){
+
+        router.push("/login");
+        return;
+
+      }
+
+      const {
+        data:profile
+      } =
+      await supabase
+        .from("profiles")
+        .select("vendor_id")
+        .eq("id",user.id)
+        .single();
+        console.log("PROFILE:", profile);
+
+      if(!profile?.vendor_id){
+
+        setLoading(false);
+        return;
+
+      }
+
+   const {
+  data: wallet
+} =
+await supabase
+  .from("vendor_wallets")
+  .select("*")
+  .eq(
+    "vendor_id",
+    profile.vendor_id
+  )
+  .single();
+
+setVendorWallet(
+  wallet
+);
+
+console.log(
+  "VENDOR WALLET:",
+  wallet
+);
+
+const {
+  data: pendingRequest
+} =
+await supabase
+  .from("payout_requests")
+  .select("id")
+  .eq(
+    "requester_id",
+    profile.vendor_id
+  )
+  .eq(
+    "status",
+    "pending"
+  )
+  .maybeSingle();
+
+setHasPendingPayout(
+  !!pendingRequest
+);
+
+const payoutHistoryResponse = await fetch(
+  "/api/vendor/payout-history",
+  { cache: "no-store" }
+);
+
+const payoutHistoryResult = await payoutHistoryResponse
+  .json()
+  .catch(() => null);
+
+if (payoutHistoryResponse.ok && payoutHistoryResult?.success) {
+  setPayoutHistory(payoutHistoryResult.payouts || []);
+  setHasPendingPayout(!!payoutHistoryResult.hasActivePayout);
+} else {
+  console.error(
+    "Could not load payout history:",
+    payoutHistoryResult?.message || "Request failed."
+  );
+  setPayoutHistory([]);
+}
+
+if (wallet) {
+
+  // Display only persisted wallet balances. Opening the payout window
+  // must not transfer accrued funds in client-side state; that transfer
+  // belongs in the authoritative settlement/payout workflow.
+  const availableBalance = Number(wallet.available_balance ?? 0);
+  const pendingBalance = Number(wallet.accrued_balance ?? 0);
+
+  setAvailableBalance(availableBalance);
+  setPendingBalance(pendingBalance);
+
+  setTotalEarned(
+    Number(
+      wallet.lifetime_earnings || 0
+    )
+  );
+
+}
+
+      const {
+        data:vendor
+      } =
+      await supabase
+        .from("vendors")
+        .select("name")
+        .eq(
+          "id",
+          profile.vendor_id
+        )
+        .single();
+
+      setVendorName(
+        vendor?.name || ""
+      );
+
+    }
+
+    catch(error){
+
+      console.error(error);
+
+    }
+
+    finally{
+
+      setLoading(false);
+
+    }
+
+  }
+async function loadMenuItems(){
+
+  const {
+    data:{ user }
+  } = await supabase.auth.getUser();
+
+  if(!user) return;
+
+  const {
+    data:profile
+  } = await supabase
+    .from("profiles")
+    .select("vendor_id")
+    .eq("id", user.id)
+    .single();
+
+  if(!profile?.vendor_id) return;
+
+  const { data } = await supabase
+    .from("menu_items")
+    .select("*")
+    .eq("vendor_id", profile.vendor_id)
+    .order("created_at", {
+      ascending:false
+    });
+
+  setMenuItems(data || []);
+
+}
+
+function checkPayoutWindow() {
+
+  const now = new Date();
+
+  console.log(
+  "CURRENT TIME:",
+  now.toString()
+);
+
+console.log(
+  "DAY:",
+  now.getDay()
+);
+
+console.log(
+  "HOUR:",
+  now.getHours()
+);
+
+  const day = now.getDay();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+
+  const fridayOpen =
+    day === 5 &&
+    hour >= 16;
+
+  const saturdayOpen =
+    day === 6;
+
+  const sundayOpen =
+    day === 0 &&
+    (
+      hour < 23 ||
+      (
+        hour === 23 &&
+        minute <= 59
+      )
+    );
+
+  const payoutWindowOpen =
+    fridayOpen ||
+    saturdayOpen ||
+    sundayOpen;
+
+    console.log(
+  "PAYOUT WINDOW:",
+  payoutWindowOpen
+);
+
+  setIsPayoutWindowOpen(
+    payoutWindowOpen
+  );
+
+  if (payoutWindowOpen) {
+
+    setNextPayoutText(
+      "Withdrawals close Sunday at 11:59 PM"
+    );
+
+  } else {
+
+    setNextPayoutText(
+      "Next withdrawal window opens Friday at 4:00 PM"
+    );
+
+  }
+
+}
+
+async function loadOrders() {
+
+
+  try {
+
+    setLoadingOrders(true);
+
+    const {
+      data:{ user }
+    } =
+    await supabase
+      .auth
+      .getUser();
+
+    if(!user){
+
+      setLoadingOrders(false);
+      return;
+
+    }
+
+    const {
+      data:profile
+    } =
+    await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq("id", user.id)
+      .single();
+
+    if(!profile?.vendor_id){
+
+      setLoadingOrders(false);
+      return;
+
+    }
+
+    const {
+      data,
+      error
+    } =
+   await supabase
+  .from("orders")
+  .select(`
+    *,
+    profiles!orders_user_id_fkey(
+      full_name,
+      phone,
+      email
+    )
+  `)
+      .eq(
+        "vendor_id",
+        profile.vendor_id
+      )
+      .order(
+        "created_at",
+        {
+          ascending:false
+        }
+      );
+
+    if(error){
+
+      console.error(error);
+
+    }
+
+    setOrders(data || []);
+
+  }
+
+  catch(error){
+
+    console.error(error);
+
+  }
+
+  finally{
+
+    setLoadingOrders(false);
+
+  }
+
+}
+
+
+async function updateOrderStatus(
+  orderId: string,
+  status: string
+) {
+  const vendorAllowedStatuses = [
+    "accepted",
+    "preparing",
+    "ready_for_pickup",
+    "cancelled",
+  ];
+
+  if (!vendorAllowedStatuses.includes(status)) {
+    console.warn(
+      "Vendor attempted unauthorized order status:",
+      status
+    );
+
+    alert(
+      "This order status is controlled by the rider or system."
+    );
+
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "vendor_update_order_status",
+      {
+        p_order_id: orderId,
+        p_status: status,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "VENDOR ORDER STATUS RPC ERROR:",
+        error
+      );
+
+      alert(
+        error.message ||
+          "Unable to update order status."
+      );
+
+      return;
+    }
+
+    if (!data?.success) {
+      console.error(
+        "VENDOR ORDER STATUS UNCONFIRMED:",
+        data
+      );
+
+      alert(
+        "The order status update could not be confirmed."
+      );
+
+      return;
+    }
+
+    await loadOrders();
+  } catch (error) {
+    console.error(
+      "UPDATE ORDER STATUS ERROR:",
+      error
+    );
+
+    alert(
+      "Unable to update order status."
+    );
+  }
+}
+
+async function saveMenuItem(){
+
+  const {
+    data:{ user }
+  } = await supabase.auth.getUser();
+  console.log("SAVE CLICKED");
+console.log("USER:", user);
+
+  if(!user) return;
+
+  const {
+    data:profile
+  } = await supabase
+    .from("profiles")
+    .select("vendor_id")
+    .eq("id", user.id)
+    .single();
+console.log("PROFILE:", profile);
+console.log("FORM:", form);
+  if(!profile?.vendor_id) return;
+
+  let imageUrl =
+  form.image;
+  if(imageFile){
+
+  const fileExt =
+    imageFile.name
+      .split(".")
+      .pop();
+
+  const fileName =
+    `${Date.now()}.${fileExt}`;
+
+  const {
+
+    error:uploadError
+
+  } =
+  await supabase
+    .storage
+    .from("menu-images")
+    .upload(
+      fileName,
+      imageFile
+    );
+
+  if(uploadError){
+
+    alert(
+      uploadError.message
+    );
+
+    return;
+
+  }
+
+  const {
+
+    data
+
+  } =
+  supabase
+    .storage
+    .from("menu-images")
+    .getPublicUrl(
+      fileName
+    );
+
+  imageUrl =
+    data.publicUrl;
+
+}
+  if(editingId){
+
+    await supabase
+      .from("menu_items")
+      .update({
+        name:form.name,
+        description:form.description,
+        category:form.category,
+        image:imageUrl,
+        price:Number(form.price),
+        available:form.available
+      })
+      .eq("id", editingId);
+
+  } else {
+
+    const { data, error } =
+await supabase
+  .from("menu_items")
+  .insert({
+        vendor_id:profile.vendor_id,
+        name:form.name,
+        description:form.description,
+        category:form.category,
+        image:imageUrl,
+        price:Number(form.price),
+        available:form.available
+      });
+      console.log("INSERT DATA:", data);
+console.log("INSERT ERROR:", error);
+
+  }
+
+  setShowForm(false);
+
+  setEditingId(null);
+
+  setForm({
+    name:"",
+    description:"",
+    category:"Rice",
+    image:"",
+    price:"",
+    available:true
+  });
+
+  await loadMenuItems();
+
+}
+async function uploadKycFile(
+  file: File,
+  folder: string
+) {
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const fileName =
+    `${user.id}-${Date.now()}-${file.name}`;
+
+  const { error } =
+    await supabase.storage
+      .from("kyc-documents")
+      .upload(
+        `${folder}/${fileName}`,
+        file
+      );
+
+  if (error) {
+
+    console.log(
+      "STORAGE ERROR:",
+      error
+    );
+
+    alert(
+      JSON.stringify(error)
+    );
+
+    return null;
+
+  }
+
+  const {
+    data
+  } = supabase.storage
+      .from("kyc-documents")
+      .getPublicUrl(
+        `${folder}/${fileName}`
+      );
+
+  return data.publicUrl;
+
+}
+
+  
+async function submitKyc() {
+
+  if (submittingKyc) return;
+
+  setSubmittingKyc(true);
+
+  try {
+
+    if (
+      !cacFile ||
+      !idFile ||
+      !selfieFile
+    ) {
+
+      alert(
+        "Please upload all required documents"
+      );
+
+      setSubmittingKyc(false);
+
+      return;
+
+    }
+
+    const cacUrl =
+      await uploadKycFile(
+        cacFile,
+        "cac"
+      );
+
+    const idUrl =
+      await uploadKycFile(
+        idFile,
+        "id"
+      );
+
+    const selfieUrl =
+      await uploadKycFile(
+        selfieFile,
+        "selfie"
+      );
+
+    // Do not submit KYC unless every required document uploaded successfully.
+    if (!cacUrl || !idUrl || !selfieUrl) {
+      alert("KYC submission stopped. One or more documents failed to upload. Please retry.");
+      return;
+    }
+
+    const {
+      data: { user }
+    } =
+      await supabase.auth.getUser();
+
+    if (!user) {
+
+      setSubmittingKyc(false);
+
+      return;
+
+    }
+
+    const {
+      data,
+      error
+    } =
+      await supabase
+        .from("vendor_kyc")
+        .insert({
+
+          vendor_id: user.id,
+
+          cac_url: cacUrl,
+
+          national_id_url: idUrl,
+
+          selfie_url: selfieUrl,
+
+          bank_name: selectedBank,
+
+          account_number:
+            accountNumber,
+
+          account_name:
+            verifiedAccountName,
+
+          status: "pending"
+
+        });
+
+    console.log(
+      "INSERT DATA:",
+      data
+    );
+
+    console.log(
+      "INSERT ERROR:",
+      error
+    );
+
+    if (error) {
+
+      alert(error.message);
+
+      setSubmittingKyc(false);
+
+      return;
+
+    }
+
+    setKycStatus(
+      "Pending Review"
+    );
+
+    alert(
+      "Verification submitted successfully"
+    );
+
+  } finally {
+
+    setSubmittingKyc(false);
+
+  }
+
+}
+
+async function loadVendorKyc() {
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const {
+    data,
+    error
+  } = await supabase
+    .from("vendor_kyc")
+    .select("*")
+    .eq("vendor_id", user.id)
+    .order(
+      "created_at",
+      { ascending: false }
+    )
+    .limit(1);
+
+  if (
+    error ||
+    !data ||
+    data.length === 0
+  ) return;
+
+  const kyc = data[0];
+
+  console.log(
+    "KYC RECORD:",
+    kyc
+  );
+
+  setKycStatus(
+    kyc.status === "pending"
+      ? "Pending Review"
+      : kyc.status === "approved"
+      ? "Verified"
+      : kyc.status
+  );
+
+}
+
+function editMenuItem(item:any){
+
+  setEditingId(item.id);
+
+  setForm({
+    name:item.name,
+    description:item.description,
+    category:item.category,
+    image:item.image,
+    price:String(item.price),
+    available:item.available
+  });
+
+  setShowForm(true);
+
+}
+
+async function deleteMenuItem(id:string){
+
+  const ok =
+    window.confirm(
+      "Delete menu item?"
+    );
+
+  if(!ok) return;
+
+  await supabase
+    .from("menu_items")
+    .delete()
+    .eq("id", id);
+
+  await loadMenuItems();
+
+}
+
+async function toggleAvailability(item:any){
+
+  await supabase
+    .from("menu_items")
+    .update({
+      available:!item.available
+    })
+    .eq("id", item.id);
+
+  await loadMenuItems();
+
+}
+
+  async function logout(){
+
+    await supabase
+      .auth
+      .signOut();
+
+    router.push("/login");
+
+  }
+  function calculateVendorWallet() {
+
+  let available = 0;
+  let pending = 0;
+
+  orders.forEach((order) => {
+
+    if (
+      order.status === "delivered"
+    ) {
+
+      available += Number(
+        order.total || 0
+      );
+
+    } else {
+
+      pending += Number(
+        order.total || 0
+      );
+
+    }
+
+  });
+
+  setAvailableBalance(
+    available
+  );
+
+  setPendingBalance(
+    pending
+  );
+
+  setTotalEarned(
+    available + pending
+  );
+
+}
+
+async function requestPayout() {
+  if (isSubmittingPayout || hasPendingPayout || !isPayoutWindowOpen || availableBalance <= 0) {
+    return;
+  }
+
+  try {
+    setIsSubmittingPayout(true);
+
+    const response = await fetch("/api/vendor/payout-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.success) {
+      alert(result?.message || "Could not submit payout request.");
+      return;
+    }
+
+    setHasPendingPayout(true);
+    setPayoutHistory((current) => [
+      result.payout,
+      ...current.filter((item) => item.id !== result.payout.id),
+    ]);
+
+    alert(result.message || "Payout request submitted for review.");
+  } catch (error) {
+    console.error("Payout request failed:", error);
+    alert("Unable to submit your payout request. Please try again.");
+  } finally {
+    setIsSubmittingPayout(false);
+  }
+}useEffect(() => {
+
+  checkPayoutWindow();
+
+  loadVendor();
+
+  loadMenuItems();
+
+  loadOrders();
+
+  loadVendorKyc();
+
+}, []);
+
+
+  if(loading){
+
+    return(
+
+      <main className="
+        min-h-screen
+        flex
+        items-center
+        justify-center
+      ">
+
+        <h1 className="
+          text-3xl
+          font-bold
+        ">
+
+          Loading Vendor Dashboard...
+
+        </h1>
+
+      </main>
+
+    );
+
+  }
+
+  return(
+
+    <main className="
+      min-h-screen
+      bg-gray-100
+      p-8
+    ">
+      <div className="flex">
+        <VendorSidebar
+  currentTab={currentTab}
+  setCurrentTab={setCurrentTab}
+  vendorName={vendorName}
+  logout={logout}
+/>
+
+      <div className="
+  flex-1
+  max-w-7xl
+  mx-auto
+">
+
+<div
+  className="
+    flex
+    justify-between
+    items-start
+    mb-10
+  "
+>
+
+  <div>
+
+    {currentTab === "dashboard" && (
+
+      <div>
+
+        <h1 className="text-5xl font-bold mb-2">
+          Dashboard
+        </h1>
+
+        <p className="text-gray-500 text-lg mb-8">
+          Welcome back, {vendorName}
+        </p>
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            md:grid-cols-2
+            xl:grid-cols-4
+            gap-4
+            mb-8
+          "
+        >
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Today's Revenue
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              ₦127,500
+            </h2>
+
+            <p className="text-green-600 mt-2">
+              +12.5% from yesterday
+            </p>
+          </div>
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Total Orders
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              {orders.length}
+            </h2>
+
+            <p className="text-green-600 mt-2">
+              Active Orders
+            </p>
+          </div>
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Pending Orders
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              {
+                orders.filter(
+                  o => o.status === "pending"
+                ).length
+              }
+            </h2>
+
+            <p className="text-orange-500 mt-2">
+              Requires attention
+            </p>
+          </div>
+
+          <div
+            className="
+              bg-white
+              rounded-3xl
+              px-6
+              py-5
+              shadow-sm
+              min-h-[140px]
+            "
+          >
+            <p className="text-gray-500">
+              Average Rating
+            </p>
+
+            <h2 className="text-4xl font-bold mt-2">
+              4.8
+            </h2>
+
+            <p className="text-green-600 mt-2">
+              +0.2 this week
+            </p>
+          </div>
+
+        </div>
+
+      </div>
+
+    )}
+
+  </div>
+
+  <button
+    onClick={logout}
+    className="
+      bg-red-500
+      text-white
+      px-6
+      py-3
+      rounded-xl
+    "
+  >
+    Logout
+  </button>
+
+</div>
+       {currentTab === "orders" && (
+
+  <div className="bg-white rounded-3xl p-8">
+
+    <div className="flex justify-between mb-6">
+
+      <h2 className="text-2xl font-bold">
+        Orders
+      </h2>
+
+      <span className="text-gray-500">
+        {orders.length} Orders
+      </span>
+
+    </div>
+
+    {loadingOrders && (
+
+      <p>Loading orders...</p>
+
+    )}
+
+    {!loadingOrders && orders.length === 0 && (
+
+      <p className="text-gray-500">
+        No orders yet.
+      </p>
+
+    )}
+
+    {!loadingOrders &&
+      orders.map((order) => (
+
+        <div
+          key={order.id}
+          className="
+            border
+            rounded-xl
+            p-4
+            mb-4
+          "
+        >
+
+          <div className="flex justify-between">
+
+            <div>
+
+              <h3 className="font-bold">
+                Order #{order.id.slice(0,8)}
+              </h3>
+
+             <p className="text-sm text-blue-600">
+  Customer:
+  {" "}
+  {order.profiles?.full_name || "Unknown Customer"}
+</p>
+
+<p className="text-sm text-green-600">
+  ðŸ“ž {order.profiles?.phone || "No phone"}
+</p>
+<p className="text-sm text-gray-600">
+  ðŸ“ {order.delivery_address || "No address"}
+</p>
+
+{
+  order.customer_notes && (
+    <p className="text-sm text-orange-700">
+      ðŸ“ {order.customer_notes}
+    </p>
+  )
+}
+
+            </div>
+
+           <span
+  className={`
+    px-3
+    py-1
+    rounded-full
+    text-sm
+    font-medium
+    capitalize
+
+    ${
+      order.status === "pending"
+        ? "bg-yellow-100 text-yellow-700"
+        : order.status === "accepted"
+        ? "bg-blue-100 text-blue-700"
+        : order.status === "preparing"
+        ? "bg-purple-100 text-purple-700"
+        : order.status === "ready_for_pickup"
+        ? "bg-orange-100 text-orange-700"
+        : order.status === "picked_up"
+        ? "bg-indigo-100 text-indigo-700"
+        : "bg-green-100 text-green-700"
+    }
+  `}
+>
+  {order.status.replaceAll("_"," ")}
+</span>
+
+          </div>
+
+         <div className="mt-3 flex justify-between items-center">
+<p className="text-sm text-gray-500">
+  {new Date(order.created_at).toLocaleString()}
+</p>
+  <p className="font-semibold">
+    ₦{Number(order.total).toLocaleString()}
+  </p>
+
+{order.status === "pending" && (
+
+  <button
+    onClick={() =>
+      updateOrderStatus(
+        order.id,
+        "accepted"
+      )
+    }
+    className="
+      rounded-lg
+      bg-blue-600
+      px-4
+      py-2
+      text-sm
+      font-semibold
+      text-white
+      hover:bg-blue-700
+    "
+  >
+    Accept Order
+  </button>
+
+)}
+
+{order.status === "accepted" && (
+
+  <button
+    onClick={() =>
+      updateOrderStatus(
+        order.id,
+        "preparing"
+      )
+    }
+    className="
+      rounded-lg
+      bg-orange-500
+      px-4
+      py-2
+      text-sm
+      font-semibold
+      text-white
+      hover:bg-orange-600
+    "
+  >
+    Start Preparing
+  </button>
+
+)}
+
+{order.status === "preparing" && (
+
+  <button
+    onClick={() =>
+      updateOrderStatus(
+        order.id,
+        "ready_for_pickup"
+      )
+    }
+    className="
+      rounded-lg
+      bg-purple-600
+      px-4
+      py-2
+      text-sm
+      font-semibold
+      text-white
+      hover:bg-purple-700
+    "
+  >
+    Ready for Pickup
+  </button>
+
+)}
+
+{order.status === "ready_for_pickup" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-orange-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-orange-700
+    "
+  >
+    Waiting for Rider
+  </span>
+
+)}
+
+{order.status === "assigned" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-blue-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-blue-700
+    "
+  >
+    âœ“ Rider Assigned
+  </span>
+
+)}
+
+{order.status === "picked_up" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-indigo-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-indigo-700
+    "
+  >
+    âœ“ Picked Up by Rider
+  </span>
+
+)}
+
+{order.status === "delivered" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-emerald-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-emerald-700
+    "
+  >
+    âœ“ Delivered
+  </span>
+
+)}
+
+{order.status === "cancelled" && (
+
+  <span
+    className="
+      inline-flex
+      items-center
+      rounded-lg
+      bg-red-100
+      px-4
+      py-2
+      text-sm
+      font-bold
+      text-red-700
+    "
+  >
+    Cancelled
+  </span>
+
+)}
+
+</div>
+        </div>
+
+      ))
+    }
+
+  </div>
+
+)}
+
+        {currentTab === "menu" && (
+
+  <div className="bg-white rounded-3xl p-8">
+
+    <div className="flex justify-between items-center mb-6">
+
+      <h2 className="text-2xl font-bold">
+        Menu Management
+      </h2>
+
+      <button
+        onClick={() => {
+          setEditingId(null);
+
+          setForm({
+            name: "",
+            description: "",
+            category: "Rice",
+            image: "",
+            price: "",
+            available: true,
+          });
+
+          setShowForm(true);
+        }}
+        className="
+          bg-orange-500
+          text-white
+          px-4
+          py-2
+          rounded-xl
+        "
+      >
+        Add Item
+      </button>
+
+    </div>
+
+    {showForm && (
+
+      <div className="
+        border
+        rounded-xl
+        p-4
+        mb-6
+        space-y-3
+      ">
+
+        <input
+          placeholder="Food Name"
+          value={form.name}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              name: e.target.value,
+            })
+          }
+          className="
+            w-full
+            border
+            p-3
+            rounded-lg
+          "
+        />
+
+        <textarea
+          placeholder="Description"
+          value={form.description}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              description: e.target.value,
+            })
+          }
+          className="
+            w-full
+            border
+            p-3
+            rounded-lg
+          "
+        />
+
+        <input
+          placeholder="Category"
+          value={form.category}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              category: e.target.value,
+            })
+          }
+          className="
+            w-full
+            border
+            p-3
+            rounded-lg
+          "
+        />
+
+<input
+  type="file"
+  accept="image/png,image/jpeg,image/jpg"
+  onChange={(e)=>{
+
+    const file =
+      e.target.files?.[0];
+
+    if(!file) return;
+
+    if(
+      file.size >
+      5 * 1024 * 1024
+    ){
+
+      alert(
+        "Image must be less than 5MB"
+      );
+
+      return;
+
+    }
+
+    setImageFile(file);
+
+  }}
+  className="
+    w-full
+    border
+    p-3
+    rounded-lg
+  "
+/>
+
+        <input
+          type="number"
+          placeholder="Price"
+          value={form.price}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              price: e.target.value,
+            })
+          }
+          className="
+            w-full
+            border
+            p-3
+            rounded-lg
+          "
+        />
+{imageFile && (
+
+  <img
+    src={URL.createObjectURL(imageFile)}
+    alt="Preview"
+    className="
+      w-40
+      h-40
+      object-cover
+      rounded-xl
+    "
+  />
+
+)}
+       <button
+  type="button"
+  onClick={saveMenuItem}
+  className="
+    bg-green-600
+    text-white
+    px-5
+    py-2
+    rounded-xl
+  "
+>
+  {editingId
+    ? "Update Item"
+    : "Save Item"}
+</button>
+
+      </div>
+
+    )}
+
+    <div className="space-y-3">
+
+      {menuItems.length === 0 ? (
+
+        <p className="text-gray-500">
+          No menu items found.
+        </p>
+
+      ) : (
+
+        menuItems.map((item) => (
+
+  <div
+    key={item.id}
+    className="
+      bg-white
+      rounded-2xl
+      shadow-sm
+      border
+      p-4
+      flex
+      justify-between
+      items-center
+      mb-4
+    "
+  >
+
+    <div className="flex items-center gap-4">
+
+      <img
+        src={
+          item.image ||
+          "/placeholder.jpg"
+        }
+        alt={item.name}
+        className="
+          w-24
+          h-24
+          rounded-xl
+          object-cover
+        "
+      />
+
+      <div>
+
+        <h3 className="
+          font-bold
+          text-xl
+        ">
+          {item.name}
+        </h3>
+
+        <p className="
+          text-gray-500
+        ">
+          {item.category}
+        </p>
+
+        <p className="
+          text-orange-600
+          font-bold
+          text-lg
+        ">
+          ₦{Number(item.price).toLocaleString()}
+        </p>
+
+      </div>
+
+    </div>
+
+    <div className="
+      flex
+      items-center
+      gap-3
+    ">
+
+      <button
+        onClick={() =>
+          toggleAvailability(item)
+        }
+        className={`
+          px-4
+          py-2
+          rounded-full
+          text-sm
+          font-semibold
+          ${
+            item.available
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }
+        `}
+      >
+        {item.available
+          ? "Available"
+          : "Out Of Stock"}
+      </button>
+
+      <button
+        onClick={() =>
+          editMenuItem(item)
+        }
+        className="
+          bg-blue-500
+          text-white
+          px-4
+          py-2
+          rounded-lg
+        "
+      >
+        Edit
+      </button>
+
+      <button
+        onClick={() =>
+          deleteMenuItem(item.id)
+        }
+        className="
+          bg-red-500
+          text-white
+          px-4
+          py-2
+          rounded-lg
+        "
+      >
+        Delete
+      </button>
+
+    </div>
+
+  </div>
+
+))
+
+      )}
+
+    </div>
+
+  </div>
+
+)}
+
+       {currentTab === "earnings" && (
+
+  <div className="space-y-6">
+
+    <div>
+
+      <h1 className="text-5xl font-bold">
+        Earnings & Payouts
+      </h1>
+
+      <p className="text-gray-500 text-lg">
+        Track your revenue and manage payouts
+      </p>
+
+    </div>
+
+    <div className="
+      grid
+      grid-cols-1
+      md:grid-cols-3
+      gap-6
+    ">
+
+  <div
+  className="
+    bg-orange-500
+    text-white
+    rounded-3xl
+    p-6
+  "
+>
+
+  <p className="text-orange-100">
+    Available for Withdrawal
+  </p>
+
+  <h2
+    className="
+      text-4xl
+      font-bold
+      mt-2
+    "
+  >
+    ₦{availableBalance.toLocaleString()}
+  </h2>
+
+  <p
+    className="
+      text-orange-100
+      mt-2
+    "
+  >
+    {
+      isPayoutWindowOpen
+
+        ? "Withdrawal window is open"
+
+        : "Withdrawal window opens Friday 4PM"
+    }
+  </p>
+
+  <button
+    onClick={requestPayout}
+    disabled={
+      !isPayoutWindowOpen ||
+      isSubmittingPayout ||
+      availableBalance <= 0 ||
+      hasPendingPayout
+    }
+    className={`
+      mt-6
+      px-5
+      py-3
+      rounded-xl
+      font-semibold
+      w-full
+
+      ${
+        hasPendingPayout
+
+          ? "bg-blue-100 text-blue-600 cursor-not-allowed"
+
+          : isPayoutWindowOpen
+
+          ? "bg-white text-orange-500"
+
+          : "bg-gray-300 text-gray-500 cursor-not-allowed"
+      }
+    `}
+  >
+
+    {
+
+      isSubmittingPayout
+
+        ? "Submitting..."
+
+        : hasPendingPayout
+
+        ? "Payout Request Submitted"
+
+        : isPayoutWindowOpen
+
+        ? "Withdraw Funds"
+
+        : "Available Friday 4PM - Sunday 11:59PM"
+
+    }
+
+  </button>
+
+</div>
+
+<div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+   Lifetime Earnings
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{totalEarned.toLocaleString()}
+  </h2>
+
+  <p className="
+    text-blue-600
+    mt-2
+  ">
+    Total revenue earned on MKH
+  </p>
+
+</div>
+
+<div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+     Pending Payout
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    ₦{pendingBalance.toLocaleString()}
+  </h2>
+
+  <p
+    className={`
+      mt-2
+      ${
+        isPayoutWindowOpen
+          ? "text-green-600"
+          : "text-orange-500"
+      }
+    `}
+  >
+    Available on {nextFridayText}
+  </p>
+
+</div>
+
+    </div>
+
+    <div className="
+  bg-white
+  rounded-3xl
+  p-6
+  shadow-sm
+">
+
+  <p className="text-gray-500">
+    Successful Orders
+  </p>
+
+  <h2 className="
+    text-4xl
+    font-bold
+    mt-2
+  ">
+    {successfulOrders}
+  </h2>
+
+  <p className="
+    text-green-600
+    mt-2
+  ">
+    Completed Deliveries
+  </p>
+
+</div>
+
+    <div className="
+      bg-white
+      rounded-3xl
+      p-8
+      shadow-sm
+    ">
+
+      <h3 className="
+        text-2xl
+        font-bold
+        mb-6
+      ">
+        Transaction History
+      </h3>
+
+      {orders.length === 0 ? (
+
+        <p className="text-gray-500">
+          No transactions yet.
+        </p>
+
+      ) : (
+
+        orders.map((order) => (
+
+          <div
+            key={order.id}
+            className="
+              border-b
+              py-4
+              flex
+              justify-between
+              items-center
+            "
+          >
+
+            <div>
+
+              <p className="font-semibold">
+                Order #{order.id.slice(0,8)}
+              </p>
+
+              <p className="text-sm text-gray-500">
+                {new Date(
+                  order.created_at
+                ).toLocaleDateString()}
+              </p>
+
+            </div>
+
+            <div className="text-right">
+
+              <p className="
+                font-bold
+              ">
+                ₦{Number(
+                  order.total
+                ).toLocaleString()}
+              </p>
+
+              <p
+                className={`
+                  text-sm
+                  ${
+                    order.status ===
+                    "delivered"
+                      ? "text-green-600"
+                      : "text-orange-500"
+                  }
+                `}
+              >
+                {order.status}
+              </p>
+
+            </div>
+
+          </div>
+
+        ))
+
+      )}
+
+    </div>
+
+  </div>
+
+)}
+
+<div
+  className="
+    bg-white
+    rounded-3xl
+    p-8
+    shadow-sm
+    mt-8
+  "
+>
+
+  <h3
+    className="
+      text-2xl
+      font-bold
+      mb-6
+    "
+  >
+    Withdrawal History
+  </h3>
+
+  {payoutHistory.length === 0 ? (
+
+    <p className="text-gray-500">
+      No withdrawal requests yet.
+    </p>
+
+  ) : (
+
+    payoutHistory.map((payout) => (
+
+      <div
+        key={payout.id}
+        className="
+          border-b
+          py-4
+          flex
+          justify-between
+          items-center
+        "
+      >
+
+        <div>
+
+          <p className="font-semibold">
+            ₦{Number(
+              payout.amount
+            ).toLocaleString()}
+          </p>
+
+          <p className="text-sm text-gray-500">
+            {new Date(
+              payout.requested_at
+            ).toLocaleDateString()}
+          </p>
+
+        </div>
+
+        <div>
+
+          <span
+            className={`
+              px-3
+              py-2
+              rounded-full
+              text-xs
+              font-semibold
+
+              ${
+                payout.status === "pending"
+                  ? "bg-orange-100 text-orange-700"
+                  : payout.status === "approved"
+                  ? "bg-blue-100 text-blue-700"
+                  : payout.status === "processing"
+                  ? "bg-purple-100 text-purple-700"
+                  : payout.status === "paid"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }
+            `}
+          >
+            {payout.status.toUpperCase()}
+          </span>
+
+        </div>
+
+      </div>
+
+    ))
+
+  )}
+
+</div>
+
+       {currentTab === "kyc" && (
+
+  <div className="space-y-6">
+
+    <div>
+
+      <h1 className="text-5xl font-bold">
+        KYC Verification
+      </h1>
+{
+  kycStatus !== "Not Submitted" && (
+
+    <div
+      className="
+        bg-yellow-50
+        border
+        border-yellow-300
+        rounded-2xl
+        p-6
+        mb-6
+      "
+    >
+
+      <h3 className="font-bold text-xl">
+
+        KYC Status
+
+      </h3>
+
+      <p className="mt-2 text-lg">
+
+        {kycStatus}
+
+      </p>
+
+    </div>
+
+  )
+}
+      <p className="text-gray-500 text-lg">
+        Complete your business verification
+      </p>
+
+    </div>
+
+{kycStatus === "Not Submitted" && (
+    <div className="
+      bg-white
+      rounded-3xl
+      p-6
+      shadow-sm
+    ">
+
+      <div className="
+        flex
+        justify-between
+        items-center
+        mb-6
+      ">
+
+        <h2 className="
+          text-2xl
+          font-bold
+        ">
+          Verification Status
+        </h2>
+
+        <span
+          className="
+            bg-yellow-100
+            text-yellow-700
+            px-4
+            py-2
+            rounded-full
+            font-semibold
+          "
+        >
+          {kycStatus}
+        </span>
+
+      </div>
+    
+      <div className="
+        grid
+        grid-cols-1
+        md:grid-cols-2
+        gap-6
+      ">
+
+        <div>
+
+          <label className="
+            block
+            font-semibold
+            mb-2
+          ">
+            CAC Certificate
+          </label>
+
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg"
+            onChange={(e)=>
+              setCacFile(
+                e.target.files?.[0] || null
+              )
+            }
+            className="
+              w-full
+              border
+              p-3
+              rounded-xl
+            "
+          />
+
+        </div>
+
+        <div>
+
+          <label className="
+            block
+            font-semibold
+            mb-2
+          ">
+            National ID
+          </label>
+
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg"
+            onChange={(e)=>
+              setIdFile(
+                e.target.files?.[0] || null
+              )
+            }
+            className="
+              w-full
+              border
+              p-3
+              rounded-xl
+            "
+          />
+
+        </div>
+
+        <div>
+
+          <label className="
+            block
+            font-semibold
+            mb-2
+          ">
+            Selfie Verification
+          </label>
+
+          <input
+            type="file"
+            accept=".png,.jpg,.jpeg"
+            onChange={(e)=>
+              setSelfieFile(
+                e.target.files?.[0] || null
+              )
+            }
+            className="
+              w-full
+              border
+              p-3
+              rounded-xl
+            "
+          />
+
+        </div>
+
+         </div>
+
+    </div>
+
+)}
+
+    <div className="
+      bg-white
+      rounded-3xl
+      p-6
+      shadow-sm
+    ">
+
+   {kycStatus === "Not Submitted" && (
+
+<div>
+
+  <h2 className="
+    text-2xl
+    font-bold
+    mb-6
+  ">
+    Bank Account Details
+  </h2>
+
+      <div className="
+        grid
+        grid-cols-1
+        md:grid-cols-3
+        gap-4
+      ">
+
+    <select
+  value={selectedBank}
+  onChange={(e)=>
+    setSelectedBank(
+      e.target.value
+    )
+  }
+  className="
+    border
+    p-4
+    rounded-xl
+  "
+>
+
+  <option value="">
+  Select Bank
+</option>
+
+<option value="044">
+  Access Bank
+</option>
+
+<option value="058">
+  GTBank
+</option>
+
+<option value="011">
+  First Bank
+</option>
+
+<option value="033">
+  UBA
+</option>
+
+<option value="057">
+  Zenith Bank
+</option>
+
+<option value="070">
+  Fidelity Bank
+</option>
+
+<option value="999992">
+  Opay
+</option>
+
+<option value="50515">
+  Moniepoint
+</option>
+
+<option value="999991">
+  PalmPay
+</option>
+
+</select>
+
+<input
+  placeholder="Account Number"
+  value={accountNumber}
+  onChange={(e)=>
+    setAccountNumber(
+      e.target.value
+    )
+  }
+  className="
+    border
+    p-4
+    rounded-xl
+  "
+/>
+
+<div
+  className="
+    border
+    p-4
+    rounded-xl
+    bg-gray-50
+  "
+>
+
+  {verifiedAccountName || "Account name will appear here"}
+
+</div>
+
+      </div>
+
+<button
+  type="button"
+   onClick={async () => {
+
+    if(
+      accountNumber.length !== 10
+    ){
+
+      alert(
+        "Enter a valid 10-digit account number"
+      );
+
+      return;
+
+    }
+
+    setVerifyingAccount(true);
+
+try {
+
+  const response =
+    await fetch(
+      "/api/verify-account",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+
+          accountNumber,
+
+          bankCode:
+            selectedBank
+
+        })
+
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (!data.success) {
+
+    alert(
+      data.message ||
+      "Verification failed"
+    );
+
+    setVerifiedAccountName("");
+
+    return;
+
+  }
+
+  setVerifiedAccountName(
+    data.accountName
+  );
+
+}
+catch(error){
+
+  console.error(error);
+
+  alert(
+    "Unable to verify account"
+  );
+
+}
+finally{
+
+  setVerifyingAccount(false);
+
+}
+
+  }}
+  className="
+    mt-4
+    bg-blue-600
+    text-white
+    px-6
+    py-3
+    rounded-xl
+    font-semibold
+  "
+>
+
+  {
+    verifyingAccount
+      ? "Verifying..."
+      : "Verify Account"
+  }
+
+</button>
+
+     <button
+  onClick={submitKyc}
+  disabled={submittingKyc}
+  className="
+    mt-6
+    bg-orange-500
+    text-white
+    px-6
+    py-3
+    rounded-xl
+    font-semibold
+    disabled:opacity-50
+    disabled:cursor-not-allowed
+  "
+>
+
+  {
+    submittingKyc
+      ? "Submitting..."
+      : "Submit Verification"
+  }
+
+
+</button>
+
+</div>
+
+)}
+
+</div>
+
+</div>
+
+)}
+
+      </div> {/* End Main Content */}
+
+    </div> {/* End Flex Layout */}
+
+    </main>
+
+  );
+
+}
+

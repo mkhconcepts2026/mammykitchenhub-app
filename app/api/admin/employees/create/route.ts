@@ -31,39 +31,28 @@ export async function POST(request: Request) {
     }
 
     // ---------------------------------------
-    // AUTHORIZE HR / ADMIN
-    // ---------------------------------------
+    
+       // AUTHORIZE HR-ONLY EMPLOYEE CREATION
+    // Admin/COO role changes remain a separate workflow.
 
-    const {
-      data: callerProfile,
-      error: callerProfileError,
-    } = await adminClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
+    const { data: callerRole, error: callerRoleError } =
+      await (supabase as any).rpc("current_effective_app_role");
 
-    if (
-      callerProfileError ||
-      !callerProfile ||
-      !["HR", "ADMIN"].includes(
-        String(callerProfile.role).toUpperCase()
-      )
-    ) {
+    const effectiveRole = String(callerRole ?? "").toUpperCase();
+
+    if (callerRoleError || effectiveRole !== "HR") {
       return NextResponse.json(
         {
           success: false,
-          message: "Forbidden.",
+          message: "Forbidden. Only active HR users may create employee accounts.",
         },
-        {
-          status: 403,
-        }
+        { status: 403 }
       );
     }
 
-    // ---------------------------------------
     // REQUEST BODY
     // ---------------------------------------
+
 
     const body = await request.json();
 
@@ -159,6 +148,7 @@ export async function POST(request: Request) {
           territory_id:
             employee.territoryId || null,
 
+          // HR approval is required before login is allowed.
           status:
             "active",
 
@@ -242,8 +232,11 @@ export async function POST(request: Request) {
         hire_date:
           employee.hireDate || null,
 
+        status:
+          "active",
+
         employment_status:
-          "Pending Activation",
+          "Active",
 
         email:
           employee.email,
@@ -275,6 +268,45 @@ export async function POST(request: Request) {
         },
         {
           status: 400,
+        }
+      );
+    }
+
+    // ---------------------------------------
+    // Create Pending HR Approval Record
+    // ---------------------------------------
+
+    const { error: approvalError } = await (adminClient as any)
+      .from("employee_approvals")
+      .insert({
+                employee_id: data.id,
+        approval_status: "Approved",
+        approved_by: user.id,
+        approved_at: new Date().toISOString(),
+      });
+
+    if (approvalError) {
+      console.error("Employee approval record creation failed:", approvalError);
+
+      await adminClient
+        .from("employees")
+        .delete()
+        .eq("id", data.id);
+
+      await adminClient
+        .from("profiles")
+        .delete()
+        .eq("id", authUserId);
+
+      await adminClient.auth.admin.deleteUser(authUserId);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "The employee approval record could not be created. No employee account was retained.",
+        },
+        {
+          status: 500,
         }
       );
     }

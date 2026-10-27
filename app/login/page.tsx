@@ -51,8 +51,8 @@ const [showPassword,
 
       setError("");
 
-console.log("LOGIN EMAIL:", email);
-console.log("LOGIN PASSWORD:", password);
+
+
       
       const {
 
@@ -97,7 +97,7 @@ console.log("LOGIN PASSWORD:", password);
       } =
       await supabase
         .from("profiles")
-        .select("role, must_change_password")
+        .select("role, must_change_password, status")
         .eq(
           "id",
           data.user.id
@@ -119,6 +119,26 @@ console.log("LOGIN PASSWORD:", password);
 
       }
 
+      const accountStatus = String(profile?.status ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, " ");
+
+      if (
+        ["pending", "pending activation", "pending approval"].includes(accountStatus) ||
+        ["rejected", "inactive", "suspended", "disabled"].includes(accountStatus)
+      ) {
+        await supabase.auth.signOut();
+
+        setError(
+          ["pending", "pending activation", "pending approval"].includes(accountStatus)
+            ? "Your account is awaiting HR approval. Please contact MKH Human Resources."
+            : "Your account is not active. Please contact MKH Human Resources."
+        );
+
+        return;
+      }
+
      if (profile?.must_change_password) {
 
   await delay(700);
@@ -129,7 +149,22 @@ console.log("LOGIN PASSWORD:", password);
 
 }
 
-const role = profile?.role?.toUpperCase();
+const { data: effectiveRole, error: effectiveRoleError } =
+  await (supabase as any).rpc("current_effective_app_role");
+console.log("LOGIN EFFECTIVE ROLE:", effectiveRole, effectiveRoleError);
+if (effectiveRoleError) {
+  await supabase.auth.signOut();
+  setError("Unable to verify your dashboard access. Please try signing in again.");
+  return;
+}
+
+const role = String(effectiveRole ?? "").trim().toUpperCase();
+
+if (!role || role === "NONE") {
+  await supabase.auth.signOut();
+  setError("Your account has no active dashboard access. Please contact MKH support.");
+  return;
+}
 
 switch (role) {
 

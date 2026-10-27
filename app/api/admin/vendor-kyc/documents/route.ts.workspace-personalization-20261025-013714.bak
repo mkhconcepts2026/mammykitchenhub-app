@@ -1,0 +1,78 @@
+import { NextResponse } from "next/server";
+import { adminClient } from "@/lib/supabase/admin";
+import { authorizeKycAdmin } from "@/lib/server/kyc-admin-auth";
+import { makeSignedDocumentUrl } from "@/lib/server/kyc-storage";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  const auth = await authorizeKycAdmin();
+  if ("response" in auth) return auth.response;
+
+  const url = new URL(request.url);
+  const source = url.searchParams.get("source");
+  const id = url.searchParams.get("id");
+  if (!id || (source !== "application" && source !== "vendor_kyc")) {
+    return NextResponse.json(
+      { success: false, message: "A valid KYC record is required." },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  try {
+    const result = source === "application"
+      ? await adminClient
+          .from("vendor_applications")
+          .select("id,cac_url,id_url,selfie_url,kitchen_photo_url")
+          .eq("id", id)
+          .maybeSingle()
+      : await adminClient
+          .from("vendor_kyc")
+          .select("id,cac_url,national_id_url,selfie_url,kitchen_photo_url")
+          .eq("id", id)
+          .maybeSingle();
+
+    if (result.error || !result.data) {
+      return NextResponse.json(
+        { success: false, message: "KYC record not found." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const row: any = result.data;
+    const sourceKey = source as "application" | "vendor_kyc";
+    const candidates: Array<{ key: "cac" | "nationalId" | "selfie" | "kitchenPhoto"; label: string; value: string | null }> = source === "application"
+      ? [
+          { key: "cac", label: "CAC certificate", value: row.cac_url },
+          { key: "nationalId", label: "National ID", value: row.id_url },
+          { key: "selfie", label: "Selfie", value: row.selfie_url },
+          { key: "kitchenPhoto", label: "Kitchen photo", value: row.kitchen_photo_url },
+        ]
+      : [
+          { key: "cac", label: "CAC certificate", value: row.cac_url },
+          { key: "nationalId", label: "National ID", value: row.national_id_url },
+          { key: "selfie", label: "Selfie", value: row.selfie_url },
+          { key: "kitchenPhoto", label: "Kitchen photo", value: row.kitchen_photo_url },
+        ];
+
+    const documents = await Promise.all(candidates.map(async (candidate) => ({
+      key: candidate.key,
+      label: candidate.label,
+      available: Boolean(candidate.value),
+      url: candidate.value
+        ? await makeSignedDocumentUrl(candidate.value, sourceKey, candidate.key)
+        : null,
+    })));
+
+    return NextResponse.json(
+      { success: true, documents },
+      { headers: { "Cache-Control": "no-store, private" } },
+    );
+  } catch (error) {
+    console.error("Admin KYC document access error:", error);
+    return NextResponse.json(
+      { success: false, message: "Unable to prepare secure document links." },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+}
