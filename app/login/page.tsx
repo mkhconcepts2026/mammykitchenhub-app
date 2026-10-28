@@ -198,6 +198,12 @@ switch (role) {
     router.push("/hr");
     break;
 
+  case "ZONAL_MANAGER":
+
+    await delay(700);
+    await supabase.auth.signOut();
+    setError("Your Zone Manager account is active, but the Zone Manager dashboard is not yet available. Finance and customer dashboards are not available to this role.");
+    return;
   case "FINANCE":
 
   await delay(700);
@@ -254,8 +260,10 @@ switch (role) {
 
   default:
 
-  await delay(700);
-    router.push("/dashboard");
+    await delay(700);
+    await supabase.auth.signOut();
+    setError(`Unsupported dashboard role: ${role}. Please contact MKH support.`);
+    return;
 
 }
 

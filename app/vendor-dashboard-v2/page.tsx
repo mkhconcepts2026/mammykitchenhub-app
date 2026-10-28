@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import VendorSidebar from "@/components/vendor/VendorSidebar";
 import VendorDashboardTab from "@/components/vendor/VendorDashboardTab";
 import VendorStorefrontCard from "@/components/vendor/VendorStorefrontCard";
@@ -8,6 +8,7 @@ import VendorKYCTab from "@/components/vendor/VendorKYCTab";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { MKH_MENU_CATEGORIES } from "@/lib/constants/menuCategories";
 
 
 type Tab =
@@ -631,126 +632,179 @@ async function updateOrderStatus(
   }
 }
 
-async function saveMenuItem(){
+async function saveMenuItem() {
+  const isEditing = Boolean(editingId);
 
-  const {
-    data:{ user }
-  } = await supabase.auth.getUser();
-  console.log("SAVE CLICKED");
-console.log("USER:", user);
+  try {
+    // 1. Verify the signed-in user.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-  if(!user) return;
+    if (userError || !user) {
+      alert("Your session could not be verified. Please sign in again.");
+      return;
+    }
 
-  const {
-    data:profile
-  } = await supabase
-    .from("profiles")
-    .select("vendor_id")
-    .eq("id", user.id)
-    .single();
-console.log("PROFILE:", profile);
-console.log("FORM:", form);
-  if(!profile?.vendor_id) return;
+    // 2. Verify the vendor profile.
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq("id", user.id)
+      .single();
 
-  let imageUrl =
-  form.image;
-  if(imageFile){
+    if (profileError) {
+      throw new Error(
+        `Could not verify your vendor profile: ${profileError.message}`
+      );
+    }
 
-  const fileExt =
-    imageFile.name
-      .split(".")
-      .pop();
+    if (!profile?.vendor_id) {
+      alert(
+        "Your account is not linked to a vendor. Please contact MKH support."
+      );
+      return;
+    }
 
-  const fileName =
-    `${Date.now()}.${fileExt}`;
+    // 3. Validate the form.
+    const itemName = form.name.trim();
+    const itemPrice = Number(form.price);
 
-  const {
+    if (!itemName) {
+      alert("Please enter an item name.");
+      return;
+    }
 
-    error:uploadError
+    if (
+      !MKH_MENU_CATEGORIES.some(
+        (category) => category.name === form.category
+      )
+    ) {
+      alert("Please select a category from the dropdown.");
+      return;
+    }
 
-  } =
-  await supabase
-    .storage
-    .from("menu-images")
-    .upload(
-      fileName,
-      imageFile
-    );
+    if (
+      form.price.trim() === "" ||
+      !Number.isFinite(itemPrice) ||
+      itemPrice < 0
+    ) {
+      alert("Please enter a valid item price.");
+      return;
+    }
 
-  if(uploadError){
+    // 4. Upload an image only when a new image is selected.
+    let imageUrl = form.image || "";
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop()?.toLowerCase();
+
+      if (!fileExt) {
+        alert("The selected image filename is invalid.");
+        return;
+      }
+
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("menu-images")
+        .upload(fileName, imageFile);
+
+      if (uploadError) {
+        throw new Error(
+          `Image upload failed: ${uploadError.message}`
+        );
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("menu-images")
+        .getPublicUrl(fileName);
+
+      imageUrl = publicUrlData.publicUrl;
+    }
+
+    // 5. Prepare the data without changing the existing schema.
+    const itemPayload = {
+      name: itemName,
+      description: form.description.trim(),
+      category: form.category,
+      image: imageUrl,
+      price: itemPrice,
+      available: form.available,
+    };
+
+    // 6. Save a new item or update an existing item.
+    if (editingId) {
+      const { data: updatedItem, error: updateError } = await supabase
+        .from("menu_items")
+        .update(itemPayload)
+        .eq("id", editingId)
+        .eq("vendor_id", profile.vendor_id)
+        .select("id")
+        .maybeSingle();
+
+      if (updateError) {
+        throw new Error(
+          `Could not update the item: ${updateError.message}`
+        );
+      }
+
+      if (!updatedItem) {
+        throw new Error(
+          "The item was not updated. It may no longer belong to this vendor or may have been removed."
+        );
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from("menu_items")
+        .insert({
+          ...itemPayload,
+          vendor_id: profile.vendor_id,
+        });
+
+      if (insertError) {
+        throw new Error(
+          `Could not save the item: ${insertError.message}`
+        );
+      }
+    }
+  } catch (error) {
+    console.error("MKH vendor menu save failed:", error);
 
     alert(
-      uploadError.message
+      error instanceof Error
+        ? error.message
+        : "The item could not be saved. Please try again."
     );
 
+    // Important: keep the form open when saving fails.
     return;
-
   }
 
-  const {
-
-    data
-
-  } =
-  supabase
-    .storage
-    .from("menu-images")
-    .getPublicUrl(
-      fileName
-    );
-
-  imageUrl =
-    data.publicUrl;
-
-}
-  if(editingId){
-
-    await supabase
-      .from("menu_items")
-      .update({
-        name:form.name,
-        description:form.description,
-        category:form.category,
-        image:imageUrl,
-        price:Number(form.price),
-        available:form.available
-      })
-      .eq("id", editingId);
-
-  } else {
-
-    const { data, error } =
-await supabase
-  .from("menu_items")
-  .insert({
-        vendor_id:profile.vendor_id,
-        name:form.name,
-        description:form.description,
-        category:form.category,
-        image:imageUrl,
-        price:Number(form.price),
-        available:form.available
-      });
-      console.log("INSERT DATA:", data);
-console.log("INSERT ERROR:", error);
-
-  }
-
+  // 7. Reset the form only after a successful database response.
   setShowForm(false);
-
   setEditingId(null);
 
   setForm({
-    name:"",
-    description:"",
-    category:"Rice",
-    image:"",
-    price:"",
-    available:true
+    name: "",
+    description: "",
+    category: "",
+    image: "",
+    price: "",
+    available: true,
   });
 
+  setImageFile(null);
+
+  // 8. Refresh the menu after saving.
   await loadMenuItems();
 
+  alert(
+    isEditing
+      ? "Item updated successfully."
+      : "Item saved successfully."
+  );
 }
 async function uploadKycFile(
   file: File,

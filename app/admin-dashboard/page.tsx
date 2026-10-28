@@ -1,5 +1,6 @@
 "use client";
-import DeliveryAllocationSettings from "@/components/admin/DeliveryAllocationSettings";
+import DeliveryAllocationSettings from "@/components/admin/DeliveryAllocationSettings";
+
 import VendorCommissionSettings from "@/components/admin/VendorCommissionSettings";
 
 import { useEffect, useState } from "react";
@@ -17,6 +18,7 @@ import {
   LogOut
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import OperationalAssignments from "@/components/admin/OperationalAssignments";
 
 const supabase = createClient();
 
@@ -69,8 +71,51 @@ const [selectedApplication, setSelectedApplication] =
 
 const [selectedVendor, setSelectedVendor] =
   useState<any>(null);
+const [vendorDetailOrderCount, setVendorDetailOrderCount] = useState<number | null>(null);
+const [vendorDetailEarnings, setVendorDetailEarnings] = useState<number | null>(null);
+const [loadingVendorDetailMetrics, setLoadingVendorDetailMetrics] = useState(false);
+const [vendorDetailMetricsError, setVendorDetailMetricsError] = useState(false);
 
-  const loadZonesForTerritory = async (
+  const loadVendorDetailMetrics = async (vendorId: string) => {
+  setLoadingVendorDetailMetrics(true);
+  setVendorDetailMetricsError(false);
+  setVendorDetailOrderCount(null);
+  setVendorDetailEarnings(null);
+
+  try {
+    const [ordersResult, deliveredResult] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("vendor_id", vendorId),
+      supabase
+        .from("orders")
+        .select("vendor_amount")
+        .eq("vendor_id", vendorId)
+        .eq("status", "delivered"),
+    ]);
+
+    if (ordersResult.error || deliveredResult.error) {
+      console.error("Vendor detail metrics load error:", ordersResult.error || deliveredResult.error);
+      setVendorDetailMetricsError(true);
+      return;
+    }
+
+    setVendorDetailOrderCount(ordersResult.count ?? 0);
+    setVendorDetailEarnings(
+      (deliveredResult.data ?? []).reduce(
+        (total: number, order: any) => total + Number(order.vendor_amount ?? 0),
+        0,
+      ),
+    );
+  } catch (error) {
+    console.error("Vendor detail metrics load error:", error);
+    setVendorDetailMetricsError(true);
+  } finally {
+    setLoadingVendorDetailMetrics(false);
+  }
+};
+const loadZonesForTerritory = async (
   territoryId: string
 ) => {
   setSelectedTerritoryId(territoryId);
@@ -698,6 +743,7 @@ const openVendorDetails = async (vendorApplication: any) => {
       vendor_id: vendor.id,
       vendor_record: vendor,
     });
+    void loadVendorDetailMetrics(vendor.id);
 
     // Load the vendor's current active Zone assignment.
     const { data: assignment, error: assignmentError } =
@@ -986,13 +1032,8 @@ const assignRider = async () => {
     return;
   }
 
-  if (
-    !["ready_for_pickup", "assigned"].includes(selectedOrder.status) ||
-    selectedOrder.picked_up_at != null
-  ) {
-    alert(
-      "Only orders ready for pickup or already assigned, and not yet picked up, can be assigned or reassigned."
-    );
+  if (selectedOrder.status !== "pending" || selectedOrder.picked_up_at != null) {
+    alert("A rider can only be assigned while the order status is Pending and pickup has not started.");
     return;
   }
 
@@ -1282,9 +1323,9 @@ if (ordersData) {
                 ["vendors", "Vendors", Store],
                 ["riders", "Riders", Bike],
                 ["orders", "Orders", ShoppingBag],
-                ["revenue", "Revenue", Wallet],
                 ["delivery-allocations", "Delivery Allocations", Wallet],
                 ["vendor-commission", "Vendor Commission", Store],
+                ["operational-assignments", "Staff Assignments", ShieldCheck],
                 ["staffRoleChanges", "Staff Role Changes", ShieldCheck],
               ].map(([key, label, Icon]: any) => (
                 <button
@@ -1408,7 +1449,6 @@ if (ordersData) {
                   ["vendors", "Vendors"],
                   ["riders", "Riders"],
                   ["orders", "Orders"],
-                  ["revenue", "Revenue"],
                   ["delivery-allocations", "Delivery Allocations"],
                   ["vendor-commission", "Vendor Commission"],
                   ["territories", "Territories"],
@@ -2761,117 +2801,8 @@ if (ordersData) {
 
       {activeTab === "vendor-commission" && <VendorCommissionSettings />}
       {activeTab === "delivery-allocations" && <DeliveryAllocationSettings />}
-      {activeTab === "revenue" && (
-
-  <div>
-
-    <h2
-      className="
-        text-3xl
-        font-bold
-        mb-8
-      "
-    >
-      MKH Finance Center
-    </h2>
-
-    <div
-      className="
-        grid
-        md:grid-cols-3
-        gap-6
-      "
-    >
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border-l-4
-          border-yellow-500
-        "
-      >
-
-        <p className="text-gray-500">
-          Total MKH Revenue
-        </p>
-
-        <h3
-          className="
-            text-4xl
-            font-bold
-            mt-2
-            text-yellow-600
-          "
-        >
-          ₦{stats.mkhRevenue.toLocaleString()}
-        </h3>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border-l-4
-          border-orange-500
-        "
-      >
-
-        <p className="text-gray-500">
-          Platform Fee Revenue
-        </p>
-
-       <h3
-  className="
-    text-4xl
-    font-bold
-    mt-2
-    text-orange-600
-  "
->
-  ₦{stats.platformRevenue.toLocaleString()}
-</h3>
-
-      </div>
-
-      <div
-        className="
-          bg-white
-          rounded-3xl
-          p-6
-          shadow-sm
-          border-l-4
-          border-green-500
-        "
-      >
-
-        <p className="text-gray-500">
-          Delivery Commission
-        </p>
-
-       <h3
-  className="
-    text-4xl
-    font-bold
-    mt-2
-    text-green-600
-  "
->
-  ₦{stats.deliveryRevenue.toLocaleString()}
-</h3>
-
-      </div>
-
-    </div>
-
-  </div>
-
-)}
+      {activeTab === "operational-assignments" && <OperationalAssignments />}
+      
 
         </div>
 
@@ -3135,7 +3066,7 @@ if (ordersData) {
       </p>
 
       <h3 className="text-3xl font-bold">
-        245
+        {loadingVendorDetailMetrics ? "Loading..." : vendorDetailMetricsError ? "Unavailable" : (vendorDetailOrderCount ?? 0).toLocaleString()}
       </h3>
     </div>
 
@@ -3146,13 +3077,14 @@ if (ordersData) {
         p-4
       "
     >
-      <p className="text-gray-500 text-sm">
-        Revenue
+            <p className="text-gray-500 text-sm">
+        Vendor Earnings
       </p>
 
       <h3 className="text-3xl font-bold">
-        ₦450k
+        {loadingVendorDetailMetrics ? "Loading..." : vendorDetailMetricsError ? "Unavailable" : `${String.fromCharCode(0x20A6)}${(vendorDetailEarnings ?? 0).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`}
       </h3>
+      <p className="mt-1 text-xs text-gray-500">From delivered orders</p>
     </div>
 
     <div
@@ -3166,8 +3098,8 @@ if (ordersData) {
         Status
       </p>
 
-      <h3 className="text-green-600 font-bold">
-        Active
+      <h3 className={`${String(selectedVendor.vendor_record?.status ?? selectedVendor.status ?? "unknown").toLowerCase() === "active" ? "text-green-600" : "text-slate-600"} font-bold`}>
+        {String(selectedVendor.vendor_record?.status ?? selectedVendor.status ?? "Unknown").replaceAll("_", " ").replace(/^./, (character) => character.toUpperCase())}
       </h3>
     </div>
 
@@ -5058,27 +4990,17 @@ if (ordersData) {
         "
       >
 
-     <button
-  onClick={() => {
-    if (selectedOrder?.status === "delivered") return;
-    setShowAssignRider(true);
-  }}
-  disabled={selectedOrder?.status === "delivered"}
-  className={`
-    py-3
-    rounded-xl
-    font-semibold
-    ${
-      selectedOrder?.status === "delivered"
-        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-        : "bg-orange-500 text-white hover:bg-orange-600"
-    }
-  `}
->
-  {selectedOrder?.status === "delivered"
-    ? "Rider Assigned"
-    : "Assign Rider"}
-</button>
+     {selectedOrder?.status === "pending" && selectedOrder?.picked_up_at == null && (
+  <button
+    onClick={() => {
+      if (selectedOrder?.status !== "pending" || selectedOrder?.picked_up_at != null) return;
+      setShowAssignRider(true);
+    }}
+    className="py-3 rounded-xl font-semibold bg-orange-500 text-white hover:bg-orange-600"
+  >
+    Assign Rider
+  </button>
+)}
 
         <button
           onClick={() =>
@@ -5207,3 +5129,4 @@ if (ordersData) {
     </main>
   );
 }
+

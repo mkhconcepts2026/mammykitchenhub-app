@@ -284,7 +284,7 @@ export default function EmployeeRoleChangeRequestsPage() {
                   className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Send size={17} />
-                  {saving ? "Submittingâ€¦" : "Submit request to HR"}
+                  {saving ? "Submitting" : "Submit request to HR"}
                 </button>
               </div>
             </form>

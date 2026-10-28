@@ -1,0 +1,13 @@
+﻿MKH VENDOR CATEGORY DROPDOWN INSTALL REPORT
+Timestamp: 2026-10-27 00:38:07
+Project: C:\MKH\mkh-app
+Existing customer categories extracted: 9
+New shared category source: C:\MKH\mkh-app\lib\constants\menuCategories.ts
+Updated customer dashboard: C:\MKH\mkh-app\app\dashboard\page.tsx
+Updated vendor menu component: C:\MKH\mkh-app\components\vendor\VendorMenuTab.tsx
+Vendor default category values reset to blank: 1
+Backup folder: C:\MKH\mkh-app\_mkh_integration_backups\vendor-category-dropdown-20261027-003807
+Database changes: None
+Financial logic changes: None
+Deployment/GitHub: None
+Next: run npm run build, then test Add Item, category selection, save, edit existing item, and customer dashboard category filtering.
