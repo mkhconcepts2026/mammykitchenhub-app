@@ -94,7 +94,7 @@ setEmployees(data || []);
 
   }
 
-  alert("Employee deleted successfully.");
+  alert("Employee removed from the active roster.");
 
   setShowDeleteDialog(false);
 
@@ -210,7 +210,7 @@ setEmployees(data || []);
 
           <tbody>
 
-            {filteredEmployees.map((employee) => (
+            {filteredEmployees.filter((employee) => /* MKH_ACTIVE_ROSTER_FILTER_V2 */ !['inactive', 'terminated', 'deactivated'].includes(String(employee.status ?? '').trim().toLowerCase()) && !['inactive', 'terminated', 'deactivated'].includes(String(employee.employment_status ?? '').trim().toLowerCase())).map((employee) => (
 
               <tr
                 key={employee.id}

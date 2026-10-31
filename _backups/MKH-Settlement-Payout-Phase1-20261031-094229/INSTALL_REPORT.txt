@@ -1,0 +1,11 @@
+﻿MKH Settlement/Payout Phase 1
+Applied: 2026-10-31 09:42:30 +01:00
+Project: C:\MKH\mkh-app
+Backups: C:\MKH\mkh-app\_backups\MKH-Settlement-Payout-Phase1-20261031-094229
+Changes:
+- Vendor payout API window now permits Friday, Saturday, Sunday in Africa/Lagos.
+- Vendor payout history treats transfer_submitted and on_hold as active.
+Important:
+- This is an application-layer alignment only.
+- The database RPC must independently enforce one request per wallet/window and consistent active statuses before this is considered complete.
+- No database changes, balances, payout requests, bank transfers, or GitHub actions were performed.

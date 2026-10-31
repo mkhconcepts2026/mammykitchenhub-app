@@ -199,11 +199,23 @@ switch (role) {
     break;
 
   case "ZONAL_MANAGER":
+  case "ZONAL MANAGER":
+  case "ZONE_MANAGER":
+  case "ZONE MANAGER":
+  case "ZM":
 
     await delay(700);
-    await supabase.auth.signOut();
-    setError("Your Zone Manager account is active, but the Zone Manager dashboard is not yet available. Finance and customer dashboards are not available to this role.");
-    return;
+    router.push("/zonal-manager-dashboard");
+    break;
+
+  case "VHA":
+  case "VENDOR_HUB_AGENT":
+  case "VENDOR HUB AGENT":
+  case "VENDORHUBAGENT":
+
+    await delay(700);
+    router.push("/vendor-hub-agent-dashboard");
+    break;
   case "FINANCE":
 
   await delay(700);
@@ -234,10 +246,15 @@ switch (role) {
     router.push("/admin-dashboard");
     break;
 
+  case "TRM":
+  case "TERRITORY_RELATIONSHIP_MANAGER":
+  case "TERRITORY RELATIONSHIP MANAGER":
+  case "TERRITORY_MANAGER":
+  case "TERRITORY MANAGER":
   case "TERRITORY":
 
   await delay(700);
-    router.push("territory-relationship-manager");
+    router.push("/territory-relationship-manager");
     break;
 
   case "SUPPORT":

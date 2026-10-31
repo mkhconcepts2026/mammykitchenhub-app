@@ -7,48 +7,38 @@ import VendorSettlementTable from "@/components/territory-manager/VendorSettleme
 import RiderEarningsTable from "@/components/territory-manager/RiderEarningsTable";
 import TransactionFeed from "@/components/territory-manager/TransactionFeed";
 
-import {
-  getVendorWallets,
-  getFinancialLedger,
-  getRiderWallets,
-  getRiderEarnings,
-} from "@/lib/services/finance";
-
 export default function TerritoryRelationshipManagerFinancePage() {
   const [vendorWallets, setVendorWallets] = useState<any[]>([]);
   const [financialLedger, setFinancialLedger] = useState<any[]>([]);
   const [riderWallets, setRiderWallets] = useState<any[]>([]);
   const [riderEarnings, setRiderEarnings] = useState<any[]>([]);
+  const [walletScopeLimitedRiderCount, setWalletScopeLimitedRiderCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
     async function loadFinance() {
       try {
-        const [
-          wallets,
-          ledger,
-          riderWalletData,
-          riderEarningData,
-        ] = await Promise.all([
-          getVendorWallets(),
-          getFinancialLedger(),
-          getRiderWallets(),
-          getRiderEarnings(),
-        ]);
-
-        setVendorWallets(wallets);
-        setFinancialLedger(ledger);
-        setRiderWallets(riderWalletData);
-        setRiderEarnings(riderEarningData);
+        const response = await fetch("/api/trm/workspace?section=finance", { cache: "no-store" });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || result?.success !== true) {
+          throw new Error(result?.message || "Unable to load financial records for your territory.");
+        }
+        if (!active) return;
+        setVendorWallets(Array.isArray(result.vendorWallets) ? result.vendorWallets : []);
+        setFinancialLedger(Array.isArray(result.financialLedger) ? result.financialLedger : []);
+        setRiderWallets(Array.isArray(result.riderWallets) ? result.riderWallets : []);
+        setRiderEarnings(Array.isArray(result.riderEarnings) ? result.riderEarnings : []);
+        setWalletScopeLimitedRiderCount(Number(result.walletScopeLimitedRiderCount ?? 0));
       } catch (error) {
-        console.error("Finance Dashboard:", error);
+        console.error("TRM territory Finance:", error);
       }
     }
-
-    loadFinance();
-
-    const refreshInterval = setInterval(loadFinance, 10000);
-
-    return () => clearInterval(refreshInterval);
+    void loadFinance();
+    const refreshInterval = window.setInterval(() => void loadFinance(), 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(refreshInterval);
+    };
   }, []);
 
   return (
@@ -63,8 +53,7 @@ export default function TerritoryRelationshipManagerFinancePage() {
         </h1>
 
         <p className="mt-4 max-w-3xl text-slate-300">
-          Monitor vendor settlements, rider earnings, wallet balances
-          and financial activity across your territory.
+          Monitor financial records belonging to vendors and riders assigned to your territory. No settlement or payout actions are performed here.
         </p>
       </section>
 
@@ -74,6 +63,12 @@ export default function TerritoryRelationshipManagerFinancePage() {
         financialLedger={financialLedger}
         riderEarnings={riderEarnings}
       />
+
+      {walletScopeLimitedRiderCount > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {walletScopeLimitedRiderCount} rider account(s) linked to vendors outside this territory are excluded from these account-wide wallet totals. Territory-specific rider earnings remain limited to orders in your assigned territory.
+        </div>
+      )}
 
       <VendorSettlementTable
         ledger={financialLedger}

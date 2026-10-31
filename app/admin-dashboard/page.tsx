@@ -1321,6 +1321,7 @@ if (ordersData) {
                 ["dashboard", "Dashboard", LayoutDashboard],
                 ["applications", "Applications", ClipboardCheck],
                 ["vendors", "Vendors", Store],
+                ["vendorLocations", "Vendor Business Locations", Store],
                 ["riders", "Riders", Bike],
                 ["orders", "Orders", ShoppingBag],
                 ["delivery-allocations", "Delivery Allocations", Wallet],
@@ -1330,7 +1331,7 @@ if (ordersData) {
               ].map(([key, label, Icon]: any) => (
                 <button
                   key={key}
-                  onClick={() => key === "staffRoleChanges" ? router.push("/admin-dashboard/role-changes") : setActiveTab(key)}
+                  onClick={() => key === "vendorLocations" ? router.push("/admin-dashboard/vendor-locations") : key === "staffRoleChanges" ? router.push("/admin-dashboard/role-changes") : setActiveTab(key)}
                   className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition-all ${
                     activeTab === key
                       ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"

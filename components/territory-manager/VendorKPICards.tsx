@@ -3,14 +3,14 @@
 interface VendorKPICardsProps {
   totalVendors: number;
   activeVendors: number;
-  pendingApplications: number;
+  pendingApplications: number | string;
   outstandingWallet: number;
 }
 
 const cards = (
   totalVendors: number,
   activeVendors: number,
-  pendingApplications: number,
+  pendingApplications: number | string,
   outstandingWallet: number
 ) => [
   {
@@ -28,7 +28,7 @@ const cards = (
     bg: "bg-emerald-50",
   },
   {
-    title: "Pending Applications",
+    title: "Territory-linked Applications",
     value: pendingApplications,
     icon: "📋",
     border: "border-blue-500",

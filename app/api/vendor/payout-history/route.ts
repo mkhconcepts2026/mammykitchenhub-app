@@ -62,6 +62,8 @@ export async function GET() {
       "pending",
       "approved",
       "processing",
+      "transfer_submitted",
+      "on_hold",
     ]);
 
     const hasActivePayout = history.some((payout) =>

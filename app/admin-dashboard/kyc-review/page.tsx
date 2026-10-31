@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -82,7 +82,7 @@ export default function VendorKycReviewPage() {
           .order("created_at", { ascending: false })
           .range(offset, offset + batchSize - 1);
         if (error) throw error;
-        const batch = (data ?? []) as VendorApplication[];
+        const batch = (data ?? []) as unknown as VendorApplication[];
         allRows.push(...batch);
         if (batch.length < batchSize) break;
       }

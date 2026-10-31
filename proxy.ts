@@ -67,5 +67,8 @@ export const config = {
     "/admin/:path*",
     "/hr/:path*",
     "/finance/:path*",
+    "/vendor-hub-agent-dashboard/:path*",
+    "/zonal-manager-dashboard/:path*",
+    "/territory-relationship-manager/:path*",
   ],
 };

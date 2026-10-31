@@ -304,10 +304,16 @@ export default function RiderTable({
 
                     <td className="px-6 py-5 text-right font-semibold">
 
-                      ₦
-                      {Number(
-                        rider.available_balance ?? 0
-                      ).toLocaleString()}
+                      {rider.wallet_scope_limited ? (
+                        <span className="text-xs font-medium text-slate-400" title="This rider is linked to vendors outside your territory. Account-wide wallet balances are hidden in this view.">
+                          Not shown
+                        </span>
+                      ) : (
+                        <>
+                          ₦
+                          {Number(rider.available_balance ?? 0).toLocaleString()}
+                        </>
+                      )}
 
                     </td>
 

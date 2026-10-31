@@ -1,0 +1,10 @@
+﻿MKH Vendor Location Verification V2 code patch installed locally.
+Timestamp: 20261029_172019
+Backup: C:\MKH\mkh-app\backups\vendor-location-verification-v2_20261029_172019
+Files changed:
+ - app\admin-dashboard\vendor-locations\page.tsx
+ - app\api\admin\vendor-business-locations\route.ts
+ - app\api\customer\delivery-quote\route.ts
+
+No Supabase SQL was executed. No GitHub push or deployment was performed.
+Next: review/apply the companion SQL migration in MKH TEST, then run npm run build and the functional test checklist.

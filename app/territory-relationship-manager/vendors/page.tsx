@@ -6,13 +6,6 @@ import VendorKPICards from "@/components/territory-manager/VendorKPICards";
 import VendorTable from "@/components/territory-manager/VendorTable";
 import VendorDrawer from "@/components/territory-manager/VendorDrawer";
 
-import {
-  getVendors,
-  getVendorWallets,
-  getVendorApplications,
-  getVendorTransactions,
-} from "@/lib/services/vendors";
-
 import { VendorRecord } from "@/types/vendor";
 
 export default function VendorsPage() {
@@ -22,7 +15,7 @@ export default function VendorsPage() {
     useState<VendorRecord[]>([]);
 
   const [pendingApplications, setPendingApplications] =
-    useState(0);
+    useState<number | string>("—");
 
   const [selectedVendor, setSelectedVendor] =
     useState<VendorRecord | null>(null);
@@ -33,81 +26,35 @@ export default function VendorsPage() {
   async function loadData() {
     try {
       setLoading(true);
-
-      const [
-        vendorRows,
-        walletRows,
-        applicationRows,
-        transactionRows,
-      ] = await Promise.all([
-        getVendors(),
-        getVendorWallets(),
-        getVendorApplications(),
-        getVendorTransactions(),
-      ]);
-
-      const merged: VendorRecord[] =
-        vendorRows.map((vendor) => {
-          const wallet =
-            walletRows.find(
-              (w) => w.vendor_id === vendor.id
-            );
-
-          const transactions =
-            transactionRows.filter(
-              (transaction) =>
-                transaction.vendor_id === vendor.id
-            );
-
-          return {
-            id: vendor.id,
-            name: vendor.name,
-            cuisine: vendor.cuisine,
-            email: vendor.email,
-            phone: vendor.phone,
-            owner_name: vendor.owner_name,
-            status: vendor.status,
-            rating: Number(
-              vendor.rating ?? 0
-            ),
-
-            available_balance: Number(
-              wallet?.available_balance ?? 0
-            ),
-
-            pending_balance: Number(
-              wallet?.accrued_balance ?? 0
-            ),
-
-            lifetime_earnings: Number(
-              wallet?.lifetime_earnings ?? 0
-            ),
-
-            transactions,
-          };
-        });
-
-      setVendors(merged);
-
-      setPendingApplications(
-        applicationRows.filter(
-          (application) =>
-            application.status === "pending"
-        ).length
-      );
+      const response = await fetch("/api/trm/workspace?section=vendors", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Unable to load vendors assigned to your territory.");
+      }
+      const latestVendors = Array.isArray(result.vendors) ? result.vendors as VendorRecord[] : [];
+      setVendors(latestVendors);
+      // Applications without an authoritative territory/vendor link are not
+      // counted here; showing the global application total would cross scopes.
+      setPendingApplications(result.pendingApplications ?? "—");
     } catch (error) {
-      console.error(
-        "Failed to load TRM vendors:",
-        error
-      );
+      console.error("Failed to load territory vendors:", error);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadData();
+    void loadData();
+    const refreshId = window.setInterval(() => void loadData(), 45_000);
+    return () => window.clearInterval(refreshId);
   }, []);
+
+  useEffect(() => {
+    if (selectedVendor && !vendors.some((vendor) => vendor.id === selectedVendor.id)) {
+      setSelectedVendor(null);
+      setDrawerOpen(false);
+    }
+  }, [vendors, selectedVendor]);
 
   const totalVendors = vendors.length;
 
