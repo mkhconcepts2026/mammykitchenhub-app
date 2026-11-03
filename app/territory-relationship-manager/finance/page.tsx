@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { RefreshCw } from 'lucide-react';
+
+import { useCallback, useEffect, useState } from "react";
 
 import FinanceKPICards from "@/components/territory-manager/FinanceKPICards";
 import VendorSettlementTable from "@/components/territory-manager/VendorSettlementTable";
@@ -13,6 +15,12 @@ export default function TerritoryRelationshipManagerFinancePage() {
   const [riderWallets, setRiderWallets] = useState<any[]>([]);
   const [riderEarnings, setRiderEarnings] = useState<any[]>([]);
   const [walletScopeLimitedRiderCount, setWalletScopeLimitedRiderCount] = useState(0);
+  // MKH_TRM_V4_VENDOR_PAYOUT_APPROVAL_QUEUE
+  const [vendorPayouts, setVendorPayouts] = useState<any[]>([]);
+  const [vendorPayoutsLoading, setVendorPayoutsLoading] = useState(true);
+  const [vendorPayoutsError, setVendorPayoutsError] = useState("");
+  const [vendorPayoutsNotice, setVendorPayoutsNotice] = useState("");
+  const [approvingPayoutId, setApprovingPayoutId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -41,6 +49,85 @@ export default function TerritoryRelationshipManagerFinancePage() {
     };
   }, []);
 
+  const formatNaira = (value: number) => `₦${Number(value ?? 0).toLocaleString("en-NG")}`;
+
+  const loadVendorPayouts = useCallback(async () => {
+    setVendorPayoutsLoading(true);
+    setVendorPayoutsError("");
+    try {
+      const response = await fetch("/api/trm/vendor-payouts", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Unable to load vendor payout requests.");
+      }
+      setVendorPayouts(Array.isArray(result.payouts) ? result.payouts : []);
+    } catch (error) {
+      setVendorPayoutsError(error instanceof Error ? error.message : "Unable to load vendor payout requests.");
+    } finally {
+      setVendorPayoutsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadVendorPayouts();
+    const refreshInterval = window.setInterval(() => void loadVendorPayouts(), 30_000);
+    return () => window.clearInterval(refreshInterval);
+  }, [loadVendorPayouts]);
+
+  async function approveVendorPayout(request: any) {
+    if (request.status !== "pending" || approvingPayoutId) return;
+    const confirmed = window.confirm(
+      `Approve the vendor payout request for ${formatNaira(Number(request.amount))}?\n\nThis records TRM approval only. It does not deduct wallet funds or initiate a bank transfer.`
+    );
+    if (!confirmed) return;
+
+    setApprovingPayoutId(request.id);
+    setVendorPayoutsError("");
+    setVendorPayoutsNotice("");
+    try {
+      const response = await fetch("/api/trm/vendor-payouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payout_request_id: request.id }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Vendor payout approval failed.");
+      }
+      setVendorPayoutsNotice(result.message || "Vendor payout approved for Finance processing.");
+      await loadVendorPayouts();
+    } catch (error) {
+      setVendorPayoutsError(error instanceof Error ? error.message : "Vendor payout approval failed.");
+    } finally {
+      setApprovingPayoutId(null);
+    }
+  }
+
+  function vendorPayoutStatusLabel(status: string) {
+    const labels: Record<string, string> = {
+      pending: "SUBMITTED",
+      approved: "APPROVED",
+      processing: "PROCESSING",
+      transfer_submitted: "PROCESSING",
+      on_hold: "ON HOLD",
+      paid: "PAID",
+      rejected: "REJECTED",
+    };
+    return labels[String(status ?? "").toLowerCase()] || String(status ?? "UNKNOWN").replace(/_/g, " ").toUpperCase();
+  }
+
+  function vendorPayoutStatusStyle(status: string) {
+    const styles: Record<string, string> = {
+      pending: "bg-amber-50 text-amber-800 ring-amber-200",
+      approved: "bg-blue-50 text-blue-800 ring-blue-200",
+      processing: "bg-violet-50 text-violet-800 ring-violet-200",
+      transfer_submitted: "bg-violet-50 text-violet-800 ring-violet-200",
+      on_hold: "bg-orange-50 text-orange-800 ring-orange-200",
+      paid: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+      rejected: "bg-rose-50 text-rose-800 ring-rose-200",
+    };
+    return styles[String(status ?? "").toLowerCase()] || "bg-slate-50 text-slate-700 ring-slate-200";
+  }
   return (
     <div className="space-y-8">
       <section className="rounded-3xl bg-[#0F172A] px-10 py-8 text-white shadow-xl">
@@ -53,7 +140,7 @@ export default function TerritoryRelationshipManagerFinancePage() {
         </h1>
 
         <p className="mt-4 max-w-3xl text-slate-300">
-          Monitor financial records belonging to vendors and riders assigned to your territory. No settlement or payout actions are performed here.
+          Monitor financial records for your territory and approve vendor payout requests. TRM approval sends requests to Finance; it does not initiate bank transfers.
         </p>
       </section>
 
@@ -70,7 +157,76 @@ export default function TerritoryRelationshipManagerFinancePage() {
         </div>
       )}
 
-      <VendorSettlementTable
+
+      {/* MKH_TRM_V4_VENDOR_PAYOUT_APPROVAL_QUEUE */}
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Vendor Payout Approvals</h2>
+            <p className="mt-1 text-sm text-slate-500">Review payout requests from vendors assigned to your territory. TRM approval sends the request to Finance; it does not move money.</p>
+          </div>
+          <button type="button" onClick={() => void loadVendorPayouts()} disabled={vendorPayoutsLoading} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            <RefreshCw size={14} className={vendorPayoutsLoading ? "animate-spin" : ""} /> Refresh requests
+          </button>
+        </div>
+
+        {vendorPayoutsError && <div role="alert" className="mx-5 mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{vendorPayoutsError}</div>}
+        {vendorPayoutsNotice && <div role="status" className="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{vendorPayoutsNotice}</div>}
+
+        {vendorPayoutsLoading && vendorPayouts.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">Loading territory vendor payout requests...</p>
+        ) : vendorPayouts.length === 0 ? (
+          <p className="p-6 text-sm text-slate-500">No vendor payout requests were found for your assigned territory.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-5 py-3">Vendor</th>
+                  <th className="px-5 py-3 text-right">Requested amount</th>
+                  <th className="px-5 py-3">Submitted</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3 text-right">TRM action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {vendorPayouts.map((request: any) => {
+                  const status = String(request.status ?? "unknown").toLowerCase();
+                  return (
+                    <tr key={request.id} className="hover:bg-slate-50/70">
+                      <td className="px-5 py-4">
+                        <p className="font-bold text-slate-900">{request.vendor_name || "Vendor"}</p>
+                        <p className="mt-0.5 text-[10px] text-slate-400">Request {String(request.id).slice(0, 8)}...</p>
+                      </td>
+                      <td className="px-5 py-4 text-right font-extrabold tabular-nums text-slate-900">{formatNaira(Number(request.amount))}</td>
+                      <td className="px-5 py-4 text-xs text-slate-600">{request.requested_at ? new Date(request.requested_at).toLocaleString("en-NG") : "â€”"}</td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-extrabold ring-1 ring-inset ${vendorPayoutStatusStyle(status)}`}>
+                          {vendorPayoutStatusLabel(status)}
+                        </span>
+                        {status === "approved" && request.approved_by && <p className="mt-1 text-[9px] text-slate-400">TRM approval recorded</p>}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {status === "pending" ? (
+                          <button type="button" onClick={() => void approveVendorPayout(request)} disabled={approvingPayoutId !== null} className="rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-extrabold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                            {approvingPayoutId === request.id ? "Approving..." : "Approve for Finance"}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-slate-400">No TRM action</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-3 text-[10px] leading-5 text-slate-500">
+          Approval changes only the request status from submitted to approved and records the approving TRM. It does not deduct or credit wallet balances, initiate a transfer, or mark a request paid. Finance handles all subsequent processing.
+        </div>
+      </section>
+            <VendorSettlementTable
         ledger={financialLedger}
       />
 

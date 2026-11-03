@@ -65,6 +65,26 @@ export default function AdminDashboard() {
 
 const [applications, setApplications] =
   useState<any[]>([]);
+const [applicationSearch, setApplicationSearch] = useState("");
+const [applicationBusinessFilter, setApplicationBusinessFilter] = useState("all");
+const [applicationKycFilter, setApplicationKycFilter] = useState("all");
+
+const normalizeApplicationStatus = (value: unknown) =>
+  String(value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+const filteredApplications = applications.filter((app) => {
+  const query = applicationSearch.trim().toLowerCase();
+  const searchMatches = !query || [app.kitchen_name, app.email, app.owner_name, app.phone, app.owner_phone]
+    .some((value) => String(value ?? "").toLowerCase().includes(query));
+  const businessStatus = normalizeApplicationStatus(app.status || app.onboarding_status || "pending");
+  const kycStatus = normalizeApplicationStatus(app.kyc_status);
+  const businessMatches = applicationBusinessFilter === "all" || businessStatus === applicationBusinessFilter;
+  const kycBucket = ["pending", "pending_review", "under_review", "needs_review", "in_review"].includes(kycStatus)
+    ? "pending"
+    : ["approved", "verified"].includes(kycStatus) ? "verified" : kycStatus;
+  const kycMatches = applicationKycFilter === "all" || kycBucket === applicationKycFilter;
+  return searchMatches && businessMatches && kycMatches;
+});
 
 const [selectedApplication, setSelectedApplication] =
   useState<any>(null);
@@ -619,9 +639,9 @@ const [stats, setStats] = useState({
   const approveVendor = async (app: any) => {
 
   // KYC is a required gate. Read current database state, not possibly stale React state.
-  const { data: latestKyc, error: kycCheckError } = await supabase
+  const { data: latestKyc, error: kycCheckError } = await (supabase as any)
     .from("vendor_applications")
-    .select("kyc_status,vendor_type,cac_url,id_url,selfie_url,kitchen_photo_url")
+    .select("kyc_status,vendor_type,cac_url,id_url,selfie_url,kitchen_photo_url,store_slug")
     .eq("id", app.id)
     .maybeSingle();
 
@@ -650,9 +670,14 @@ const [stats, setStats] = useState({
       .insert([
         {
           name: app.kitchen_name,
-          slug: app.kitchen_name
+          slug: String(latestKyc.store_slug || app.kitchen_name || "")
+            .normalize("NFKD")
             .toLowerCase()
-            .replaceAll(" ", "-"),
+            .trim()
+            .replace(/[^a-z0-9\s-]/g, "")
+            .replace(/\s+/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, ""),
           cuisine: app.vendor_type,
           email: app.email,
           phone: app.phone,
@@ -2240,9 +2265,66 @@ if (ordersData) {
       Vendor Applications
     </h2>
 
-    <div className="space-y-4">
+    <div className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="block md:col-span-1">
+          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Search vendors</span>
+          <input
+            type="search"
+            value={applicationSearch}
+            onChange={(event) => setApplicationSearch(event.target.value)}
+            placeholder="Name, email, owner or phone"
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Business application</span>
+          <select
+            value={applicationBusinessFilter}
+            onChange={(event) => setApplicationBusinessFilter(event.target.value)}
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500"
+          >
+            <option value="all">All business statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">KYC verification</span>
+          <select
+            value={applicationKycFilter}
+            onChange={(event) => setApplicationKycFilter(event.target.value)}
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500"
+          >
+            <option value="all">All KYC statuses</option>
+            <option value="pending">Pending review</option>
+            <option value="verified">Verified</option>
+            <option value="rejected">Rejected</option>
+            <option value="requires_attention">Requires attention</option>
+          </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+        <span>Showing <strong className="text-slate-800">{filteredApplications.length}</strong> of <strong className="text-slate-800">{applications.length}</strong> applications</span>
+        <button
+          type="button"
+          onClick={() => { setApplicationSearch(""); setApplicationBusinessFilter("all"); setApplicationKycFilter("all"); }}
+          className="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Clear filters
+        </button>
+      </div>
+    </div>
 
-      {applications.map((app) => (
+    <div className="space-y-4">
+      {filteredApplications.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          No vendor applications match these search or status filters.
+        </div>
+      )}
+
+      {filteredApplications.map((app) => (
 
         <div
           key={app.id}
@@ -2316,29 +2398,39 @@ if (ordersData) {
 </div>
             </div>
 
-           <span
+           <div className="flex flex-col items-end gap-2">
+             <span
   className={`
     px-3
     py-1
     rounded-full
     text-sm
     font-medium
-
     ${
-      app.status === "approved"
+      normalizeApplicationStatus(app.status || app.onboarding_status || "pending") === "approved"
         ? "bg-green-100 text-green-700"
-        : app.status === "rejected"
+        : normalizeApplicationStatus(app.status || app.onboarding_status || "pending") === "rejected"
         ? "bg-red-100 text-red-700"
         : "bg-yellow-100 text-yellow-700"
     }
   `}
 >
-  {app.status === "approved"
+  Business: {normalizeApplicationStatus(app.status || app.onboarding_status || "pending") === "approved"
     ? "Approved"
-    : app.status === "rejected"
+    : normalizeApplicationStatus(app.status || app.onboarding_status || "pending") === "rejected"
     ? "Rejected"
-    : "Pending Review"}
+    : "Pending"}
 </span>
+             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+               ["approved", "verified"].includes(normalizeApplicationStatus(app.kyc_status))
+                 ? "bg-emerald-100 text-emerald-700"
+                 : normalizeApplicationStatus(app.kyc_status) === "rejected"
+                 ? "bg-red-100 text-red-700"
+                 : "bg-blue-100 text-blue-700"
+             }`}>
+               KYC: {String(app.kyc_status || "Not submitted").replace(/_/g, " ")}
+             </span>
+           </div>
 
           </div>
 

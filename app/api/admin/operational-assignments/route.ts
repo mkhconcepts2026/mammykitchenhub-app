@@ -129,7 +129,8 @@ export async function GET() {
     const selectedTrm = trmByEmployee.get(employee.id) as any;
     const selectedZm = zmByEmployee.get(employee.id) as any;
     const selectedVha = vhaByEmployee.get(employee.id) as any;
-    const currentTerritory = selectedTrm?.territory_id ?? employee.territory_id ?? profile?.territory_id ?? null;
+    const currentTerritory = selectedTrm?.territory_id ?? null;
+    const legacyTerritory = selectedTrm ? null : (employee.territory_id ?? profile?.territory_id ?? null);
     const currentZone = selectedZm?.zone_id ?? employee.zone_id ?? null;
     const currentVendor = selectedVha?.vendor_id ?? employee.assigned_vendor_id ?? null;
 
@@ -145,6 +146,7 @@ export async function GET() {
       employment_status: employee.employment_status ?? null,
       role_consistent: Boolean(catalogKind && catalogKind === profileKind && role?.status === "active" && !effectiveConflict),
       current_territory_id: currentTerritory,
+      legacy_territory_id: legacyTerritory,
       current_zone_id: currentZone,
       current_vendor_id: currentVendor,
       assignment_conflict: null,

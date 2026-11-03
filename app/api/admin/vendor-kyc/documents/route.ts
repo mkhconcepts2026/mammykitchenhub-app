@@ -6,7 +6,7 @@ import { makeSignedDocumentUrl } from "@/lib/server/kyc-storage";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const auth = await authorizeKycAdmin();
+  const auth = await authorizeKycAdmin(request);
   if ("response" in auth) return auth.response;
 
   const url = new URL(request.url);

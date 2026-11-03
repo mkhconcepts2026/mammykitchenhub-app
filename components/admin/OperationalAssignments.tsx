@@ -27,6 +27,7 @@ type Employee = {
   employment_status: string | null;
   role_consistent: boolean;
   current_territory_id: string | null;
+  legacy_territory_id: string | null;
   current_zone_id: string | null;
   current_vendor_id: string | null;
   assignment_conflict: string | null;
@@ -211,7 +212,14 @@ export default function OperationalAssignments() {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 align-top text-slate-700">{currentLabel(employee)}</td>
+                  <td className="px-4 py-3 align-top text-slate-700">
+                    {currentLabel(employee)}
+                    {isTerritory && !employee.current_territory_id && employee.legacy_territory_id && (
+                      <div className="mt-1 text-xs text-amber-700">
+                        Legacy geography reference only: {options.find((option) => option.id === employee.legacy_territory_id)?.name ?? employee.legacy_territory_id}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 align-top">
                     <select
                       aria-label={`${employee.display_name} assign to ${title}`}

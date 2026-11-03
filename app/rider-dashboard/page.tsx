@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import RiderWalletSummary from "@/components/rider/RiderWalletSummary";
+import RiderPayoutCentre from "@/components/rider/RiderPayoutCentre";
 
 import {
   Bike,
@@ -786,6 +787,8 @@ async function verifyOtp(orderId: string) {
         </header>
 
         <RiderWalletSummary />
+
+        <RiderPayoutCentre />
 
         {/* Delivery workspace */}
         <main className="px-3 pb-6 pt-4 sm:px-4">

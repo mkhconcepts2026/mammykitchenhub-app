@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
 
@@ -38,10 +38,14 @@ export async function POST() {
       );
     }
 
-    // Enforce the payout window using Nigeria time on the server.
+    // Enforce the vendor request window using Nigeria time on the server:
+    // Friday 4:00 PM inclusive through Monday 12:00 AM exclusive.
     const lagosParts = new Intl.DateTimeFormat("en-US", {
       timeZone: "Africa/Lagos",
       weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
     }).formatToParts(new Date());
 
     const lagosTime = Object.fromEntries(
@@ -49,20 +53,18 @@ export async function POST() {
     );
 
     const day = lagosTime.weekday;
-    // Approved interval: Friday 00:00 inclusive to Monday 00:00 exclusive,
-    // in Africa/Lagos time. Database enforcement must independently match.
+    const hour = Number(lagosTime.hour);
     const payoutWindowOpen =
-      day === "Fri" ||
+      (day === "Fri" && hour >= 16) ||
       day === "Sat" ||
       day === "Sun";
-
     if (!payoutWindowOpen) {
       return NextResponse.json(
         {
           success: false,
           code: "PAYOUT_WINDOW_CLOSED",
           message:
-            "Vendor payout requests are open Friday 12:00 AM through Sunday 11:59 PM Nigeria time.",
+            "Vendor payout requests are open Friday 4:00 PM through Sunday 11:59 PM Nigeria time.",
         },
         { status: 403 }
       );

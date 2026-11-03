@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Search, MapPin, ChevronDown } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 
 type TrmHeaderData = {
   success: boolean;
@@ -38,7 +38,6 @@ export default function AppHeader() {
   }, []);
 
   const managerName = data?.manager?.name || "Territory Relationship Manager";
-  const territoryName = data?.assigned ? data.territory?.name || "Territory not assigned" : "Territory not assigned";
   const initials = useMemo(() => {
     const parts = managerName.trim().split(/\s+/).filter(Boolean);
     return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "TR";
@@ -48,11 +47,6 @@ export default function AppHeader() {
     <header className="h-20 bg-white border-b border-slate-200 px-8 flex items-center justify-between shadow-sm">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Territory Relationship Manager</h1>
-        <div className="flex items-center gap-2 mt-1 text-sm text-slate-500">
-          <MapPin size={15} />
-          <span>{territoryName}</span>
-          <ChevronDown size={15} />
-        </div>
       </div>
 
       <div className="hidden lg:flex items-center w-[420px]">

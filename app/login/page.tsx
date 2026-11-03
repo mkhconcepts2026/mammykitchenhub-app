@@ -174,6 +174,12 @@ switch (role) {
     router.push("/dashboard");
     break;
 
+  case "VENDOR_APPLICANT":
+
+  await delay(700);
+    router.push("/vendor-dashboard-v2");
+    break;
+
   case "VENDOR":
 
   await delay(700);

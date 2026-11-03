@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -12,12 +14,14 @@ import {
   Bell,
   ChartNoAxesCombined,
   ChevronRight,
+  ChevronDown,
   CircleDollarSign,
   Clock3,
   CreditCard,
   FileChartColumnIncreasing,
   LayoutDashboard,
   LockKeyhole,
+  LogOut,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -26,7 +30,7 @@ import {
   Wallet,
 } from "lucide-react";
 
-type NavId = "overview" | "payments" | "ledger" | "wallets" | "payouts" | "reports";
+type NavId = "overview" | "payments" | "ledger" | "wallets" | "beneficiaries" | "payouts" | "payout_processing" | "reports";
 
 type AggregateRow = {
   payment_method?: string;
@@ -108,6 +112,42 @@ type ApiPayload = {
   riderCounts: { active: number; withWallet: number; missingWallet: number; duplicateWallet: number };
 };
 
+type BeneficiaryVerificationRow = {
+  registry_id: string;
+  beneficiary_code: string;
+  beneficiary_type: string;
+  display_name: string;
+  profile_id: string;
+  profile_role: string | null;
+  profile_status: string | null;
+  is_active: boolean;
+  verified_at: string | null;
+  verified_by: string | null;
+  wallet_id: string | null;
+  wallet_owner_type: string | null;
+  wallet_owner_id: string | null;
+  wallet_available_balance: number | null;
+  wallet_pending_balance: number | null;
+  employee_status: string | null;
+  employment_status: string | null;
+  employee_system_role: string | null;
+  territory_id: string | null;
+  assigned_vendor_id: string | null;
+  active_zone_assignment_count: number;
+  blockers: string[];
+  already_verified: boolean;
+  eligible: boolean;
+};
+
+type BeneficiaryAuditRow = {
+  id: string;
+  beneficiary_type: string;
+  profile_id: string;
+  wallet_id: string;
+  performed_by: string;
+  reason: string;
+  created_at: string;
+};
 type NavItem = { id: NavId; label: string; description: string; icon: LucideIcon };
 
 const NAV_ITEMS: NavItem[] = [
@@ -115,7 +155,9 @@ const NAV_ITEMS: NavItem[] = [
   { id: "payments", label: "Payments", description: "Order payment records", icon: CreditCard },
   { id: "ledger", label: "Financial Ledger", description: "Recorded entries", icon: FileChartColumnIncreasing },
   { id: "wallets", label: "Wallets", description: "Vendor, rider and customer", icon: Wallet },
+  { id: "beneficiaries", label: "Beneficiary Verification", description: "TRM, ZM and VHA wallet checks", icon: ShieldCheck },
   { id: "payouts", label: "Payout Position", description: "Requests by status", icon: ArrowDownToLine },
+  { id: "payout_processing", label: "Vendor Payout Processing", description: "Process approved vendor withdrawals", icon: Banknote },
   { id: "reports", label: "Reports & Controls", description: "Reconciliation view", icon: ChartNoAxesCombined },
 ];
 
@@ -193,6 +235,27 @@ export default function FinanceCommandCenter() {
   const [activeSection, setActiveSection] = useState<NavId>("overview");
   const [riderSearch, setRiderSearch] = useState("");
   const [activatingRider, setActivatingRider] = useState<string | null>(null);
+  const [beneficiaries, setBeneficiaries] = useState<BeneficiaryVerificationRow[]>([]);
+  const [beneficiaryAudit, setBeneficiaryAudit] = useState<BeneficiaryAuditRow[]>([]);
+  const [beneficiariesLoading, setBeneficiariesLoading] = useState(true);
+  const [beneficiaryError, setBeneficiaryError] = useState("");
+  const [verifyingBeneficiary, setVerifyingBeneficiary] = useState<string | null>(null);
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+
+  // MKH_FINANCE_VENDOR_PAYOUT_PROCESSING_V1
+  const [vendorPayoutQueue, setVendorPayoutQueue] = useState<any[]>([]);
+  const [vendorPayoutQueueLoading, setVendorPayoutQueueLoading] = useState(true);
+  const [vendorPayoutQueueError, setVendorPayoutQueueError] = useState("");
+  const [vendorPayoutQueueNotice, setVendorPayoutQueueNotice] = useState("");
+  const [vendorPayoutActionId, setVendorPayoutActionId] = useState<string | null>(null);
+
+  // MKH_FINANCE_PAYOUT_REGISTER_V2
+  const [vendorPayoutSearch, setVendorPayoutSearch] = useState("");
+  const [vendorPayoutStatusFilter, setVendorPayoutStatusFilter] = useState("all");
+  const [vendorPayoutPage, setVendorPayoutPage] = useState(1);
+  const [vendorPayoutPageSize, setVendorPayoutPageSize] = useState(10);
 
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -217,6 +280,87 @@ export default function FinanceCommandCenter() {
     void load();
   }, [load]);
 
+  const loadVendorPayoutQueue = useCallback(async () => {
+    setVendorPayoutQueueLoading(true);
+    setVendorPayoutQueueError("");
+
+    try {
+      const response = await fetch(
+        "/api/finance/vendor-payout-processing",
+        { cache: "no-store" }
+      );
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || result?.success !== true) {
+        throw new Error(
+          result?.message || "Unable to load vendor payout processing queue."
+        );
+      }
+
+      setVendorPayoutQueue(
+        Array.isArray(result.payouts) ? result.payouts : []
+      );
+    } catch (loadError) {
+      setVendorPayoutQueueError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load vendor payout processing queue."
+      );
+    } finally {
+      setVendorPayoutQueueLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadVendorPayoutQueue();
+
+    const queueRefresh = window.setInterval(
+      () => void loadVendorPayoutQueue(),
+      30000
+    );
+
+    return () => window.clearInterval(queueRefresh);
+  }, [loadVendorPayoutQueue]);
+
+  const loadBeneficiaries = useCallback(async () => {
+    setBeneficiariesLoading(true);
+    setBeneficiaryError("");
+
+    try {
+      const response = await fetch("/api/finance/beneficiary-verification", {
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Beneficiary verification data could not be loaded.");
+      }
+
+      setBeneficiaries(result.beneficiaries ?? []);
+      setBeneficiaryAudit(result.audit ?? []);
+    } catch (loadError) {
+      setBeneficiaryError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Beneficiary verification data could not be loaded."
+      );
+    } finally {
+      setBeneficiariesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBeneficiaries();
+  }, [loadBeneficiaries]);
+
+  // MKH_FINANCE_BENEFICIARY_REGISTER_V2
+  const [beneficiarySearch, setBeneficiarySearch] = useState("");
+  const [beneficiaryTerritoryFilter, setBeneficiaryTerritoryFilter] = useState("all");
+  const [beneficiaryTypeFilter, setBeneficiaryTypeFilter] = useState("all");
+  const [beneficiaryStatusFilter, setBeneficiaryStatusFilter] = useState("all");
+  const [beneficiaryPage, setBeneficiaryPage] = useState(1);
+  const [beneficiaryPageSize, setBeneficiaryPageSize] = useState(10);
   const summary = data?.summary;
   const orderSummary = summary?.orderSummary;
   const payoutRows = summary?.payoutRequests ?? [];
@@ -224,6 +368,108 @@ export default function FinanceCommandCenter() {
   const paymentRows = summary?.orderPayments ?? [];
   const dailyRows = summary?.dailyPaidOrders ?? [];
   const riderRows = data?.riders ?? [];
+  const beneficiaryTerritoryOptions = useMemo(() => {
+    const options = new Map<string, string>();
+
+    for (const item of beneficiaries as any[]) {
+      for (const territory of (item.beneficiary_territories ?? [])) {
+        if (territory?.id) {
+          options.set(
+            String(territory.id),
+            String(territory.name || "Territory")
+          );
+        }
+      }
+    }
+
+    return Array.from(options.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [beneficiaries]);
+
+  const filteredBeneficiaries = useMemo(() => {
+    const query = beneficiarySearch.trim().toLowerCase();
+
+    return (beneficiaries as any[]).filter((item) => {
+      const verified =
+        item.is_active === true &&
+        Boolean(item.verified_at) &&
+        Boolean(item.verified_by);
+
+      const blocked = !verified && (item.blockers?.length ?? 0) > 0;
+      const status = verified ? "verified" : blocked ? "blocked" : "pending";
+
+      const territories = Array.isArray(item.beneficiary_territories)
+        ? item.beneficiary_territories
+        : [];
+
+      const matchesSearch = !query || [
+        item.display_name,
+        item.beneficiary_code,
+        item.profile_id,
+        item.profile_role,
+        item.employee_system_role,
+        ...territories.map((territory: any) => territory.name),
+      ].some((value) =>
+        String(value ?? "").toLowerCase().includes(query)
+      );
+
+      const matchesTerritory =
+        beneficiaryTerritoryFilter === "all" ||
+        territories.some(
+          (territory: any) =>
+            String(territory.id) === beneficiaryTerritoryFilter
+        );
+
+      const matchesType =
+        beneficiaryTypeFilter === "all" ||
+        String(item.beneficiary_type ?? "").toLowerCase() === beneficiaryTypeFilter;
+
+      const matchesStatus =
+        beneficiaryStatusFilter === "all" ||
+        status === beneficiaryStatusFilter;
+
+      return matchesSearch && matchesTerritory && matchesType && matchesStatus;
+    });
+  }, [
+    beneficiaries,
+    beneficiarySearch,
+    beneficiaryTerritoryFilter,
+    beneficiaryTypeFilter,
+    beneficiaryStatusFilter
+  ]);
+
+  const beneficiaryStatusCounts = useMemo(() => {
+    const counts = { verified: 0, pending: 0, blocked: 0 };
+
+    for (const item of beneficiaries as any[]) {
+      const verified =
+        item.is_active === true &&
+        Boolean(item.verified_at) &&
+        Boolean(item.verified_by);
+
+      if (verified) counts.verified += 1;
+      else if ((item.blockers?.length ?? 0) > 0) counts.blocked += 1;
+      else counts.pending += 1;
+    }
+
+    return counts;
+  }, [beneficiaries]);
+
+  const beneficiaryTotalPages = Math.max(
+    1,
+    Math.ceil(filteredBeneficiaries.length / beneficiaryPageSize)
+  );
+
+  const safeBeneficiaryPage = Math.min(
+    beneficiaryPage,
+    beneficiaryTotalPages
+  );
+
+  const visibleBeneficiaries = filteredBeneficiaries.slice(
+    (safeBeneficiaryPage - 1) * beneficiaryPageSize,
+    safeBeneficiaryPage * beneficiaryPageSize
+  );
 
   const openPayoutPosition = useMemo(() => {
     const openStatuses = new Set(["pending", "approved", "processing", "transfer_submitted", "on_hold"]);
@@ -284,6 +530,288 @@ export default function FinanceCommandCenter() {
     }
   }
 
+  async function verifyBeneficiary(row: BeneficiaryVerificationRow) {
+    if (!row.eligible || verifyingBeneficiary) return;
+
+    const reason = window.prompt(
+      `Record the checks completed for ${row.display_name} (${titleCase(row.beneficiary_type)}). Enter the verification reason or reference:`
+    );
+
+    if (!reason || reason.trim().length < 5) return;
+
+    const confirmed = window.confirm(
+      `Verify ${row.display_name} as an active ${titleCase(row.beneficiary_type)} beneficiary?\n\nThis activates the existing registry mapping only. It will not credit the wallet or initiate a transfer.`
+    );
+
+    if (!confirmed) return;
+
+    setVerifyingBeneficiary(row.profile_id);
+    setBeneficiaryError("");
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/finance/beneficiary-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          beneficiary_type: row.beneficiary_type,
+          profile_id: row.profile_id,
+          reason: reason.trim(),
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Beneficiary verification failed.");
+      }
+
+      setNotice(result.message || "Beneficiary verification completed. No funds moved.");
+      await loadBeneficiaries();
+    } catch (verificationError) {
+      setBeneficiaryError(
+        verificationError instanceof Error
+          ? verificationError.message
+          : "Beneficiary verification failed."
+      );
+    } finally {
+      setVerifyingBeneficiary(null);
+    }
+  }
+
+  async function handleLogout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    setLogoutError("");
+
+    try {
+      const supabase = createClient();
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+
+      router.replace("/login");
+      router.refresh();
+    } catch (signOutError) {
+      console.error("Finance logout failed:", signOutError);
+      setLogoutError("Unable to sign out. Please try again.");
+      setLoggingOut(false);
+    }
+  }
+
+  async function runVendorPayoutAction(
+    payout: any,
+    action: string,
+    options: {
+      reason?: string;
+      transferReference?: string;
+      confirmedTransferSuccess?: boolean;
+    } = {}
+  ) {
+    if (vendorPayoutActionId) return;
+
+    setVendorPayoutActionId(String(payout.id));
+    setVendorPayoutQueueError("");
+    setVendorPayoutQueueNotice("");
+
+    try {
+      const response = await fetch(
+        "/api/finance/vendor-payout-processing",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payout_request_id: payout.id,
+            action,
+            reason: options.reason,
+            transfer_reference: options.transferReference,
+            confirmed_transfer_success:
+              options.confirmedTransferSuccess === true,
+          }),
+        }
+      );
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Vendor payout action failed.");
+      }
+
+      setVendorPayoutQueueNotice(
+        result.message || "Vendor payout status updated."
+      );
+
+      await loadVendorPayoutQueue();
+      await load(true);
+    } catch (actionError) {
+      setVendorPayoutQueueError(
+        actionError instanceof Error
+          ? actionError.message
+          : "Vendor payout action failed."
+      );
+    } finally {
+      setVendorPayoutActionId(null);
+    }
+  }
+
+  async function startVendorPayoutProcessing(payout: any) {
+    if (payout.status !== "approved") return;
+
+    if (!window.confirm(
+      `Move ${payout.vendor_name || "this vendor"}'s ${formatNaira(payout.amount)} approved payout into processing? This does not send money.`
+    )) return;
+
+    await runVendorPayoutAction(payout, "start_processing");
+  }
+
+  async function submitVendorPayoutTransfer(payout: any) {
+    if (payout.status !== "processing") return;
+
+    const verifiedAccounts =
+      (payout.bank_accounts || []).filter(
+        (account: any) => account.verified === true
+      );
+
+    if (verifiedAccounts.length !== 1) {
+      setVendorPayoutQueueError(
+        "Transfer submission is blocked: this vendor must have exactly one verified bank account on record."
+      );
+      return;
+    }
+
+    const reference = window.prompt(
+      "Enter the bank transfer reference after the transfer has actually been initiated through the approved banking channel. Do not invent a reference."
+    );
+
+    if (!reference?.trim()) return;
+
+    await runVendorPayoutAction(
+      payout,
+      "submit_transfer",
+      { transferReference: reference.trim() }
+    );
+  }
+
+  async function confirmVendorPayoutPaid(payout: any) {
+    if (
+      payout.status !== "transfer_submitted" ||
+      !payout.transfer_reference
+    ) return;
+
+    const confirmed = window.confirm(
+      `Have you independently checked the bank/provider record and confirmed that ${formatNaira(payout.amount)} reached ${payout.bank_accounts?.[0]?.account_name || payout.vendor_name}?\n\nOnly choose OK when the transfer is confirmed successful. This will mark the payout PAID and release its reserved pending balance.`
+    );
+
+    if (!confirmed) return;
+
+    await runVendorPayoutAction(
+      payout,
+      "mark_paid",
+      { confirmedTransferSuccess: true }
+    );
+  }
+
+  async function placeVendorPayoutOnHold(payout: any) {
+    const reason = window.prompt(
+      "Enter the reason for placing this payout on hold:"
+    );
+
+    if (!reason?.trim()) return;
+
+    await runVendorPayoutAction(
+      payout,
+      "hold",
+      { reason: reason.trim() }
+    );
+  }
+
+  async function resumeVendorPayout(payout: any) {
+    if (payout.status !== "on_hold") return;
+
+    if (!window.confirm(
+      "Resume this payout to its previous processing stage?"
+    )) return;
+
+    await runVendorPayoutAction(payout, "resume");
+  }
+
+  async function confirmVendorPayoutFailure(payout: any) {
+    if (
+      !["processing", "transfer_submitted"].includes(
+        String(payout.status).toLowerCase()
+      )
+    ) return;
+
+    const reason = window.prompt(
+      "Enter the verified bank/provider failure reason. Only confirm after checking the transfer outcome:"
+    );
+
+    if (!reason?.trim()) return;
+
+    if (!window.confirm(
+      "Confirm that the bank/provider has verified this transfer as FAILED? The reserved funds will be restored to the vendor's available balance and an audit reversal will be recorded."
+    )) return;
+
+    await runVendorPayoutAction(
+      payout,
+      "confirm_transfer_failure",
+      { reason: reason.trim() }
+    );
+  }
+  const filteredVendorPayouts = useMemo(() => {
+    const query = vendorPayoutSearch.trim().toLowerCase();
+
+    return vendorPayoutQueue.filter((payout: any) => {
+      const status = String(payout.status ?? "").toLowerCase();
+
+      const matchesStatus =
+        vendorPayoutStatusFilter === "all" ||
+        status === vendorPayoutStatusFilter;
+
+      const matchesSearch =
+        !query ||
+        String(payout.vendor_name ?? "").toLowerCase().includes(query) ||
+        String(payout.id ?? "").toLowerCase().includes(query) ||
+        String(payout.requester_id ?? "").toLowerCase().includes(query);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [vendorPayoutQueue, vendorPayoutSearch, vendorPayoutStatusFilter]);
+
+  const vendorPayoutTotalPages = Math.max(
+    1,
+    Math.ceil(filteredVendorPayouts.length / vendorPayoutPageSize)
+  );
+
+  const safeVendorPayoutPage = Math.min(
+    vendorPayoutPage,
+    vendorPayoutTotalPages
+  );
+
+  const visibleVendorPayouts = filteredVendorPayouts.slice(
+    (safeVendorPayoutPage - 1) * vendorPayoutPageSize,
+    safeVendorPayoutPage * vendorPayoutPageSize
+  );
+
+  const vendorPayoutCounts = useMemo(() => {
+    const counts = {
+      approved: 0,
+      processing: 0,
+      transfer_submitted: 0,
+      on_hold: 0,
+    };
+
+    for (const payout of vendorPayoutQueue) {
+      const status = String(payout.status ?? "").toLowerCase();
+
+      if (status in counts) {
+        counts[status as keyof typeof counts] += 1;
+      }
+    }
+
+    return counts;
+  }, [vendorPayoutQueue]);
   const walletSummary = summary?.wallets;
   const displayName = data?.profile?.full_name || data?.profile?.email || "Finance Team";
   const roleName = titleCase(data?.profile?.role || "Finance");
@@ -300,7 +828,7 @@ export default function FinanceCommandCenter() {
           <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Financial Control Center</p>
         </div>
 
-        <div className="px-4 pt-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-5 pb-4">
           <p className="px-3 text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">Finance modules</p>
           <nav className="mt-3 space-y-1">
             {NAV_ITEMS.map((item) => {
@@ -356,8 +884,23 @@ export default function FinanceCommandCenter() {
               <button type="button" onClick={() => void load(true)} disabled={loading || refreshing} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50">
                 <RefreshCw size={15} className={refreshing ? "animate-spin" : ""}/><span className="hidden sm:inline">Refresh</span>
               </button>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                disabled={loggingOut}
+                aria-label="Log out of Finance Dashboard"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <LogOut size={15} />
+                <span>{loggingOut ? "Signing out..." : "Log out"}</span>
+              </button>
             </div>
           </div>
+          {logoutError && (
+            <p role="alert" className="border-t border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 sm:px-7">
+              {logoutError}
+            </p>
+          )}
           <div className="flex gap-2 overflow-x-auto border-t border-slate-100 px-4 py-2 lg:hidden">
             {NAV_ITEMS.map((item) => <button key={item.id} type="button" onClick={() => navigateTo(item.id)} className={`shrink-0 rounded-lg px-3 py-2 text-xs font-bold ${activeSection === item.id ? "bg-orange-600 text-white" : "bg-slate-100 text-slate-600"}`}>{item.label}</button>)}
           </div>
@@ -379,8 +922,8 @@ export default function FinanceCommandCenter() {
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 backdrop-blur">
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400">Reporting integrity</p>
-                <div className="mt-3 flex items-center gap-2 text-lg font-black"><LockKeyhole size={19} className="text-emerald-300"/>Read-only financial reporting</div>
-                <p className="mt-2 text-xs leading-5 text-slate-300">This dashboard does not initiate transfers, change payout statuses, or recalculate settlements.</p>
+                <div className="mt-3 flex items-center gap-2 text-lg font-black"><LockKeyhole size={19} className="text-emerald-300"/>Financial reporting & controlled payout processing</div>
+                <p className="mt-2 text-xs leading-5 text-slate-300">Vendor payout status changes use the protected workflow. Bank transfers are not initiated here, and settlements are not recalculated.</p>
                 <p className="mt-4 border-t border-white/10 pt-3 text-[10px] text-slate-400">{generatedAt ? `Last refreshed ${new Date(generatedAt).toLocaleString("en-NG")}` : "Waiting for first data refresh"}</p>
               </div>
             </div>
@@ -502,6 +1045,371 @@ export default function FinanceCommandCenter() {
                 </article>
               </section>
 
+              <section id="finance-beneficiaries" className="scroll-mt-28 space-y-5">
+                <SectionHeading
+                  eyebrow="Financial beneficiary controls"
+                  title="TRM, ZM and VHA verification"
+                  description="Review employee assignments and existing wallet ownership before explicitly activating a beneficiary registry. Verification does not move money."
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => void loadBeneficiaries()}
+                      disabled={beneficiariesLoading}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50"
+                    >
+                      Refresh verification
+                    </button>
+                  }
+                />
+
+                {beneficiaryError && (
+                  <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                    {beneficiaryError}
+                  </div>
+                )}
+
+                {beneficiariesLoading ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                    Loading beneficiary verification records...
+                  </div>
+                ) : beneficiaries.length === 0 ? (
+                  <EmptyState
+                    title="No TRM, ZM or VHA beneficiary records found"
+                    description="No matching beneficiary registry records were returned."
+                  />
+                ) : (
+                  <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="grid gap-3 border-b border-slate-100 p-4 sm:grid-cols-3">
+                      <div className="rounded-xl bg-emerald-50 p-3">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-700">Verified</p>
+                        <p className="mt-1 text-2xl font-black tabular-nums text-emerald-800">{beneficiaryStatusCounts.verified.toLocaleString("en-NG")}</p>
+                      </div>
+                      <div className="rounded-xl bg-sky-50 p-3">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-sky-700">Pending verification</p>
+                        <p className="mt-1 text-2xl font-black tabular-nums text-sky-800">{beneficiaryStatusCounts.pending.toLocaleString("en-NG")}</p>
+                      </div>
+                      <div className="rounded-xl bg-amber-50 p-3">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-amber-700">Blocked / review required</p>
+                        <p className="mt-1 text-2xl font-black tabular-nums text-amber-800">{beneficiaryStatusCounts.blocked.toLocaleString("en-NG")}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 border-b border-slate-100 p-4 xl:grid-cols-[minmax(220px,1fr)_220px_190px_190px_125px]">
+                      <div className="relative">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          value={beneficiarySearch}
+                          onChange={(event) => {
+                            setBeneficiarySearch(event.target.value);
+                            setBeneficiaryPage(1);
+                          }}
+                          placeholder="Search employee, code or profile ID..."
+                          aria-label="Search beneficiary verification records"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-orange-400 focus:bg-white"
+                        />
+                      </div>
+
+                      <select
+                        value={beneficiaryTerritoryFilter}
+                        onChange={(event) => {
+                          setBeneficiaryTerritoryFilter(event.target.value);
+                          setBeneficiaryPage(1);
+                        }}
+                        aria-label="Filter by territory"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-orange-400"
+                      >
+                        <option value="all">All territories</option>
+                        {beneficiaryTerritoryOptions.map((territory) => (
+                          <option key={territory.id} value={territory.id}>
+                            {territory.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={beneficiaryTypeFilter}
+                        onChange={(event) => {
+                          setBeneficiaryTypeFilter(event.target.value);
+                          setBeneficiaryPage(1);
+                        }}
+                        aria-label="Filter by beneficiary type"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-orange-400"
+                      >
+                        <option value="all">All beneficiary types</option>
+                        <option value="trm">TRM</option>
+                        <option value="zm">ZM</option>
+                        <option value="vha">VHA</option>
+                      </select>
+
+                      <select
+                        value={beneficiaryStatusFilter}
+                        onChange={(event) => {
+                          setBeneficiaryStatusFilter(event.target.value);
+                          setBeneficiaryPage(1);
+                        }}
+                        aria-label="Filter by verification status"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-orange-400"
+                      >
+                        <option value="all">All verification statuses</option>
+                        <option value="verified">Verified</option>
+                        <option value="pending">Pending</option>
+                        <option value="blocked">Blocked</option>
+                      </select>
+
+                      <select
+                        value={beneficiaryPageSize}
+                        onChange={(event) => {
+                          setBeneficiaryPageSize(Number(event.target.value));
+                          setBeneficiaryPage(1);
+                        }}
+                        aria-label="Beneficiaries per page"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-orange-400"
+                      >
+                        <option value={10}>10 per page</option>
+                        <option value={25}>25 per page</option>
+                        <option value={50}>50 per page</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-slate-500">
+                      <span>
+                        {filteredBeneficiaries.length.toLocaleString("en-NG")} matching records out of {beneficiaries.length.toLocaleString("en-NG")} beneficiaries
+                      </span>
+                      <span>Territory-aware register | verification does not move money</span>
+                    </div>
+
+                    {filteredBeneficiaries.length === 0 ? (
+                      <div className="p-5">
+                        <EmptyState
+                          title="No matching beneficiaries"
+                          description="Change the search or filters to see other TRM, ZM and VHA records."
+                        />
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[940px] text-left text-sm">
+                          <thead className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                            <tr>
+                              <th className="px-4 py-3">Beneficiary</th>
+                              <th className="px-4 py-3">Territory</th>
+                              <th className="px-4 py-3">Type</th>
+                              <th className="px-4 py-3">Wallet mapping</th>
+                              <th className="px-4 py-3">Verification</th>
+                              <th className="px-4 py-3 text-right">Details</th>
+                            </tr>
+                          </thead>
+
+                          <tbody className="divide-y divide-slate-100">
+                            {visibleBeneficiaries.map((item: any) => {
+                              const verified =
+                                item.is_active === true &&
+                                Boolean(item.verified_at) &&
+                                Boolean(item.verified_by);
+
+                              const blocked =
+                                !verified && (item.blockers?.length ?? 0) > 0;
+
+                              const walletMatched =
+                                Boolean(item.wallet_id) &&
+                                item.wallet_owner_type === item.beneficiary_type &&
+                                item.wallet_owner_id === item.profile_id;
+
+                              const territoryLabel =
+                                item.territory_label || "Unassigned / unresolved";
+
+                              return (
+                                <tr key={item.registry_id} className="align-top hover:bg-slate-50/70">
+                                  <td className="px-4 py-3">
+                                    <p className="font-extrabold text-slate-900">
+                                      {item.display_name}
+                                    </p>
+                                    <p className="mt-0.5 break-all text-[10px] text-slate-500">
+                                      {item.beneficiary_code}
+                                    </p>
+                                  </td>
+
+                                  <td className="max-w-[220px] px-4 py-3 text-xs text-slate-700">
+                                    {territoryLabel}
+                                  </td>
+
+                                  <td className="px-4 py-3 text-xs font-bold text-slate-700">
+                                    {String(item.beneficiary_type ?? "").toUpperCase()}
+                                  </td>
+
+                                  <td className="px-4 py-3">
+                                    {walletMatched
+                                      ? <span className="text-xs font-bold text-emerald-700">Matched</span>
+                                      : <span className="text-xs font-bold text-rose-700">Not matched</span>}
+                                  </td>
+
+                                  <td className="px-4 py-3">
+                                    <StatusPill value={verified ? "verified" : blocked ? "blocked" : "pending verification"} />
+                                  </td>
+
+                                  <td className="px-4 py-3 text-right">
+                                    <details className="group inline-block text-left">
+                                      <summary className="flex cursor-pointer list-none items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-orange-300 hover:text-orange-700">
+                                        View details
+                                        <ChevronDown size={13} className="transition-transform group-open:rotate-180" aria-hidden="true" />
+                                      </summary>
+
+                                      <div className="mt-2 w-[min(82vw,460px)] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-lg">
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                          <span className="text-slate-500">Profile role</span>
+                                          <strong className="text-right">{item.profile_role || "Missing"}</strong>
+
+                                          <span className="text-slate-500">Employee role</span>
+                                          <strong className="text-right">{item.employee_system_role || "Missing"}</strong>
+
+                                          <span className="text-slate-500">Employee status</span>
+                                          <strong className="text-right">
+                                            {item.employee_status || "Missing"} / {item.employment_status || "Missing"}
+                                          </strong>
+
+                                          <span className="text-slate-500">Available balance</span>
+                                          <strong className="text-right tabular-nums">
+                                            {item.wallet_available_balance === null
+                                              ? "Unavailable"
+                                              : formatNaira(item.wallet_available_balance)}
+                                          </strong>
+
+                                          <span className="text-slate-500">Pending balance</span>
+                                          <strong className="text-right tabular-nums">
+                                            {item.wallet_pending_balance === null
+                                              ? "Unavailable"
+                                              : formatNaira(item.wallet_pending_balance)}
+                                          </strong>
+
+                                          <span className="text-slate-500">Wallet reference</span>
+                                          <strong className="text-right">
+                                            {item.wallet_id ? item.wallet_id.slice(-8) : "Missing"}
+                                          </strong>
+                                        </div>
+
+                                        {item.beneficiary_territories?.length > 0 && (
+                                          <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+                                            Assigned territory: <strong>{item.beneficiary_territories.map((territory: any) => territory.name).join(", ")}</strong>
+                                          </p>
+                                        )}
+
+                                        {verified ? (
+                                          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                                            Verified {new Date(item.verified_at).toLocaleString("en-NG")}
+                                            <p className="mt-1 break-all text-[10px]">
+                                              Verifier: {item.verified_by}
+                                            </p>
+                                          </div>
+                                        ) : blocked ? (
+                                          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                                            <strong>Verification blocked:</strong>
+                                            <ul className="mt-1 list-disc pl-4">
+                                              {(item.blockers ?? []).map((blocker: string, index: number) => (
+                                                <li key={`${item.registry_id}:${index}`}>{blocker}</li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        ) : (
+                                          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
+                                            Profile, employee assignment and wallet mapping passed the initial checks. Finance confirmation is still required.
+                                          </div>
+                                        )}
+
+                                        {!verified && (
+                                          <button
+                                            type="button"
+                                            onClick={() => void verifyBeneficiary(item)}
+                                            disabled={!item.eligible || verifyingBeneficiary !== null}
+                                            className="mt-3 w-full rounded-xl bg-orange-600 px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                          >
+                                            {verifyingBeneficiary === item.profile_id
+                                              ? "Verifying..."
+                                              : item.eligible
+                                                ? "Verify beneficiary"
+                                                : "Verification unavailable"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </details>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {filteredBeneficiaries.length > 0 && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+                        <p className="text-xs text-slate-500">
+                          Page <strong className="text-slate-800">{safeBeneficiaryPage}</strong> of <strong className="text-slate-800">{beneficiaryTotalPages}</strong>
+                        </p>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setBeneficiaryPage(Math.max(1, safeBeneficiaryPage - 1))}
+                            disabled={safeBeneficiaryPage <= 1}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Previous
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBeneficiaryPage(Math.min(beneficiaryTotalPages, safeBeneficiaryPage + 1))}
+                            disabled={safeBeneficiaryPage >= beneficiaryTotalPages}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                )}
+
+                {beneficiaryAudit.length > 0 && (
+                  <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="border-b border-slate-100 p-5">
+                      <h3 className="font-black text-slate-950">Recent verification audit</h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Recorded verifier, reason and timestamp. These entries do not represent wallet transfers.
+                      </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[650px] text-left text-xs">
+                        <thead className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                          <tr>
+                            <th className="px-4 py-3">Beneficiary type</th>
+                            <th className="px-4 py-3">Reason recorded</th>
+                            <th className="px-4 py-3">Verifier ID</th>
+                            <th className="px-4 py-3">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {beneficiaryAudit.map((entry) => (
+                            <tr key={entry.id}>
+                              <td className="px-4 py-3 font-bold text-slate-800">
+                                {titleCase(entry.beneficiary_type)}
+                              </td>
+                              <td className="max-w-[280px] px-4 py-3 text-slate-600">
+                                {entry.reason}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-slate-600">
+                                {entry.performed_by.slice(0, 8)}...
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {new Date(entry.created_at).toLocaleString("en-NG")}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </article>
+                )}
+              </section>
+              <SGGlobalAllianceRemittancePanel />
               <section id="finance-payouts" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <SectionHeading eyebrow="Payout obligations" title="Payout request position" description="Read-only request summary by requester type and current status. No approval, transfer, paid, rejection, reversal or balance action is exposed here." />
                 {payoutRows.length === 0 ? <EmptyState title="No payout requests found" description="The payout_requests table returned no grouped request records." /> : (
@@ -512,10 +1420,285 @@ export default function FinanceCommandCenter() {
                     </table>
                   </div>
                 )}
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950"><strong>Payout workflow held separate:</strong> this dashboard does not change the approved payout state machine or initiate transfers. The payout action workflow will be addressed during the dedicated payout/fulfilment walkthrough.</div>
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950"><strong>Summary only:</strong> this card remains read-only. Open Vendor Payout Processing in the Finance Modules sidebar to work on individual TRM-approved vendor requests.</div>
               </section>
 
-              <section id="finance-reports" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <section id="finance-payout_processing" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <SectionHeading
+                  eyebrow="Finance payout operations"
+                  title="Vendor Payout Processing"
+                  description="Search, filter and process individual TRM-approved vendor payout requests. Bank transfers are not initiated from this screen."
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => void loadVendorPayoutQueue()}
+                      disabled={vendorPayoutQueueLoading}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={vendorPayoutQueueLoading ? "animate-spin" : ""}/>
+                      Refresh queue
+                    </button>
+                  }
+                />
+
+                {vendorPayoutQueueError && (
+                  <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">
+                    {vendorPayoutQueueError}
+                  </div>
+                )}
+
+                {vendorPayoutQueueNotice && (
+                  <div role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+                    {vendorPayoutQueueNotice}
+                  </div>
+                )}
+
+                <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {[
+                    { label: "Approved", value: vendorPayoutCounts.approved },
+                    { label: "Processing", value: vendorPayoutCounts.processing },
+                    { label: "Transfer submitted", value: vendorPayoutCounts.transfer_submitted },
+                    { label: "On hold", value: vendorPayoutCounts.on_hold },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{item.label}</p>
+                      <p className="mt-1 text-xl font-black tabular-nums text-slate-950">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_210px_120px]">
+                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                    <Search size={16} className="shrink-0 text-slate-400"/>
+                    <input
+                      type="search"
+                      value={vendorPayoutSearch}
+                      onChange={(event) => {
+                        setVendorPayoutSearch(event.target.value);
+                        setVendorPayoutPage(1);
+                      }}
+                      placeholder="Search vendor or request ID..."
+                      aria-label="Search vendor payout requests"
+                      className="w-full min-w-0 bg-transparent text-sm outline-none"
+                    />
+                  </div>
+
+                  <select
+                    value={vendorPayoutStatusFilter}
+                    onChange={(event) => {
+                      setVendorPayoutStatusFilter(event.target.value);
+                      setVendorPayoutPage(1);
+                    }}
+                    aria-label="Filter vendor payout status"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-orange-400"
+                  >
+                    <option value="all">All active statuses</option>
+                    <option value="approved">Approved</option>
+                    <option value="processing">Processing</option>
+                    <option value="transfer_submitted">Transfer submitted</option>
+                    <option value="on_hold">On hold</option>
+                  </select>
+
+                  <select
+                    value={vendorPayoutPageSize}
+                    onChange={(event) => {
+                      setVendorPayoutPageSize(Number(event.target.value));
+                      setVendorPayoutPage(1);
+                    }}
+                    aria-label="Requests per page"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-orange-400"
+                  >
+                    <option value={10}>10 per page</option>
+                    <option value={25}>25 per page</option>
+                    <option value={50}>50 per page</option>
+                  </select>
+                </div>
+
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                  <span>
+                    Showing <strong className="text-slate-800">{filteredVendorPayouts.length === 0 ? 0 : ((safeVendorPayoutPage - 1) * vendorPayoutPageSize) + 1}</strong>
+                    {" "}to{" "}
+                    <strong className="text-slate-800">{Math.min(safeVendorPayoutPage * vendorPayoutPageSize, filteredVendorPayouts.length)}</strong>
+                    {" "}of{" "}
+                    <strong className="text-slate-800">{filteredVendorPayouts.length}</strong>
+                    {" "}matching requests
+                  </span>
+                  <span>{vendorPayoutQueue.length} active payout requests in queue</span>
+                </div>
+
+                {vendorPayoutQueueLoading ? (
+                  <div className="rounded-xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                    Loading vendor payout requestsâ€¦
+                  </div>
+                ) : filteredVendorPayouts.length === 0 ? (
+                  <EmptyState
+                    title={vendorPayoutQueue.length === 0 ? "No vendor payouts awaiting Finance" : "No matching payout requests"}
+                    description={vendorPayoutQueue.length === 0 ? "TRM-approved requests and payouts already in Finance processing will appear here." : "Change your search or status filter to see other requests."}
+                  />
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[850px] text-left text-sm">
+                      <thead className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3">Vendor</th>
+                          <th className="px-4 py-3 text-right">Amount</th>
+                          <th className="px-4 py-3">Requested</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3">Bank account</th>
+                          <th className="px-4 py-3 text-right">Request</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {visibleVendorPayouts.map((payout: any) => {
+                          const accounts = Array.isArray(payout.bank_accounts) ? payout.bank_accounts : [];
+                          const verifiedAccounts = accounts.filter((account: any) => account.verified === true);
+                          const status = String(payout.status || "unknown").toLowerCase();
+                          const working = vendorPayoutActionId === String(payout.id);
+
+                          return (
+                            <tr key={payout.id} className="align-top hover:bg-slate-50/70">
+                              <td className="px-4 py-3">
+                                <p className="font-bold text-slate-900">{payout.vendor_name || "Vendor"}</p>
+                                <p className="mt-1 text-[10px] text-slate-400">ID: {String(payout.id).slice(0, 12)}â€¦</p>
+                              </td>
+                              <td className="px-4 py-3 text-right font-black tabular-nums text-slate-950">
+                                {formatNaira(payout.amount)}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-slate-600">
+                                {payout.requested_at ? new Date(payout.requested_at).toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" }) : "Unavailable"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <StatusPill value={status}/>
+                              </td>
+                              <td className="px-4 py-3">
+                                {verifiedAccounts.length === 1 ? (
+                                  <span className="text-xs font-semibold text-emerald-700">Verified</span>
+                                ) : verifiedAccounts.length === 0 ? (
+                                  <span className="text-xs font-semibold text-amber-700">Not verified</span>
+                                ) : (
+                                  <span className="text-xs font-semibold text-rose-700">Multiple verified</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <details className="group relative inline-block text-left">
+                                  <summary className="cursor-pointer list-none whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-orange-300 hover:text-orange-700">
+                                    Open details <ChevronDown size={13} className="ml-1 inline-block align-[-2px]" aria-hidden="true" />
+                                  </summary>
+
+                                  <div className="absolute right-0 z-20 mt-2 w-[min(80vw,420px)] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-xl">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="font-black text-slate-950">{payout.vendor_name || "Vendor"}</p>
+                                        <p className="mt-1 break-all text-[10px] text-slate-400">{payout.id}</p>
+                                      </div>
+                                      <StatusPill value={status}/>
+                                    </div>
+
+                                    <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Verified bank account</p>
+                                      {verifiedAccounts.length === 1 ? (
+                                        <div className="mt-2 space-y-1 text-xs text-slate-700">
+                                          <p><strong>{verifiedAccounts[0].bank_name || "Bank unavailable"}</strong></p>
+                                          <p>Account name: {verifiedAccounts[0].account_name || "Not supplied"}</p>
+                                          <p>Account number: <strong className="tabular-nums">{verifiedAccounts[0].account_number || "Not supplied"}</strong></p>
+                                        </div>
+                                      ) : (
+                                        <p className="mt-2 text-xs font-semibold text-amber-800">
+                                          {verifiedAccounts.length === 0 ? "No verified bank account is available. Transfer submission is blocked." : "Multiple verified bank accounts found. Resolve the ambiguity before transfer."}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Transfer record</p>
+                                      <p className="mt-2 break-all text-xs text-slate-700">Reference: <strong>{payout.transfer_reference || "Not submitted"}</strong></p>
+                                      {payout.hold_reason && <p className="mt-2 text-xs text-amber-800">Hold reason: {payout.hold_reason}</p>}
+                                    </div>
+
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                      {status === "approved" && (
+                                        <button type="button" onClick={() => void startVendorPayoutProcessing(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:opacity-50">
+                                          Start processing
+                                        </button>
+                                      )}
+
+                                      {status === "processing" && (
+                                        <button type="button" onClick={() => void submitVendorPayoutTransfer(payout)} disabled={working || Boolean(vendorPayoutActionId) || verifiedAccounts.length !== 1} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:opacity-50">
+                                          Record transfer reference
+                                        </button>
+                                      )}
+
+                                      {status === "transfer_submitted" && (
+                                        <>
+                                          <button type="button" onClick={() => void confirmVendorPayoutPaid(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                                            Confirm verified payment
+                                          </button>
+                                          <button type="button" onClick={() => void confirmVendorPayoutFailure(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                                            Record verified failure
+                                          </button>
+                                        </>
+                                      )}
+
+                                      {status === "processing" && (
+                                        <button type="button" onClick={() => void confirmVendorPayoutFailure(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                                          Record verified failure
+                                        </button>
+                                      )}
+
+                                      {["approved", "processing", "transfer_submitted"].includes(status) && (
+                                        <button type="button" onClick={() => void placeVendorPayoutOnHold(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50">
+                                          Place on hold
+                                        </button>
+                                      )}
+
+                                      {status === "on_hold" && (
+                                        <button type="button" onClick={() => void resumeVendorPayout(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white hover:bg-slate-900 disabled:opacity-50">
+                                          Resume payout
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    <p className="mt-3 text-[10px] leading-4 text-slate-500">
+                                      Funds remain reserved until the existing payout-resolution function records a verified paid outcome or a verified failure/rejection.
+                                    </p>
+                                  </div>
+                                </details>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {!vendorPayoutQueueLoading && filteredVendorPayouts.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">
+                      Page <strong className="text-slate-800">{safeVendorPayoutPage}</strong> of <strong className="text-slate-800">{vendorPayoutTotalPages}</strong>
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setVendorPayoutPage(Math.max(1, safeVendorPayoutPage - 1))}
+                        disabled={safeVendorPayoutPage <= 1}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVendorPayoutPage(Math.min(vendorPayoutTotalPages, safeVendorPayoutPage + 1))}
+                        disabled={safeVendorPayoutPage >= vendorPayoutTotalPages}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+<section id="finance-reports" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <SectionHeading eyebrow="Control checks" title="Reports & reconciliation controls" description="A concise set of indicators to help Finance distinguish recorded activity from outstanding work." />
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <ControlMetric label="Rider profiles" value={data?.riderCounts.active ?? 0} detail="Active rider profiles returned" icon={Users}/>
@@ -642,5 +1825,120 @@ function ControlMetric({
       <p className="mt-3 text-2xl font-black text-slate-950">{value.toLocaleString("en-NG")}</p>
       <p className="mt-1 text-[10px] leading-4 text-slate-500">{detail}</p>
     </div>
+  );
+}
+function SGGlobalAllianceRemittancePanel() {
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [form, setForm] = useState({ bank_name: "", bank_code: "", account_name: "", account_number: "" });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/finance/sg-global-alliance-remittance", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "SG Global Alliance remittance profile could not be loaded.");
+      }
+      setProfile(result.profile ?? null);
+      setForm((current) => ({
+        ...current,
+        bank_name: result.profile?.bank_name ?? "",
+        bank_code: result.profile?.bank_code ?? "",
+        account_name: result.profile?.account_name ?? "",
+        account_number: "",
+      }));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "SG remittance profile could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function saveDetails() {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/finance/sg-global-alliance-remittance", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "SG bank details could not be saved.");
+      }
+      setProfile((current: any) => ({ ...(current ?? {}), ...(result.profile ?? {}) }));
+      setForm((current: any) => ({ ...current, account_number: "" }));
+      setNotice("SG Global Alliance bank details saved securely. No account verification, Paystack recipient creation or transfer was performed.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "SG bank details could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const detailsSaved = Boolean(profile?.bank_name && profile?.bank_code && profile?.account_name && profile?.account_number_last4);
+
+  return (
+    <section id="finance-sg-remittance" className="scroll-mt-28 space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-orange-600">External remittance setup</p>
+          <h2 className="mt-1 text-xl font-black text-slate-950">SG Global Alliance</h2>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Register SG's bank details for future remittance. Saving details does not verify the account, create a Paystack recipient or move money.</p>
+        </div>
+        <span className={`rounded-full px-3 py-1.5 text-[10px] font-extrabold ${detailsSaved ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+          {detailsSaved ? "DETAILS SAVED Â· NOT VERIFIED" : "BANK DETAILS NOT CONFIGURED"}
+        </span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">SG internal wallet Â· available</p>
+          <p className="mt-2 text-2xl font-black tabular-nums text-slate-950">{formatNaira(profile?.wallet_available_balance ?? 0)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Lifetime wallet earnings</p>
+          <p className="mt-2 text-2xl font-black tabular-nums text-slate-950">{formatNaira(profile?.wallet_lifetime_earnings ?? 0)}</p>
+        </div>
+      </div>
+
+      {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">{error}</div>}
+      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{notice}</div>}
+
+      {loading ? (
+        <div className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Loading SG remittance profile...</div>
+      ) : (
+        <form onSubmit={(event) => { event.preventDefault(); void saveDetails(); }} className="grid gap-4 md:grid-cols-2">
+          <label className="block text-xs font-bold text-slate-700">Bank name
+            <input required maxLength={100} value={form.bank_name} onChange={(event) => setForm((current) => ({ ...current, bank_name: event.target.value }))} placeholder="Enter bank name" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+          </label>
+          <label className="block text-xs font-bold text-slate-700">Bank code
+            <input required maxLength={20} value={form.bank_code} onChange={(event) => setForm((current) => ({ ...current, bank_code: event.target.value }))} placeholder="Enter bank code" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+          </label>
+          <label className="block text-xs font-bold text-slate-700 md:col-span-2">Account holder name
+            <input required maxLength={120} value={form.account_name} onChange={(event) => setForm((current) => ({ ...current, account_name: event.target.value }))} placeholder="Enter the official account name" className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+          </label>
+          <label className="block text-xs font-bold text-slate-700 md:col-span-2">Bank account number
+            <input required type="password" inputMode="numeric" autoComplete="off" minLength={10} maxLength={10} pattern="[0-9]{10}" value={form.account_number} onChange={(event) => setForm((current) => ({ ...current, account_number: event.target.value.replace(/\D/g, "").slice(0, 10) }))} placeholder={profile?.account_number_last4 ? `Re-enter account ending ${profile.account_number_last4}` : "Enter 10-digit account number"} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-normal outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100" />
+            {profile?.account_number_last4 && <span className="mt-1 block text-[10px] font-normal text-slate-500">Previously saved account ending {profile.account_number_last4}. Re-enter the full number to replace/update the saved details.</span>}
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
+            <p className="max-w-2xl text-[10px] leading-4 text-slate-500">The account number is encrypted before storage. Only the final four digits are displayed. This form does not perform bank verification or initiate transfers.</p>
+            <button type="submit" disabled={saving} className="rounded-xl bg-orange-600 px-5 py-3 text-xs font-extrabold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50">
+              {saving ? "Saving details..." : "Save SG bank details"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }

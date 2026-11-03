@@ -202,7 +202,7 @@ export default function EmployeeRoleChangeRequestsPage() {
           </p>
 
           {loading ? (
-            <p className="py-8 text-sm text-slate-500">Loading employees and rolesâ€¦</p>
+            <p className="py-8 text-sm text-slate-500">Loading employees and roles...</p>
           ) : (
             <form onSubmit={submitRequest} className="mt-6 grid gap-5 md:grid-cols-2">
               <label className="text-sm font-semibold">
@@ -220,7 +220,7 @@ export default function EmployeeRoleChangeRequestsPage() {
                         employee.first_name,
                         employee.last_name,
                       ].filter(Boolean).join(" ")}{" "}
-                      â€” {employee.employee_number || employee.email || employee.employee_id}
+                      - {employee.employee_number || employee.email || employee.employee_id}
                     </option>
                   ))}
                 </select>
@@ -254,7 +254,7 @@ export default function EmployeeRoleChangeRequestsPage() {
                   <option value="">Select access role</option>
                   {accessRoles.map((role) => (
                     <option key={role.role_id} value={role.role_id}>
-                      {role.role_name} â€” {role.system_role}
+                      {role.role_name} - {role.system_role}
                       {role.dashboard ? ` (${role.dashboard})` : ""}
                     </option>
                   ))}
@@ -303,7 +303,7 @@ export default function EmployeeRoleChangeRequestsPage() {
           </div>
 
           {loading ? (
-            <p className="py-6 text-sm text-slate-500">Loading request historyâ€¦</p>
+            <p className="py-6 text-sm text-slate-500">Loading request history...</p>
           ) : requests.length === 0 ? (
             <p className="py-6 text-sm text-slate-500">No requests found.</p>
           ) : (
@@ -315,11 +315,11 @@ export default function EmployeeRoleChangeRequestsPage() {
                       <h3 className="font-bold">{request.employee_name}</h3>
                       <p className="mt-1 text-sm text-slate-600">
                         {request.previous_employee_role || "Unspecified position"}
-                        {" â†’ "}
+                        {" -> "}
                         {request.requested_job_role}
                       </p>
                       <p className="mt-1 text-sm text-slate-600">
-                        Access: {request.previous_access_role} â†’ {request.requested_access_role || "Unspecified"}
+                        Access: {request.previous_access_role} {"to"} {request.requested_access_role || "Unspecified"}
                       </p>
                     </div>
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase text-slate-700">

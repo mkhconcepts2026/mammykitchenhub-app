@@ -100,12 +100,26 @@ async function geocodeAddress(address: string, apiKey: string): Promise<Geocoded
   const response = await fetch(url, { cache: "no-store" });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.status !== "OK" || !Array.isArray(payload?.results) || !payload.results.length) {
+    // Record provider diagnostics without ever logging the API key or full request URL.
+    console.error("MKH Geocoding API did not resolve the address:", {
+      httpStatus: response.status,
+      providerStatus: typeof payload?.status === "string" ? payload.status : "UNKNOWN",
+      providerMessage: typeof payload?.error_message === "string" ? payload.error_message.slice(0, 240) : null,
+      resultsCount: Array.isArray(payload?.results) ? payload.results.length : 0,
+    });
     return null;
   }
 
   // Do not quote a partial address match. The customer must correct the address first.
   const first = payload.results[0];
-  if (first?.partial_match === true) return null;
+  if (first?.partial_match === true) {
+    console.warn("MKH Geocoding API returned a partial address match:", {
+      formattedAddress: typeof first?.formatted_address === "string" ? first.formatted_address.slice(0, 240) : null,
+      resultTypes: Array.isArray(first?.types) ? first.types : [],
+      locationType: typeof first?.geometry?.location_type === "string" ? first.geometry.location_type : null,
+    });
+    return null;
+  }
   const latitude = Number(first?.geometry?.location?.lat);
   const longitude = Number(first?.geometry?.location?.lng);
   const placeId = typeof first?.place_id === "string" ? first.place_id.trim() : "";
@@ -328,8 +342,11 @@ export async function POST(request: Request) {
       return fail("This vendor's full street address is missing from its active record and latest approved application. Admin must verify the business address before delivery can be quoted.", 422);
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_ROUTES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
-    if (!apiKey) return fail("Road-distance pricing is not configured yet. Set GOOGLE_MAPS_ROUTES_API_KEY on the server and restart the local app.", 503);
+    // Keep Geocoding and Routes credentials separate: a Routes-only key cannot call Geocoding API.
+    const geocodingApiKey = process.env.GOOGLE_MAPS_GEOCODING_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const routesApiKey = process.env.GOOGLE_MAPS_ROUTES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    if (!geocodingApiKey) return fail("Address resolution is not configured. Set GOOGLE_MAPS_GEOCODING_API_KEY on the server and restart the app.", 503);
+    if (!routesApiKey) return fail("Road-distance pricing is not configured yet. Set GOOGLE_MAPS_ROUTES_API_KEY on the server and restart the app.", 503);
 
     let distanceMeters: number;
     let resolvedVendorAddress: string;
@@ -347,8 +364,8 @@ export async function POST(request: Request) {
               placeId: verifiedVendorLocation.google_place_id.trim(),
               formattedAddress: String(verifiedVendorLocation.business_address ?? originAddress),
             } as GeocodedAddress)
-          : geocodeAddress(originAddress, apiKey),
-        geocodeAddress(destinationAddressForGeocoding, apiKey),
+          : geocodeAddress(originAddress, geocodingApiKey),
+        geocodeAddress(destinationAddressForGeocoding, geocodingApiKey),
       ]);
       if (!originPoint) {
         return fail("Google Maps could not resolve the vendor's registered business address precisely enough to calculate delivery. Verify the vendor address first.", 422);
@@ -363,7 +380,7 @@ export async function POST(request: Request) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
+          "X-Goog-Api-Key": routesApiKey,
           "X-Goog-FieldMask": "routes.distanceMeters",
         },
         body: JSON.stringify({
