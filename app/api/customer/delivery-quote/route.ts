@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLATFORM_FEE_NGN = 300;
+const FIXED_BENEFICIARY_SHARES_NGN = 700;
 // Current pilot rule: do not quote routes beyond 3 road kilometres.
 const PILOT_MAX_ROUTE_KM = 3;
 const QUOTE_TTL_MINUTES = 10;
@@ -19,6 +20,7 @@ type RateCard = {
   min_distance_km: number | string;
   max_distance_km: number | string;
   customer_delivery_fee: number | string;
+  rider_payout: number | string;
   active: boolean;
   effective_from: string;
   effective_to: string | null;
@@ -149,9 +151,17 @@ function chooseRate(cards: RateCard[], routeDistanceKm: number) {
     return routeDistanceKm <= max && (min === 0 ? routeDistanceKm >= 0 : routeDistanceKm > min);
   });
   if (!selected) return null;
+  const deliveryFee = Number(selected.customer_delivery_fee);
+  const riderPayout = Number(selected.rider_payout);
+  const distanceSurcharge = deliveryFee - riderPayout - FIXED_BENEFICIARY_SHARES_NGN;
+  if (!Number.isFinite(deliveryFee) || !Number.isFinite(riderPayout) ||
+      riderPayout < 800 || distanceSurcharge < 0) return null;
   return {
     version: latestVersion,
-    deliveryFee: Number(selected.customer_delivery_fee),
+    deliveryFee,
+    riderPayout,
+    fixedBeneficiaryShares: FIXED_BENEFICIARY_SHARES_NGN,
+    distanceSurcharge,
   };
 }
 
@@ -415,7 +425,7 @@ export async function POST(request: Request) {
     const nowIso = new Date().toISOString();
     const { data: rateCards, error: rateError } = await adminClient
       .from("delivery_distance_rate_cards")
-      .select("rate_version, min_distance_km, max_distance_km, customer_delivery_fee, active, effective_from, effective_to")
+      .select("rate_version, min_distance_km, max_distance_km, customer_delivery_fee, rider_payout, active, effective_from, effective_to")
       .eq("active", true)
       .lte("effective_from", nowIso)
       .order("rate_version", { ascending: false });
@@ -427,8 +437,7 @@ export async function POST(request: Request) {
     if (!rate || !Number.isFinite(rate.deliveryFee)) return fail("No active delivery price exists for this route distance. Order pricing has been paused for review.", 503);
 
     const canonicalCart = [...items].sort((a, b) => a.menu_item_id.localeCompare(b.menu_item_id));
-    // Stage 2 must recompute this from the submitted street address and locality ID.
-    // The complete address itself is not stored in delivery_quotes.
+    // Checkout revalidates this hash against the saved quote; the full address remains on the order, not the quote.
     const addressHash = hash(JSON.stringify({
       address: deliveryAddress.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
       localityId: selectedLocality.id,
@@ -448,6 +457,9 @@ export async function POST(request: Request) {
         route_distance_km: Number(distanceKm.toFixed(3)),
         rate_version: rate.version,
         customer_delivery_fee: rate.deliveryFee,
+        rider_payout: rate.riderPayout,
+        fixed_beneficiary_shares: rate.fixedBeneficiaryShares,
+        distance_surcharge: rate.distanceSurcharge,
         platform_fee: PLATFORM_FEE_NGN,
         status: "quoted",
         expires_at: expiresAt,
@@ -468,13 +480,16 @@ export async function POST(request: Request) {
         resolvedDestinationAddress,
         localityName: selectedLocalityName,
         deliveryFee: rate.deliveryFee,
+        riderPayout: rate.riderPayout,
+        fixedBeneficiaryShares: rate.fixedBeneficiaryShares,
+        distanceSurcharge: rate.distanceSurcharge,
         platformFee: PLATFORM_FEE_NGN,
         subtotal,
         total: Math.round((subtotal + rate.deliveryFee + PLATFORM_FEE_NGN + Number.EPSILON) * 100) / 100,
         rateVersion: rate.version,
         expiresAt: savedQuote.expires_at,
       },
-      notice: "Price quote only. Order placement remains paused until Stage 2 connects this quote to the existing order-creation functions.",
+      notice: "Delivery price and rider payout are captured from the verified road route and active MKH rate card. Checkout revalidates the saved quote, cart and delivery address before creating the order.",
     }, { headers: { "Cache-Control": "no-store, private" } });
   } catch (error) {
     console.error("Delivery quote request failed:", error instanceof Error ? error.message : "unknown error");
