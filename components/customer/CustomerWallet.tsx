@@ -60,6 +60,11 @@ export default function CustomerWallet() {
   const [showBalance, setShowBalance] = useState(true);
   const [error, setError] = useState("");
   const [activating, setActivating] = useState(false);
+  const [fundingAmount, setFundingAmount] = useState("1000");
+  const [fundingLoading, setFundingLoading] = useState(false);
+  const [fundingError, setFundingError] = useState("");
+  const [fundingNotice, setFundingNotice] = useState("");
+  const [showFundingForm, setShowFundingForm] = useState(false);
 
   const loadWallet = useCallback(async () => {
     try {
@@ -122,6 +127,33 @@ export default function CustomerWallet() {
     }
   }, []);
 
+  const startWalletFunding = async () => {
+    if (fundingLoading || !wallet) return;
+    const normalizedAmount = fundingAmount.trim();
+    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(normalizedAmount) || Number(normalizedAmount) <= 0) {
+      setFundingError("Enter a valid amount in Naira, using no more than two decimal places.");
+      return;
+    }
+
+    setFundingLoading(true);
+    setFundingError("");
+    try {
+      const response = await fetch("/api/customer/wallet/fund/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ amount: normalizedAmount }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true || typeof result.authorizationUrl !== "string") {
+        throw new Error(typeof result?.message === "string" ? result.message : "We could not start wallet funding. Please try again.");
+      }
+      window.location.assign(result.authorizationUrl);
+    } catch (err) {
+      setFundingError(err instanceof Error ? err.message : "We could not start wallet funding. Please try again.");
+      setFundingLoading(false);
+    }
+  };
+
   const activateWallet = async () => {
     if (activating) return;
 
@@ -175,6 +207,24 @@ export default function CustomerWallet() {
     cancelled = true;
   };
 }, [loadWallet]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get("wallet_funding");
+    if (!status) return;
+
+    if (status === "success") {
+      setFundingNotice("Paystack payment verified. Your MKH Wallet has been updated.");
+      void loadWallet();
+    } else if (status === "pending") {
+      setFundingNotice("We could not confirm the payment yet. Your wallet has not been credited. Please check your transaction before attempting another payment.");
+    } else {
+      setFundingNotice("The wallet funding return link was invalid. Check your wallet activity or contact MKH support.");
+    }
+
+    url.searchParams.delete("wallet_funding");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [loadWallet]);
 
   const balanceText = (amount: number) =>
     showBalance ? money(amount) : "₦ ••••••";
@@ -233,7 +283,7 @@ export default function CustomerWallet() {
 
           <p className="mt-2 text-sm text-orange-50">
             {wallet
-              ? "Available for eligible MKH purchases and withdrawals."
+              ? "Available for eligible MKH purchases. Customer cash withdrawals are not enabled."
               : "Your cash wallet will appear here once securely activated."}
           </p>
         </div>
@@ -241,9 +291,9 @@ export default function CustomerWallet() {
         <div className="mt-7 grid grid-cols-2 gap-3">
           <button
             type="button"
-            disabled
-            title="Secure funding will be enabled after payment integration."
-            className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 font-bold text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-75"
+            onClick={() => { setFundingError(""); setShowFundingForm((value) => !value); }}
+            disabled={!wallet || loading || fundingLoading}
+            className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 font-bold text-orange-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Plus className="h-5 w-5" />
             Add Money
@@ -259,9 +309,43 @@ export default function CustomerWallet() {
             Withdraw
           </button>
         </div>
+
+        {showFundingForm && wallet && (
+          <div className="mt-4 rounded-2xl border border-white/30 bg-white/95 p-4 text-gray-900">
+            <label htmlFor="wallet-funding-amount" className="mb-2 block text-sm font-bold">Amount to add (NGN)</label>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                id="wallet-funding-amount"
+                inputMode="decimal"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={fundingAmount}
+                onChange={(event) => setFundingAmount(event.target.value)}
+                disabled={fundingLoading}
+                className="min-w-0 flex-1 rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-orange-500"
+              />
+              <button
+                type="button"
+                onClick={() => void startWalletFunding()}
+                disabled={fundingLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-5 py-3 font-bold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {fundingLoading ? "Opening Paystack..." : "Continue to Paystack"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">Your wallet is credited only after MKH verifies the successful Paystack transaction.</p>
+            {fundingError && <p role="alert" className="mt-2 text-sm text-red-700">{fundingError}</p>}
+          </div>
+        )}
       </div>
 
       <div className="space-y-5 p-5 sm:p-7">
+        {fundingNotice && (
+          <div role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+            {fundingNotice}
+          </div>
+        )}
         {error && (
           <div
             role="alert"
@@ -338,8 +422,7 @@ export default function CustomerWallet() {
               </p>
 
               <p className="mx-auto mt-1 max-w-sm text-sm text-gray-500">
-                Activate your secure wallet to prepare for future MKH
-                payments, eligible withdrawals and rewards.
+                Activate your secure wallet to prepare for MKH payments and rewards.
               </p>
 
               <button

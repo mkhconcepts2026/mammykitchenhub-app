@@ -54,6 +54,7 @@ export default function CheckoutPage() {
   const [localityLoading, setLocalityLoading] = useState(false);
   const [localityError, setLocalityError] = useState("");
   const codCheckoutReference = useRef<string | null>(null);
+  const walletCheckoutReference = useRef<string | null>(null);
 
   async function getCodCheckoutReference(): Promise<string> {
     const signatureInput = JSON.stringify({
@@ -104,6 +105,37 @@ export default function CheckoutPage() {
         codCheckoutReference.current = crypto.randomUUID();
       }
       return codCheckoutReference.current;
+    }
+  }
+
+
+  async function getWalletCheckoutReference(): Promise<string> {
+    const signatureInput = JSON.stringify({
+      cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
+      address: deliveryAddress.trim(),
+      phone: phoneNumber.trim(),
+      notes: customerNotes.trim() || null,
+      deliveryQuoteId: deliveryQuote?.quoteId ?? null,
+    });
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureInput));
+    const signature = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const storageKey = "mkh:wallet-checkout-attempt";
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.signature === signature && typeof parsed.reference === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.reference)) {
+          walletCheckoutReference.current = parsed.reference;
+          return parsed.reference;
+        }
+      }
+      const reference = crypto.randomUUID();
+      walletCheckoutReference.current = reference;
+      sessionStorage.setItem(storageKey, JSON.stringify({ signature, reference }));
+      return reference;
+    } catch {
+      if (!walletCheckoutReference.current) walletCheckoutReference.current = crypto.randomUUID();
+      return walletCheckoutReference.current;
     }
   }
 
@@ -296,8 +328,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (paymentMethod !== "cash_on_delivery") {
-      setPageError("MKH Wallet checkout is paused until its quote-backed order flow is connected. Please use Cash on Delivery for this TEST checkout.");
+    if (paymentMethod === "wallet" && (walletBalance === null || walletBalance < total)) {
+      setPageError("Your MKH Wallet balance is insufficient. Add money to your wallet or choose another payment method.");
       return;
     }
 
@@ -314,44 +346,44 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Reuse the reference for identical checkout details, including after reload.
-      const checkoutReference = await getCodCheckoutReference();
+      const isWalletPayment = paymentMethod === "wallet";
+      // Keep payment-method references separate so a COD retry can never be
+      // replayed as a wallet debit, or vice versa.
+      const checkoutReference = isWalletPayment
+        ? await getWalletCheckoutReference()
+        : await getCodCheckoutReference();
 
-      const response = await fetch("/api/customer/cod/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cart: items.map((item) => ({
-            menu_item_id: item.id,
-            quantity: item.quantity,
-          })),
-          address: deliveryAddress.trim(),
-          phone: phoneNumber.trim(),
-          notes: customerNotes.trim() || null,
-          checkoutReference,
-          deliveryQuoteId: deliveryQuote.quoteId,
-        }),
-      });
+      const response = await fetch(
+        isWalletPayment ? "/api/customer/wallet/checkout" : "/api/customer/cod/checkout",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
+            address: deliveryAddress.trim(),
+            phone: phoneNumber.trim(),
+            notes: customerNotes.trim() || null,
+            checkoutReference,
+            deliveryQuoteId: deliveryQuote.quoteId,
+          }),
+        }
+      );
 
-      const result = await response.json();
-
-      if (
-        !response.ok ||
-        result.success !== true ||
-        typeof result.orderId !== "string"
-      ) {
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true || typeof result?.orderId !== "string") {
         throw new Error(
-          typeof result.error === "string"
-            ? result.error
-            : "Cash on Delivery checkout could not be completed."
+          typeof result?.error === "string" ? result.error :
+          typeof result?.message === "string" ? result.message :
+          (isWalletPayment ? "MKH Wallet checkout could not be completed." : "Cash on Delivery checkout could not be completed.")
         );
       }
 
-      codCheckoutReference.current = null;
-      try {
-        sessionStorage.removeItem("mkh:cod-checkout-attempt");
-      } catch {
-        // Storage may be unavailable; successful checkout must still continue.
+      if (isWalletPayment) {
+        walletCheckoutReference.current = null;
+        try { sessionStorage.removeItem("mkh:wallet-checkout-attempt"); } catch { /* storage may be unavailable */ }
+      } else {
+        codCheckoutReference.current = null;
+        try { sessionStorage.removeItem("mkh:cod-checkout-attempt"); } catch { /* storage may be unavailable */ }
       }
       clearCart();
       router.push(
@@ -545,7 +577,7 @@ export default function CheckoutPage() {
                 <option value="cash_on_delivery">
                   Cash on Delivery
                 </option>
-                <option value="wallet" disabled>MKH Wallet — quote integration pending</option>
+                <option value="wallet">MKH Wallet</option>
                 <option value="card" disabled>
                   Card Payment — Coming Soon
                 </option>
@@ -664,14 +696,12 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={placeOrder}
-            disabled={loading || quoteLoading || items.length === 0 || !deliveryQuote || paymentMethod !== "cash_on_delivery"}
+            disabled={loading || quoteLoading || items.length === 0 || !deliveryQuote || (paymentMethod === "wallet" && (walletLoading || walletBalance === null || walletBalance < total))}
             className="mt-8 w-full rounded-xl bg-orange-500 p-4 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >{loading ? "Placing test order…" : "Place Test COD Order"}</button>
+          >{loading ? "Processing order…" : paymentMethod === "wallet" ? "Pay with MKH Wallet" : "Place Test COD Order"}</button>
 
-          <p className="mt-3 text-xs leading-5 text-amber-800">Cash on Delivery is enabled for TEST orders only. A valid, unexpired delivery quote is required. COD will be disabled for production; production customer payments will use Paystack card payments or MKH Wallet.</p>
-          <p className="mt-4 text-xs leading-5 text-gray-500">
-            MKH Wallet checkout remains paused until its order-creation function is connected atomically to the delivery quote. Paystack card payment is not yet available.
-          </p>
+          <p className="mt-3 text-xs leading-5 text-amber-800">Cash on Delivery is enabled for TEST orders only and will be disabled for production. MKH Wallet orders use the confirmed delivery quote and an atomic wallet debit.</p>
+          <p className="mt-4 text-xs leading-5 text-gray-500">Paystack card payment at checkout is not yet available. Wallet funding is available through the customer dashboard.</p>
         </aside>
       </div>
     </main>
