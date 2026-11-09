@@ -179,8 +179,10 @@ function candidateMatchesStreet(
   if (String(candidate.locationType ?? "").toUpperCase() === "APPROXIMATE") return false;
 
   if (target.houseNumber) {
+    // A street-name match alone is not enough for a numbered delivery address.
+    // Require Google to return the same house number before using this Place ID.
     const matchedNumber = readAddressComponent(components, "street_number").toLowerCase();
-    if (matchedNumber && matchedNumber !== target.houseNumber) return false;
+    if (!matchedNumber || matchedNumber !== target.houseNumber) return false;
   }
   return true;
 }
@@ -208,8 +210,10 @@ async function geocodeAddress(
   }
 
   const matched = payload.results.find((candidate: any) => {
-    if (candidate?.partial_match === true) return false;
-    if (!streetTarget) return true;
+    // For vendor origins (no customer street target), keep rejecting partial results.
+    // For customer destinations, a partial flag may be caused by added locality context;
+    // accept only when the actual route and numbered address components independently match.
+    if (!streetTarget) return candidate?.partial_match !== true;
     return candidateMatchesStreet({
       formattedAddress: candidate?.formatted_address,
       components: candidate?.address_components,
