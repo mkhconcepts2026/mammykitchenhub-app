@@ -81,21 +81,10 @@ function addressWithSelectedLocality(address: string, localityContext: string[])
   const missingContext = localityContext
     .map((value) => value.trim())
     .filter(Boolean)
-    .filter((value) => {
-      const parentheticalAlias = value.match(/\(([^)]+)\)/)?.[1]?.trim();
-      const aliases = [value, parentheticalAlias || ""]
-        .map(normalizeForMatch)
-        .filter(Boolean);
-      return !aliases.some((alias) => foldedAddress.includes(alias));
-    });
+    .filter((value) => !foldedAddress.includes(normalizeForMatch(value)));
   const fullAddress = missingContext.length ? `${address}, ${missingContext.join(", ")}` : address;
   return normaliseAddress(fullAddress);
 }
-
-type StreetTarget = {
-  streetTokens: string[];
-  houseNumber: string | null;
-};
 
 type GeocodedAddress = {
   latitude: number;
@@ -104,94 +93,7 @@ type GeocodedAddress = {
   formattedAddress: string;
 };
 
-const STREET_TYPE_PATTERN = /\b(street|st\.?|road|rd\.?|avenue|ave\.?|close|crescent|drive|dr\.?|lane|ln\.?|way|boulevard|blvd\.?|terrace|ter\.?|court|ct\.?|place|pl\.?)\b/i;
-const STREET_NAME_STOP_WORDS = new Set([
-  "street", "st", "road", "rd", "avenue", "ave", "close", "crescent",
-  "drive", "dr", "lane", "ln", "way", "boulevard", "blvd", "terrace", "ter",
-  "court", "ct", "place", "pl", "estate", "mende", "maryland",
-  "kosofe", "lagos", "nigeria", "no",
-]);
-
-function normalizedWords(value: string): string[] {
-  return value
-    .toLocaleLowerCase("en-NG")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function extractStreetTarget(address: string): StreetTarget | null {
-  const streetTypeMatch = STREET_TYPE_PATTERN.exec(address);
-  if (!streetTypeMatch || typeof streetTypeMatch.index !== "number") return null;
-
-  // The road name is the text before the street-type word. Ignore a leading
-  // house number, then require the actual road-name tokens to be matched by Google.
-  const beforeStreetType = address.slice(0, streetTypeMatch.index);
-  const houseNumberMatch = /^\s*(?:no\.?\s*)?(\d+[a-z]?)\b/i.exec(address);
-  const roadName = beforeStreetType.replace(/^\s*(?:no\.?\s*)?\d+[a-z]?\s*/i, " ");
-  const streetTokens = normalizedWords(roadName).filter(
-    (token) => token.length > 1 && !STREET_NAME_STOP_WORDS.has(token) && !/^\d+$/.test(token),
-  );
-
-  if (!streetTokens.length) return null;
-  return {
-    streetTokens,
-    houseNumber: houseNumberMatch ? houseNumberMatch[1].toLowerCase() : null,
-  };
-}
-
-function readAddressComponent(
-  components: any[],
-  componentType: string,
-): string {
-  const component = components.find(
-    (entry) => Array.isArray(entry?.types) && entry.types.includes(componentType),
-  );
-  const value = component?.long_name ?? component?.longText ?? component?.short_name ?? component?.shortText;
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function candidateMatchesStreet(
-  candidate: {
-    formattedAddress?: unknown;
-    components?: any[];
-    types?: unknown;
-    locationType?: unknown;
-  },
-  target: StreetTarget,
-): boolean {
-  const components = Array.isArray(candidate.components) ? candidate.components : [];
-  const routeName = readAddressComponent(components, "route");
-  const formattedAddress = typeof candidate.formattedAddress === "string" ? candidate.formattedAddress : "";
-  const routeSearchText = routeName || formattedAddress;
-  const candidateWords = new Set(normalizedWords(routeSearchText));
-  if (!target.streetTokens.every((token) => candidateWords.has(token))) return false;
-
-  const types = Array.isArray(candidate.types) ? candidate.types : [];
-  const isStreetLevel = types.some((type) =>
-    ["street_address", "premise", "subpremise", "route"].includes(String(type)),
-  ) || Boolean(routeName);
-  if (!isStreetLevel) return false;
-
-  // An approximate area/estate centroid is not an acceptable substitute for a
-  // named street. Route geometry-centres and interpolated/rooftop street points remain usable.
-  if (String(candidate.locationType ?? "").toUpperCase() === "APPROXIMATE") return false;
-
-  if (target.houseNumber) {
-    // A street-name match alone is not enough for a numbered delivery address.
-    // Require Google to return the same house number before using this Place ID.
-    const matchedNumber = readAddressComponent(components, "street_number").toLowerCase();
-    if (!matchedNumber || matchedNumber !== target.houseNumber) return false;
-  }
-  return true;
-}
-
-async function geocodeAddress(
-  address: string,
-  apiKey: string,
-  streetTarget: StreetTarget | null,
-): Promise<GeocodedAddress | null> {
+async function geocodeAddress(address: string, apiKey: string): Promise<GeocodedAddress | null> {
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   url.searchParams.set("address", normaliseAddress(address));
   url.searchParams.set("region", "ng");
@@ -200,7 +102,8 @@ async function geocodeAddress(
   const response = await fetch(url, { cache: "no-store" });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.status !== "OK" || !Array.isArray(payload?.results) || !payload.results.length) {
-    console.error("MKH Geocoding API did not resolve the street address:", {
+    // Record provider diagnostics without ever logging the API key or full request URL.
+    console.error("MKH Geocoding API did not resolve the address:", {
       httpStatus: response.status,
       providerStatus: typeof payload?.status === "string" ? payload.status : "UNKNOWN",
       providerMessage: typeof payload?.error_message === "string" ? payload.error_message.slice(0, 240) : null,
@@ -209,103 +112,20 @@ async function geocodeAddress(
     return null;
   }
 
-  const matched = payload.results.find((candidate: any) => {
-    // For vendor origins (no customer street target), keep rejecting partial results.
-    // For customer destinations, a partial flag may be caused by added locality context;
-    // accept only when the actual route and numbered address components independently match.
-    if (!streetTarget) return candidate?.partial_match !== true;
-    return candidateMatchesStreet({
-      formattedAddress: candidate?.formatted_address,
-      components: candidate?.address_components,
-      types: candidate?.types,
-      locationType: candidate?.geometry?.location_type,
-    }, streetTarget);
-  });
-
-  if (!matched) {
-    console.warn("MKH Geocoding candidates did not match the requested street:", {
-      requestedStreetTokens: streetTarget?.streetTokens ?? [],
-      candidates: payload.results.slice(0, 3).map((candidate: any) => ({
-        route: readAddressComponent(Array.isArray(candidate?.address_components) ? candidate.address_components : [], "route"),
-        types: Array.isArray(candidate?.types) ? candidate.types : [],
-        locationType: candidate?.geometry?.location_type ?? null,
-        partialMatch: candidate?.partial_match === true,
-      })),
+  // Do not quote a partial address match. The customer must correct the address first.
+  const first = payload.results[0];
+  if (first?.partial_match === true) {
+    console.warn("MKH Geocoding API returned a partial address match:", {
+      formattedAddress: typeof first?.formatted_address === "string" ? first.formatted_address.slice(0, 240) : null,
+      resultTypes: Array.isArray(first?.types) ? first.types : [],
+      locationType: typeof first?.geometry?.location_type === "string" ? first.geometry.location_type : null,
     });
     return null;
   }
-
-  const latitude = Number(matched?.geometry?.location?.lat);
-  const longitude = Number(matched?.geometry?.location?.lng);
-  const placeId = typeof matched?.place_id === "string" ? matched.place_id.trim() : "";
-  const formattedAddress = typeof matched?.formatted_address === "string" ? matched.formatted_address.trim() : "";
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
-      !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !placeId || !formattedAddress) {
-    return null;
-  }
-  return { latitude, longitude, placeId, formattedAddress };
-}
-
-async function searchPlacesAddress(
-  address: string,
-  apiKey: string,
-  streetTarget: StreetTarget,
-  localityCenter: { latitude: number; longitude: number } | null,
-): Promise<GeocodedAddress | null> {
-  const body: Record<string, unknown> = {
-    textQuery: normaliseAddress(address),
-    languageCode: "en",
-    regionCode: "NG",
-  };
-  if (localityCenter) {
-    body.locationBias = {
-      circle: {
-        center: localityCenter,
-        radius: 5000,
-      },
-    };
-  }
-
-  const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": "places.id,places.formattedAddress,places.location,places.addressComponents,places.types",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("MKH Places Text Search could not resolve the requested street:", {
-      httpStatus: response.status,
-      providerMessage: typeof payload?.error?.message === "string" ? payload.error.message.slice(0, 240) : null,
-    });
-    return null;
-  }
-
-  const places = Array.isArray(payload?.places) ? payload.places : [];
-  const matched = places.find((place: any) => candidateMatchesStreet({
-    formattedAddress: place?.formattedAddress,
-    components: place?.addressComponents,
-    types: place?.types,
-  }, streetTarget));
-  if (!matched) {
-    console.warn("MKH Places Text Search candidates did not match the requested street:", {
-      requestedStreetTokens: streetTarget.streetTokens,
-      candidates: places.slice(0, 3).map((place: any) => ({
-        route: readAddressComponent(Array.isArray(place?.addressComponents) ? place.addressComponents : [], "route"),
-        types: Array.isArray(place?.types) ? place.types : [],
-      })),
-    });
-    return null;
-  }
-
-  const latitude = Number(matched?.location?.latitude);
-  const longitude = Number(matched?.location?.longitude);
-  const placeId = typeof matched?.id === "string" ? matched.id.trim() : "";
-  const formattedAddress = typeof matched?.formattedAddress === "string" ? matched.formattedAddress.trim() : "";
+  const latitude = Number(first?.geometry?.location?.lat);
+  const longitude = Number(first?.geometry?.location?.lng);
+  const placeId = typeof first?.place_id === "string" ? first.place_id.trim() : "";
+  const formattedAddress = typeof first?.formatted_address === "string" ? first.formatted_address.trim() : "";
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
       !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !placeId || !formattedAddress) {
     return null;
@@ -375,10 +195,6 @@ export async function POST(request: Request) {
     if (typeof deliveryAddress !== "string" || !deliveryAddress.trim() || deliveryAddress.trim().length > 1000) {
       return fail("Enter the complete street address before calculating the fee.", 400);
     }
-    const streetTarget = extractStreetTarget(deliveryAddress.trim());
-    if (!streetTarget) {
-      return fail("Enter a house number and street name, including its street type, plus the estate or landmark. An estate name alone (for example, Arowojobe Estate) is not precise enough for a road-distance quote.", 400);
-    }
     if (typeof deliveryLocalityId !== "string" || !UUID_PATTERN.test(deliveryLocalityId)) {
       return fail("Search for and select your delivery locality from MKH's active locality records.", 400);
     }
@@ -386,7 +202,7 @@ export async function POST(request: Request) {
 
     const { data: selectedLocality, error: localityError } = await adminClient
       .from("localities")
-      .select("id, name, locality_type, is_active, latitude, longitude, lga_id, lcda_id")
+      .select("id, name, locality_type, is_active, lcda_id")
       .eq("id", deliveryLocalityId)
       .eq("is_active", true)
       .maybeSingle();
@@ -398,24 +214,6 @@ export async function POST(request: Request) {
       return fail("Choose an active locality from MKH's list, then try again.", 422);
     }
     const selectedLocalityName = selectedLocality.name.trim();
-
-    // MKH owns the administrative assignment. Google receives this context only
-    // to improve street-level resolution; Google's administrative labels are not
-    // used as MKH's source of truth.
-    let selectedLgaName = "";
-    if (typeof (selectedLocality as any).lga_id === "string") {
-      const { data: lga, error: lgaError } = await adminClient
-        .from("local_governments")
-        .select("id, name")
-        .eq("id", (selectedLocality as any).lga_id)
-        .maybeSingle();
-      if (lgaError) {
-        console.error("Delivery quote LGA lookup failed:", lgaError.message);
-        return fail("We could not verify the selected locality's local government. Please try again.", 503);
-      }
-      selectedLgaName = typeof lga?.name === "string" ? lga.name.trim() : "";
-    }
-
     let selectedLcdaName = "";
     if (typeof (selectedLocality as any).lcda_id === "string") {
       const { data: lcda, error: lcdaError } = await adminClient
@@ -429,11 +227,9 @@ export async function POST(request: Request) {
       }
       selectedLcdaName = typeof lcda?.name === "string" ? lcda.name.trim() : "";
     }
-
-    const localityDisambiguator = selectedLocalityName.match(/\(([^)]+)\)/)?.[1]?.trim() || selectedLocalityName;
     const destinationAddressForGeocoding = addressWithSelectedLocality(
       deliveryAddress.trim(),
-      [localityDisambiguator, selectedLcdaName, selectedLgaName],
+      [selectedLocalityName, selectedLcdaName],
     );
 
     const seen = new Set<string>();
@@ -558,34 +354,14 @@ export async function POST(request: Request) {
 
     // Keep Geocoding and Routes credentials separate: a Routes-only key cannot call Geocoding API.
     const geocodingApiKey = process.env.GOOGLE_MAPS_GEOCODING_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
-    const placesApiKey = process.env.GOOGLE_MAPS_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || geocodingApiKey;
     const routesApiKey = process.env.GOOGLE_MAPS_ROUTES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
     if (!geocodingApiKey) return fail("Address resolution is not configured. Set GOOGLE_MAPS_GEOCODING_API_KEY on the server and restart the app.", 503);
-    if (!placesApiKey) return fail("Street search is not configured. Set GOOGLE_MAPS_PLACES_API_KEY on the server and restart the app.", 503);
     if (!routesApiKey) return fail("Road-distance pricing is not configured yet. Set GOOGLE_MAPS_ROUTES_API_KEY on the server and restart the app.", 503);
 
     let distanceMeters: number;
     let resolvedVendorAddress: string;
     let resolvedDestinationAddress: string;
     try {
-      const localityLatitude = Number((selectedLocality as any).latitude);
-      const localityLongitude = Number((selectedLocality as any).longitude);
-      const localityCenter = Number.isFinite(localityLatitude) && localityLatitude >= -90 && localityLatitude <= 90 &&
-        Number.isFinite(localityLongitude) && localityLongitude >= -180 && localityLongitude <= 180
-        ? { latitude: localityLatitude, longitude: localityLongitude }
-        : null;
-
-      const resolveCustomerDestination = async (): Promise<GeocodedAddress | null> => {
-        // First try Geocoding. Accept a candidate only when Google's route/address
-        // components contain the actual street name supplied by the customer.
-        const geocoded = await geocodeAddress(destinationAddressForGeocoding, geocodingApiKey, streetTarget);
-        if (geocoded) return geocoded;
-
-        // Then use Places Text Search with a soft bias around the selected MKH locality.
-        // This can find named roads/streets that the Geocoding endpoint misses.
-        return searchPlacesAddress(destinationAddressForGeocoding, placesApiKey, streetTarget, localityCenter);
-      };
-
       const [originPoint, destinationPoint] = await Promise.all([
         verifiedVendorLocation &&
         typeof verifiedVendorLocation.google_place_id === "string" &&
@@ -598,22 +374,17 @@ export async function POST(request: Request) {
               placeId: verifiedVendorLocation.google_place_id.trim(),
               formattedAddress: String(verifiedVendorLocation.business_address ?? originAddress),
             } as GeocodedAddress)
-          : geocodeAddress(originAddress, geocodingApiKey, null),
-        resolveCustomerDestination(),
+          : geocodeAddress(originAddress, geocodingApiKey),
+        geocodeAddress(destinationAddressForGeocoding, geocodingApiKey),
       ]);
       if (!originPoint) {
         return fail("Google Maps could not resolve the vendor's registered business address precisely enough to calculate delivery. Verify the vendor address first.", 422);
       }
       if (!destinationPoint) {
-        return fail("Google Maps could not verify the street name you entered inside the selected MKH locality. No delivery quote was created. Check the street spelling, or have the street/estate location verified on Google Maps before retrying. MKH will not substitute a different Arowojobe or Mende address.", 422);
+        return fail("Google Maps could not resolve the delivery address precisely enough. Add a more complete street address and landmark, then try again.", 422);
       }
       resolvedVendorAddress = originPoint.formattedAddress;
-      // Keep the customer's street text and MKH's administrative assignment in the
-      // checkout display. Google's formatted administrative labels are not authoritative.
-      resolvedDestinationAddress = addressWithSelectedLocality(
-        deliveryAddress.trim(),
-        [selectedLocalityName, selectedLcdaName, selectedLgaName],
-      );
+      resolvedDestinationAddress = destinationPoint.formattedAddress;
 
       const routeResponse = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
         method: "POST",
@@ -707,14 +478,7 @@ export async function POST(request: Request) {
         distanceKm: Number(distanceKm.toFixed(3)),
         resolvedVendorAddress,
         resolvedDestinationAddress,
-        // These are MKH administrative labels, kept separate from Google's
-        // formatted street address so Google cannot override MKH's assignments.
         localityName: selectedLocalityName,
-        lcdaName: selectedLcdaName || null,
-        lgaName: selectedLgaName || null,
-        administrativeLabel: [selectedLocalityName, selectedLcdaName, selectedLgaName, "Lagos", "Nigeria"]
-          .filter(Boolean)
-          .join(", "),
         deliveryFee: rate.deliveryFee,
         riderPayout: rate.riderPayout,
         fixedBeneficiaryShares: rate.fixedBeneficiaryShares,
