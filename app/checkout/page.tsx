@@ -27,6 +27,7 @@ type DeliveryQuote = {
   resolvedVendorAddress: string;
   resolvedDestinationAddress: string;
   localityName: string;
+  lgaName?: string | null;
 };
 
 export default function CheckoutPage() {
@@ -431,7 +432,7 @@ export default function CheckoutPage() {
                 required
                 autoComplete="street-address"
                 maxLength={1000}
-                placeholder="Enter delivery address"
+                placeholder="e.g. 9 Bamidele Adebule Street, Arowojobe Estate"
                 value={deliveryAddress}
                 onChange={(e) => {
                   setDeliveryAddress(e.target.value);
@@ -497,7 +498,7 @@ export default function CheckoutPage() {
                   </p>
                 )}
                 {localityError && <p role="alert" className="text-sm text-red-700">{localityError}</p>}
-                <p className="text-xs text-gray-600">Select the area from MKH’s database, then keep the street/house number and landmark in the address field above. The exact destination is still checked separately.</p>
+                <p className="text-xs text-gray-600">Enter the house number and street name (including Street, Road, Close, etc.) plus the estate or landmark above. An estate name alone is not enough for a reliable road-distance quote. MKH supplies the locality and LGA; Google must match the actual street before a quote is issued.</p>
               </div><button
                 type="button"
                 onClick={calculateDeliveryQuote}
@@ -511,6 +512,7 @@ export default function CheckoutPage() {
                 <div className="mt-3 space-y-1 text-sm text-green-800">
                   <p><strong>From vendor:</strong> {deliveryQuote.resolvedVendorAddress}</p>
                   <p><strong>MKH locality:</strong> {deliveryQuote.localityName}</p>
+                  <p><strong>MKH LGA:</strong> {deliveryQuote.lgaName || "Not assigned"}</p>
                   <p><strong>Mapped destination:</strong> {deliveryQuote.resolvedDestinationAddress}</p>
                   <p>Road distance: {deliveryQuote.distanceKm.toFixed(2)} km</p>
                   <p>Delivery fee: {formatNaira(deliveryQuote.deliveryFee)}</p>
