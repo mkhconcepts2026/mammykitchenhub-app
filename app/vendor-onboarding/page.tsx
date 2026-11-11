@@ -2078,74 +2078,37 @@ const sendOtp = async () => {
             .data.publicUrl;
       }
 
-      const { data: applicationRecord, error } =
-        await supabase
-          .from("vendor_applications")
-          .insert({
-
-            vendor_type:
-              vendorData.vendorType,
-
-            kitchen_name:
-              vendorData.kitchenName,
-
-            email:
-              vendorData.email,
-
-            phone:
-              vendorData.phone,
-
-            business_address:
-              vendorData.address,
-
-            owner_name:
-              vendorData.ownerName,
-
-            owner_phone:
-              vendorData.ownerPhone,
-
-            bank_code:
-              vendorData.bankCode,
-
-            account_number:
-              vendorData.accountNumber,
-
-            account_name:
-              vendorData.accountName,
-
-            cac_url:
-              cacUrl,
-
-            id_url:
-              idUrl,
-
-            selfie_url:
-              selfieUrl,
-
-            kitchen_photo_url:
-              kitchenPhotoUrl,
-
-            store_slug: vendorData.storeSlug,
-
-            onboarding_status:
-              "pending",
-
-            kyc_status:
-              "pending_review"
-          } as any)
-          .select("id")
-          .single();
-
-    if (error) {
-
-  console.error(error);
-
-  alert(
-    JSON.stringify(error, null, 2)
-  );
-
-  return;
-}
+      const applicationResponse = await fetch("/api/vendor-onboarding/application", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor_type: vendorData.vendorType,
+          kitchen_name: vendorData.kitchenName,
+          email: vendorData.email,
+          phone: vendorData.phone,
+          business_address: vendorData.address,
+          owner_name: vendorData.ownerName,
+          owner_phone: vendorData.ownerPhone,
+          bank_code: vendorData.bankCode,
+          account_number: vendorData.accountNumber,
+          account_name: vendorData.accountName,
+          cac_url: cacUrl,
+          id_url: idUrl,
+          selfie_url: selfieUrl,
+          kitchen_photo_url: kitchenPhotoUrl,
+          store_slug: vendorData.storeSlug,
+        }),
+      });
+      const applicationResult = await applicationResponse.json().catch(() => null);
+      if (!applicationResponse.ok || applicationResult?.success !== true) {
+        throw new Error(
+          typeof applicationResult?.message === "string"
+            ? applicationResult.message
+            : "Your vendor application could not be securely submitted.",
+        );
+      }
+      const applicationRecord = applicationResult.application;
 
       if (applicationRecord?.id) {
         try {
