@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (action === "submit_transfer") {
+  if (action === "start_processing" || action === "submit_transfer") {
     const { data: payout, error: payoutError } = await adminClient
       .from("payout_requests")
       .select("id, requester_id, requester_type, status")
@@ -269,9 +269,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const expectedStatus = action === "start_processing" ? "approved" : "processing";
+    if (String(payout.status ?? "").toLowerCase() !== expectedStatus) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            action === "start_processing"
+              ? "Only an approved vendor payout can enter processing."
+              : "Only a payout already in processing can be submitted for transfer.",
+        },
+        { status: 409 }
+      );
+    }
+
     const { data: verifiedAccounts, error: bankError } = await adminClient
       .from("vendor_bank_accounts")
-      .select("id")
+      .select("id, bank_name, account_name, account_number")
       .eq("vendor_id", payout.requester_id)
       .eq("verified", true);
 
@@ -285,11 +299,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if ((verifiedAccounts ?? []).length !== 1) {
+    const singleVerifiedAccount =
+      (verifiedAccounts ?? []).length === 1 ? verifiedAccounts![0] : null;
+    const accountComplete = Boolean(
+      singleVerifiedAccount &&
+      String(singleVerifiedAccount.bank_name ?? "").trim() &&
+      String(singleVerifiedAccount.account_name ?? "").trim() &&
+      String(singleVerifiedAccount.account_number ?? "").trim()
+    );
+
+    if (!accountComplete) {
       return NextResponse.json(
         {
           success: false,
-          message: "Transfer submission requires exactly one verified vendor bank account.",
+          code: "VERIFIED_BANK_ACCOUNT_REQUIRED",
+          message:
+            "Finance cannot move this payout forward until the vendor has exactly one complete, verified bank account on record.",
         },
         { status: 409 }
       );
