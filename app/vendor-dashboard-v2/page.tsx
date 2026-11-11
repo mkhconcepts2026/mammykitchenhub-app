@@ -129,26 +129,11 @@ const [imageFile,setImageFile] =
   const [availableBalance, setAvailableBalance] =
   useState(0);
 
-const [pendingBalance, setPendingBalance] =
+const [nextPayoutBalance, setNextPayoutBalance] =
   useState(0);
 
-const nextFriday = new Date();
-
-while (nextFriday.getDay() !== 5) {
-  nextFriday.setDate(
-    nextFriday.getDate() + 1
-  );
-}
-
-const nextFridayText =
-  nextFriday.toLocaleDateString(
-    "en-NG",
-    {
-      weekday: "long",
-      month: "short",
-      day: "numeric"
-    }
-  );
+const [pendingBalance, setPendingBalance] =
+  useState(0);
 
 const [totalEarned, setTotalEarned] =
   useState(0);
@@ -308,49 +293,22 @@ console.log(
       setHasPendingPayout(!!payoutHistoryResult.hasActivePayout);
 
 if (wallet) {
+  const walletAvailableBalance = Number(wallet.available_balance || 0);
+  const walletAccruedBalance = Number(wallet.accrued_balance || 0);
+  const walletReservedBalance = Number(wallet.pending_balance || 0);
+  const payoutEligibleBalance =
+    walletAvailableBalance + walletAccruedBalance;
 
-  let availableBalance =
-    Number(
-      wallet.available_balance || 0
-    );
+  // The payout RPC reserves available + accrued funds only when the
+  // Friday–Sunday vendor request window is open.
+  const payoutWindowOpen = isVendorPayoutWindowOpen();
 
-  let pendingBalance =
-    Number(
-      wallet.accrued_balance || 0
-    );
-
-  // Display accrued earnings as withdrawable during the vendor request window.
-  // The protected database payout function performs the actual atomic reservation.
-
-  if (
-
-    isPayoutWindowOpen &&
-
-    pendingBalance > 0
-
-  ) {
-
-    availableBalance +=
-      pendingBalance;
-
-    pendingBalance = 0;
-
-  }
-
+  setNextPayoutBalance(payoutEligibleBalance);
   setAvailableBalance(
-    availableBalance
+    payoutWindowOpen ? payoutEligibleBalance : 0
   );
-
-  setPendingBalance(
-    pendingBalance
-  );
-
-  setTotalEarned(
-    Number(
-      wallet.lifetime_earnings || 0
-    )
-  );
-
+  setPendingBalance(walletReservedBalance);
+  setTotalEarned(Number(wallet.lifetime_earnings || 0));
 }
 
       const {
@@ -413,7 +371,7 @@ async function loadMenuItems(){
 
 }
 
-function checkPayoutWindow() {
+function isVendorPayoutWindowOpen() {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Africa/Lagos",
     weekday: "short",
@@ -427,10 +385,16 @@ function checkPayoutWindow() {
   );
   const day = lagosTime.weekday;
   const hour = Number(lagosTime.hour);
-  const payoutWindowOpen =
+
+  return (
     (day === "Fri" && hour >= 16) ||
     day === "Sat" ||
-    day === "Sun";
+    day === "Sun"
+  );
+}
+
+function checkPayoutWindow() {
+  const payoutWindowOpen = isVendorPayoutWindowOpen();
 
   setIsPayoutWindowOpen(payoutWindowOpen);
   setNextPayoutText(
@@ -1186,9 +1150,13 @@ async function requestPayout() {
     }
 
     // The database function has atomically reserved available + accrued funds.
+    const reservedAmount = Number(
+      result.payout?.amount ?? availableBalance
+    );
     setHasPendingPayout(true);
     setAvailableBalance(0);
-    setPendingBalance(0);
+    setNextPayoutBalance(0);
+    setPendingBalance(reservedAmount);
     alert(result.message || "Payout request submitted for review.");
   } catch (error) {
     console.error("Vendor payout request failed:", error);
@@ -1429,7 +1397,9 @@ useEffect(() => {
 >
 
   <p className="text-orange-100">
-    Available for Withdrawal
+    {isPayoutWindowOpen
+      ? "Available for Withdrawal"
+      : "Accrued for Next Payout"}
   </p>
 
   <h2
@@ -1439,7 +1409,11 @@ useEffect(() => {
       mt-2
     "
   >
-    ₦{pendingBalance.toLocaleString()}
+    ₦{(
+      isPayoutWindowOpen
+        ? availableBalance
+        : nextPayoutBalance
+    ).toLocaleString()}
   </h2>
 
   <p
@@ -1450,10 +1424,8 @@ useEffect(() => {
   >
     {
       isPayoutWindowOpen
-
-        ? "Withdrawal window is open"
-
-        : "Withdrawal window opens Friday 4PM"
+        ? "Withdrawal window closes Sunday 11:59 PM"
+        : "Withdrawal window opens Friday at 4:00 PM"
     }
   </p>
 
@@ -1462,7 +1434,7 @@ useEffect(() => {
     disabled={
       !isPayoutWindowOpen ||
       isSubmittingPayout ||
-      pendingBalance <= 0 ||
+      availableBalance <= 0 ||
       hasPendingPayout
     }
     className={`
@@ -1497,11 +1469,15 @@ useEffect(() => {
 
         ? "Payout Request Submitted"
 
-        : isPayoutWindowOpen
+        : !isPayoutWindowOpen
 
-        ? "Withdraw Funds"
+        ? "Available Friday 4PM - Sunday 11:59PM"
 
-        : "Available Friday 4PM - Sunday 11:59PM"
+        : availableBalance <= 0
+
+        ? "No Funds Available"
+
+        : "Withdraw Funds"
 
     }
 
@@ -1566,7 +1542,9 @@ useEffect(() => {
       }
     `}
   >
-    Available on {nextFridayText}
+    {pendingBalance > 0
+      ? "Funds reserved for an active payout request"
+      : "No funds currently reserved for payout"}
   </p>
 
 </div>
