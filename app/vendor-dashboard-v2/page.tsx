@@ -6,6 +6,7 @@ import VendorStorefrontCard from "@/components/vendor/VendorStorefrontCard";
 import VendorOrdersTab from "@/components/vendor/VendorOrdersTab";
 import VendorMenuTab from "@/components/vendor/VendorMenuTab";
 import VendorKYCTab from "@/components/vendor/VendorKYCTab";
+import VendorBankAccountTab from "@/components/vendor/VendorBankAccountTab";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -17,6 +18,7 @@ type Tab =
   | "orders"
   | "menu"
   | "earnings"
+  | "bank"
   | "kyc";
 
 export default function VendorDashboardV2() {
@@ -1880,6 +1882,8 @@ useEffect(() => {
 
 </div>
 )}
+
+       {currentTab === "bank" && <VendorBankAccountTab />}
 
        {currentTab === "kyc" && (
   <>
