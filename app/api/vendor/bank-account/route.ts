@@ -206,7 +206,7 @@ export async function GET() {
     if (!row && access.context.email) {
       const { data: application } = await adminClient
         .from("vendor_applications")
-        .select("bank_code, account_number, account_number_last4, account_name")
+        .select("bank_code, account_number, account_number_encrypted, account_number_last4, account_name")
         .eq("email", access.context.email)
         .eq("status", "approved")
         .order("created_at", { ascending: false })
