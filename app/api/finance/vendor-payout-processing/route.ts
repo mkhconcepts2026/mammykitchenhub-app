@@ -134,16 +134,32 @@ export async function GET() {
     for (const account of accounts ?? []) {
       // Never send stored ciphertext to the browser. Only the authorized
       // Finance/Admin response receives the decrypted destination number.
-      const accountNumber = account.account_number_encrypted
-        ? decryptVendorBankAccountNumber(account.account_number_encrypted)
-        : "";
+      const last4 = String(account.account_number_last4 ?? "").trim();
+      let accountNumber = "";
+      let accountNumberEncryptionValid = false;
+      if (account.account_number_encrypted) {
+        try {
+          const decrypted = decryptVendorBankAccountNumber(
+            account.account_number_encrypted,
+          );
+          accountNumberEncryptionValid =
+            /^\d{10}$/.test(decrypted) && last4 === decrypted.slice(-4);
+          if (accountNumberEncryptionValid) accountNumber = decrypted;
+        } catch (decryptionError) {
+          console.error(
+            "Finance bank-account decryption failed:",
+            decryptionError instanceof Error ? decryptionError.message : "unknown error",
+          );
+        }
+      }
       const financeAccount = {
         id: account.id,
         vendor_id: account.vendor_id,
         bank_name: account.bank_name,
         account_name: account.account_name,
         account_number: accountNumber,
-        account_number_last4: String(account.account_number_last4 ?? "").trim(),
+        account_number_last4: last4,
+        account_number_encryption_valid: accountNumberEncryptionValid,
         verified: account.verified === true,
         created_at: account.created_at,
       };
