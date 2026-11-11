@@ -90,8 +90,6 @@ export async function POST() {
       };
     }> = [];
 
-    const tableSnapshots = new Map<TableName, AccountRow[]>();
-
     for (const table of TABLES) {
       const { data, error } = await (adminClient as any)
         .from(table)
@@ -106,7 +104,6 @@ export async function POST() {
       }
 
       const rows = (data ?? []) as AccountRow[];
-      tableSnapshots.set(table, rows);
 
       for (const row of rows) {
         const raw = typeof row.account_number === "string" && row.account_number.trim()
