@@ -106,9 +106,10 @@ export async function POST() {
       const rows = (data ?? []) as AccountRow[];
 
       for (const row of rows) {
-        const raw = typeof row.account_number === "string" && row.account_number.trim()
-          ? row.account_number
-          : null;
+        const storedPlaintext =
+          typeof row.account_number === "string" ? row.account_number : null;
+        const raw =
+          storedPlaintext && storedPlaintext.trim() ? storedPlaintext : null;
         const digits = raw ? normalizeAccountNumber(raw) : "";
         const existingCiphertext = String(row.account_number_encrypted ?? "").trim();
         const currentLast4 = String(row.account_number_last4 ?? "").trim();
@@ -124,11 +125,11 @@ export async function POST() {
           }
 
           const last4 = decrypted.slice(-4);
-          if (raw || currentLast4 !== last4) {
+          if (storedPlaintext !== null || currentLast4 !== last4) {
             plans.push({
               table,
               id: row.id,
-              expectedPlaintext: raw,
+              expectedPlaintext: storedPlaintext,
               patch: {
                 account_number: null,
                 account_number_last4: last4,
@@ -150,12 +151,21 @@ export async function POST() {
           plans.push({
             table,
             id: row.id,
-            expectedPlaintext: raw,
+            expectedPlaintext: storedPlaintext,
             patch: {
               account_number: null,
               account_number_encrypted: encryptVendorBankAccountNumber(digits),
               account_number_last4: digits.slice(-4),
             },
+          });
+        } else if (storedPlaintext !== null) {
+          // Clear empty/whitespace-only legacy values before the final
+          // database constraint requires the old column to remain NULL.
+          plans.push({
+            table,
+            id: row.id,
+            expectedPlaintext: storedPlaintext,
+            patch: { account_number: null },
           });
         }
       }
