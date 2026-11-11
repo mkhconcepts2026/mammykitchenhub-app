@@ -323,7 +323,10 @@ export async function POST(request: NextRequest) {
         const decryptedAccountNumber = decryptVendorBankAccountNumber(
           singleVerifiedAccount.account_number_encrypted,
         );
-        encryptedAccountIsValid = /^\d{10}$/.test(decryptedAccountNumber);
+        encryptedAccountIsValid =
+          /^\d{10}$/.test(decryptedAccountNumber) &&
+          String(singleVerifiedAccount.account_number_last4 ?? "").trim() ===
+            decryptedAccountNumber.slice(-4);
       } catch {
         encryptedAccountIsValid = false;
       }
