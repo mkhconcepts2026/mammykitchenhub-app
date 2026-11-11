@@ -232,6 +232,11 @@ export async function GET() {
       ? {
           id: row.id,
           bankName: row.bank_name ?? "",
+          bankCode:
+            bankDirectory.find(
+              (bank) =>
+                bank.name.toLowerCase() === String(row.bank_name ?? "").toLowerCase(),
+            )?.code ?? "",
           accountName: row.account_name ?? "",
           accountLast4: maskAccount(row.account_number),
           verified: row.verified === true,
@@ -399,6 +404,7 @@ export async function PUT(request: NextRequest) {
       account: {
         id: saved.id,
         bankName: saved.bank_name ?? "",
+        bankCode,
         accountName: saved.account_name ?? "",
         accountLast4: maskAccount(saved.account_number),
         verified: saved.verified === true,
