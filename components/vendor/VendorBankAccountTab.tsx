@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { BadgeCheck, Building2, LockKeyhole, RefreshCw, WalletCards } from "lucide-react";
 
 type Bank = {
@@ -81,7 +82,7 @@ export default function VendorBankAccountTab() {
     void load();
   }, [load]);
 
-  async function saveBankAccount(event: React.FormEvent<HTMLFormElement>) {
+  async function saveBankAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setNotice("");
