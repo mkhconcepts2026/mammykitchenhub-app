@@ -215,7 +215,9 @@ export async function GET() {
 
       if (
         application?.bank_code &&
-        application?.account_number &&
+        (application?.account_number_last4 ||
+          application?.account_number_encrypted ||
+          application?.account_number) &&
         application?.account_name
       ) {
         const bankCode = String(application.bank_code);
