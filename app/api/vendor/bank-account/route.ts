@@ -5,9 +5,7 @@ import { adminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ACTIVE_PAYOUT_STATUSES = [
-  "pending",
-  "approved",
+const BANK_CHANGE_LOCK_STATUSES = [
   "processing",
   "transfer_submitted",
   "on_hold",
@@ -153,7 +151,7 @@ async function getActivePayout(vendorId: string) {
     .select("id, status, requested_at")
     .eq("requester_id", vendorId)
     .eq("requester_type", "vendor")
-    .in("status", ACTIVE_PAYOUT_STATUSES)
+    .in("status", BANK_CHANGE_LOCK_STATUSES)
     .order("requested_at", { ascending: false })
     .limit(1)
     .maybeSingle();
