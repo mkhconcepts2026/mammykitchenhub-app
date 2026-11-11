@@ -26,17 +26,17 @@ ALTER TABLE public.vendor_kyc
   ADD COLUMN IF NOT EXISTS account_number_last4 character(4);
 
 UPDATE public.vendor_bank_accounts
-SET account_number_last4 = RIGHT(REGEXP_REPLACE(account_number, '\\D', '', 'g'), 4)
+SET account_number_last4 = RIGHT(REGEXP_REPLACE(account_number, '\D', '', 'g'), 4)
 WHERE NULLIF(BTRIM(account_number), '') IS NOT NULL
   AND account_number_last4 IS NULL;
 
 UPDATE public.vendor_applications
-SET account_number_last4 = RIGHT(REGEXP_REPLACE(account_number, '\\D', '', 'g'), 4)
+SET account_number_last4 = RIGHT(REGEXP_REPLACE(account_number, '\D', '', 'g'), 4)
 WHERE NULLIF(BTRIM(account_number), '') IS NOT NULL
   AND account_number_last4 IS NULL;
 
 UPDATE public.vendor_kyc
-SET account_number_last4 = RIGHT(REGEXP_REPLACE(account_number, '\\D', '', 'g'), 4)
+SET account_number_last4 = RIGHT(REGEXP_REPLACE(account_number, '\D', '', 'g'), 4)
 WHERE NULLIF(BTRIM(account_number), '') IS NOT NULL
   AND account_number_last4 IS NULL;
 
