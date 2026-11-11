@@ -1218,7 +1218,7 @@ const {
   error
 } = await supabase
   .from("vendor_applications")
-  .select("*");
+  .select("id,created_at,vendor_type,kitchen_name,email,phone,business_address,owner_name,owner_phone,bank_code,account_name,cac_url,id_url,selfie_url,kitchen_photo_url,onboarding_status,kyc_status,review_notes,status,kyc_reviewed_at,kyc_reviewed_by,kyc_review_notes,digital_address_code,digital_address_verified,digital_address_verified_at,digital_address_provider,store_slug");
 
 if (error) {
   console.error(error);
