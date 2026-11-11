@@ -1612,7 +1612,15 @@ export default function FinanceCommandCenter() {
                                         <div className="mt-2 space-y-1 text-xs text-slate-700">
                                           <p><strong>{verifiedAccounts[0].bank_name || "Bank unavailable"}</strong></p>
                                           <p>Account name: {verifiedAccounts[0].account_name || "Not supplied"}</p>
-                                          <p>Account number: <strong className="tabular-nums">{verifiedAccounts[0].account_number || "Not supplied"}</strong></p>
+                                          {verifiedAccounts[0].account_number_encryption_valid && verifiedAccounts[0].account_number ? (
+                                            <p>Account number: <strong className="tabular-nums">{verifiedAccounts[0].account_number}</strong></p>
+                                          ) : (
+                                            <p className="font-semibold text-amber-800">
+                                              {verifiedAccounts[0].account_number_last4
+                                                ? `Encrypted account ending ${verifiedAccounts[0].account_number_last4}; decryption verification is unavailable. Transfer actions remain blocked.`
+                                                : "Encrypted bank-account details are not yet available. Transfer actions remain blocked."}
+                                            </p>
+                                          )}
                                         </div>
                                       ) : (
                                         <p className="mt-2 text-xs font-semibold text-amber-800">
