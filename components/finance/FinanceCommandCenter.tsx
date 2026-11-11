@@ -658,6 +658,18 @@ export default function FinanceCommandCenter() {
   async function startVendorPayoutProcessing(payout: any) {
     if (payout.status !== "approved") return;
 
+    const verifiedAccounts =
+      (payout.bank_accounts || []).filter(
+        (account: any) => account.verified === true
+      );
+
+    if (verifiedAccounts.length !== 1) {
+      setVendorPayoutQueueError(
+        "Processing is blocked: this vendor must have exactly one verified bank account on record."
+      );
+      return;
+    }
+
     if (!window.confirm(
       `Move ${payout.vendor_name || "this vendor"}'s ${formatNaira(payout.amount)} approved payout into processing? This does not send money.`
     )) return;
@@ -1617,9 +1629,16 @@ export default function FinanceCommandCenter() {
 
                                     <div className="mt-4 flex flex-wrap gap-2">
                                       {status === "approved" && (
-                                        <button type="button" onClick={() => void startVendorPayoutProcessing(payout)} disabled={working || Boolean(vendorPayoutActionId)} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:opacity-50">
-                                          Start processing
-                                        </button>
+                                        <div className="flex flex-col items-end gap-1">
+                                          <button type="button" onClick={() => void startVendorPayoutProcessing(payout)} disabled={working || Boolean(vendorPayoutActionId) || verifiedAccounts.length !== 1} title={verifiedAccounts.length === 1 ? "Start payout processing" : "Exactly one verified vendor bank account is required"} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50">
+                                            Start processing
+                                          </button>
+                                          {verifiedAccounts.length !== 1 && (
+                                            <span className="max-w-[190px] text-right text-[10px] leading-4 text-amber-700">
+                                              One verified bank account is required before processing.
+                                            </span>
+                                          )}
+                                        </div>
                                       )}
 
                                       {status === "processing" && (
