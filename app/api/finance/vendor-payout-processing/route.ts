@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
+import { decryptVendorBankAccountNumber } from "@/lib/vendor-payout/encryption";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,7 +109,7 @@ export async function GET() {
 
       adminClient
         .from("vendor_bank_accounts")
-        .select("id, vendor_id, bank_name, account_name, account_number, verified, created_at")
+        .select("id, vendor_id, bank_name, account_name, account_number_encrypted, account_number_last4, verified, created_at")
         .in("vendor_id", vendorIds)
         .eq("verified", true)
         .order("created_at", { ascending: false }),
@@ -131,8 +132,39 @@ export async function GET() {
     const accountsMap = new Map<string, any[]>();
 
     for (const account of accounts ?? []) {
+      // Never send stored ciphertext to the browser. Only the authorized
+      // Finance/Admin response receives the decrypted destination number.
+      const last4 = String(account.account_number_last4 ?? "").trim();
+      let accountNumber = "";
+      let accountNumberEncryptionValid = false;
+      if (account.account_number_encrypted) {
+        try {
+          const decrypted = decryptVendorBankAccountNumber(
+            account.account_number_encrypted,
+          );
+          accountNumberEncryptionValid =
+            /^\d{10}$/.test(decrypted) && last4 === decrypted.slice(-4);
+          if (accountNumberEncryptionValid) accountNumber = decrypted;
+        } catch (decryptionError) {
+          console.error(
+            "Finance bank-account decryption failed:",
+            decryptionError instanceof Error ? decryptionError.message : "unknown error",
+          );
+        }
+      }
+      const financeAccount = {
+        id: account.id,
+        vendor_id: account.vendor_id,
+        bank_name: account.bank_name,
+        account_name: account.account_name,
+        account_number: accountNumber,
+        account_number_last4: last4,
+        account_number_encryption_valid: accountNumberEncryptionValid,
+        verified: account.verified === true,
+        created_at: account.created_at,
+      };
       const list = accountsMap.get(String(account.vendor_id)) ?? [];
-      list.push(account);
+      list.push(financeAccount);
       accountsMap.set(String(account.vendor_id), list);
     }
 
@@ -285,7 +317,7 @@ export async function POST(request: NextRequest) {
 
     const { data: verifiedAccounts, error: bankError } = await adminClient
       .from("vendor_bank_accounts")
-      .select("id, bank_name, account_name, account_number")
+      .select("id, bank_name, account_name, account_number_encrypted, account_number_last4")
       .eq("vendor_id", payout.requester_id)
       .eq("verified", true);
 
@@ -301,11 +333,26 @@ export async function POST(request: NextRequest) {
 
     const singleVerifiedAccount =
       (verifiedAccounts ?? []).length === 1 ? verifiedAccounts![0] : null;
+    let encryptedAccountIsValid = false;
+    if (singleVerifiedAccount?.account_number_encrypted) {
+      try {
+        const decryptedAccountNumber = decryptVendorBankAccountNumber(
+          singleVerifiedAccount.account_number_encrypted,
+        );
+        encryptedAccountIsValid =
+          /^\d{10}$/.test(decryptedAccountNumber) &&
+          String(singleVerifiedAccount.account_number_last4 ?? "").trim() ===
+            decryptedAccountNumber.slice(-4);
+      } catch {
+        encryptedAccountIsValid = false;
+      }
+    }
     const accountComplete = Boolean(
       singleVerifiedAccount &&
       String(singleVerifiedAccount.bank_name ?? "").trim() &&
       String(singleVerifiedAccount.account_name ?? "").trim() &&
-      String(singleVerifiedAccount.account_number ?? "").trim()
+      String(singleVerifiedAccount.account_number_last4 ?? "").trim() &&
+      encryptedAccountIsValid
     );
 
     if (!accountComplete) {
@@ -314,7 +361,7 @@ export async function POST(request: NextRequest) {
           success: false,
           code: "VERIFIED_BANK_ACCOUNT_REQUIRED",
           message:
-            "Finance cannot move this payout forward until the vendor has exactly one complete, verified bank account on record.",
+            "Finance cannot move this payout forward until the vendor has exactly one complete, verified and encrypted bank account on record.",
         },
         { status: 409 }
       );

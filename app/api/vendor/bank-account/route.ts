@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
+import { encryptVendorBankAccountNumber } from "@/lib/vendor-payout/encryption";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -177,7 +178,7 @@ export async function GET() {
       loadBankDirectory(),
       adminClient
         .from("vendor_bank_accounts")
-        .select("id, bank_name, account_name, account_number, verified, created_at")
+        .select("id, bank_name, account_name, account_number, account_number_encrypted, account_number_last4, verified, created_at")
         .eq("vendor_id", access.context.vendorId)
         .maybeSingle(),
       getActivePayout(access.context.vendorId),
@@ -205,7 +206,7 @@ export async function GET() {
     if (!row && access.context.email) {
       const { data: application } = await adminClient
         .from("vendor_applications")
-        .select("bank_code, account_number, account_name")
+        .select("bank_code, account_number, account_number_encrypted, account_number_last4, account_name")
         .eq("email", access.context.email)
         .eq("status", "approved")
         .order("created_at", { ascending: false })
@@ -214,7 +215,9 @@ export async function GET() {
 
       if (
         application?.bank_code &&
-        application?.account_number &&
+        (application?.account_number_last4 ||
+          application?.account_number_encrypted ||
+          application?.account_number) &&
         application?.account_name
       ) {
         const bankCode = String(application.bank_code);
@@ -222,7 +225,9 @@ export async function GET() {
         onboardingSuggestion = {
           bankCode,
           accountName: String(application.account_name),
-          accountLast4: maskAccount(application.account_number),
+          accountLast4:
+            String(application.account_number_last4 ?? "").trim() ||
+            maskAccount(application.account_number),
           bankName: bank?.name ?? "",
         };
       }
@@ -238,7 +243,9 @@ export async function GET() {
                 bank.name.toLowerCase() === String(row.bank_name ?? "").toLowerCase(),
             )?.code ?? "",
           accountName: row.account_name ?? "",
-          accountLast4: maskAccount(row.account_number),
+          accountLast4:
+            String(row.account_number_last4 ?? "").trim() ||
+            maskAccount(row.account_number),
           verified: row.verified === true,
           savedAt: row.created_at ?? null,
         }
@@ -371,19 +378,24 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const encryptedAccountNumber =
+      encryptVendorBankAccountNumber(accountNumber);
+
     const { data: saved, error: saveError } = await adminClient
       .from("vendor_bank_accounts")
       .upsert(
         {
           vendor_id: access.context.vendorId,
           bank_name: selectedBank.name,
-          account_number: accountNumber,
+          account_number: null,
+          account_number_encrypted: encryptedAccountNumber,
+          account_number_last4: accountNumber.slice(-4),
           account_name: accountName,
           verified: true,
         },
         { onConflict: "vendor_id" },
       )
-      .select("id, bank_name, account_name, account_number, verified, created_at")
+      .select("id, bank_name, account_name, account_number_last4, verified, created_at")
       .single();
 
     if (saveError || !saved) {
@@ -406,7 +418,7 @@ export async function PUT(request: NextRequest) {
         bankName: saved.bank_name ?? "",
         bankCode,
         accountName: saved.account_name ?? "",
-        accountLast4: maskAccount(saved.account_number),
+        accountLast4: String(saved.account_number_last4 ?? "").trim(),
         verified: saved.verified === true,
         savedAt: saved.created_at ?? null,
       },
