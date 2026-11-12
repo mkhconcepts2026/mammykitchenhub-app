@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
 
@@ -41,7 +41,7 @@ export async function GET() {
     const { data: payouts, error: payoutError } = await adminClient
       .from("payout_requests")
       .select(
-        "id, amount, status, requested_at, processed_at, rejection_reason"
+        "id, amount, status, requested_at, processed_at, rejection_reason, transfer_reference, status_updated_at, status_before_hold, hold_reason, admin_note"
       )
       .eq("requester_id", profile.vendor_id)
       .eq("requester_type", "vendor")
@@ -59,10 +59,12 @@ export async function GET() {
 
     const history = payouts ?? [];
     const activeStatuses = new Set([
-      "pending",
-      "approved",
-      "processing",
-    ]);
+          "pending",
+          "approved",
+          "processing",
+          "transfer_submitted",
+          "on_hold",
+        ]);
 
     const hasActivePayout = history.some((payout) =>
       activeStatuses.has(String(payout.status ?? "").toLowerCase())

@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
+import BusinessLocationSelector from "@/components/vendor-onboarding/BusinessLocationSelector";
 
 const supabase = createClient();
 
 export default function VendorOnboarding() {
   const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [profileProvisioningWarning, setProfileProvisioningWarning] = useState(false);
 
    const totalSteps = 10;
 
@@ -127,6 +131,8 @@ const [verifyingAccount, setVerifyingAccount] =
 const [submittingKyc, setSubmittingKyc] =
   useState(false);
 
+const [locationVerified, setLocationVerified] = useState(false);
+
 const sendOtp = async () => {
 
   if (!vendorData.email) {
@@ -159,78 +165,80 @@ const sendOtp = async () => {
 };
 
   return (
-    <main
-      className="
-        min-h-screen
-        bg-orange-50
-        flex
-        items-center
-        justify-center
-        p-6
-      "
-    >
-      <div
-        className="
-          w-full
-          max-w-6xl
-          bg-white
-          rounded-3xl
-          shadow-lg
-          overflow-hidden
-          grid
-          grid-cols-2
-        "
-      >
+    <main className="min-h-screen bg-[#F4F6FA] flex items-center justify-center p-4 sm:p-6">
+      <div className="w-full max-w-7xl overflow-hidden rounded-[2rem] bg-white shadow-[0_30px_90px_rgba(15,23,42,0.12)] ring-1 ring-[#D4AF37]/20 grid grid-cols-1 lg:grid-cols-2">
         {/* Left Side */}
 
-        <div
-          className="
-            bg-orange-100
-            p-10
-            flex
-            flex-col
-            items-center
-            justify-center
-          "
-        >
-          <div
-  className="
-    text-8xl
-    mb-6
-    animate-pulse
-  "
->
-{
-  step === 1
-    ? "👨‍🍳"
-  : step === 2
-    ? "🍽️"
-  : step === 3
-    ? "🏢"
-  : step === 4
-    ? "📧"
-  : step === 5
-    ? "🏪"
-  : step === 6
-    ? "👤"
-  : step === 7
-    ? "🏦"
-  : step === 8
-    ? "🪪"
-  : step === 9
-    ? "✅"
-  : "🚀"
-}
+        <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-1/2 z-0 h-24 w-1/2 -translate-x-0 overflow-hidden">
+          <svg viewBox="0 0 600 120" preserveAspectRatio="none" className="h-full w-full">
+            <path d="M0 118 C180 112 390 95 600 2" fill="none" stroke="#F5A900" strokeWidth="10" />
+          </svg>
+        </div>
+        <div className="relative isolate overflow-hidden bg-gradient-to-br from-[#012757] via-[#002B5C] to-[#002352] px-8 pt-6 pb-12 sm:px-10 sm:pt-8 sm:pb-14 lg:px-12 lg:pt-10 lg:pb-16 flex flex-col items-center justify-start text-center text-white">
+          {step === 2 && (
+            <>
+              <div aria-hidden="true" className="pointer-events-none absolute -right-24 top-10 h-72 w-72 rounded-full bg-[#F97316]/15 blur-3xl" />
+              <div aria-hidden="true" className="pointer-events-none absolute -left-24 bottom-16 h-64 w-64 rounded-full bg-[#D4AF37]/10 blur-3xl" />
+              
+            </>
+          )}
 
+          {step === 1 && (
+
+            <>
+
+              <div aria-hidden="true" className="pointer-events-none absolute -left-20 top-12 z-0 h-56 w-56 rounded-full border border-white/70 bg-white/20" />
+
+              <div aria-hidden="true" className="pointer-events-none absolute -right-24 bottom-16 z-0 h-72 w-72 rounded-full bg-orange-200/40 blur-3xl" />
+
+              <div aria-hidden="true" className="pointer-events-none absolute right-12 top-10 z-0 h-20 w-20 rounded-full border border-white/70" />
+
+            </>
+
+          )}
+                    {step === 2 && (
+  <div data-mkh-step2-brand-logo="true" className="relative z-10 mb-4 flex w-full justify-center">
+    <div className="w-40 rounded-2xl border border-[#D4AF37]/50 bg-white p-2.5 shadow-[0_14px_35px_rgba(0,0,0,0.20)] sm:w-44">
+      <Image src="/logo.png" alt="Mammy Kitchen Hub" width={560} height={224} priority className="h-auto w-full object-contain" />
+    </div>
+  </div>
+)}
+{step === 3 && (
+
+  <div className="relative z-10 mb-7 flex flex-col items-center gap-5">
+
+    <div className="w-48 rounded-2xl border border-[#D4AF37]/45 bg-white p-3 shadow-[0_14px_35px_rgba(0,0,0,0.20)]">
+
+      <Image src="/logo.png" alt="Mammy Kitchen Hub" width={560} height={224} className="h-auto w-full object-contain" />
+
+    </div>
+
+    <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-[#D4AF37]/50 bg-white/5 text-[#D4AF37] shadow-lg">
+
+      <svg viewBox="0 0 48 48" className="h-12 w-12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+
+        <path d="M8 13h32v27H8z" />
+
+        <path d="M14 13V8h20v5" />
+
+        <path d="M15 22h18M15 29h18M15 36h11" />
+
+      </svg>
+
+    </div>
+
+  </div>
+
+)}<div className={step === 1 || step === 2 || step === 3 ? "hidden" : "relative z-10 mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-[#D4AF37]/35 bg-white/85 text-xs font-extrabold tracking-[0.12em] text-[#F97316] shadow-sm"}>
+  {step === 3 ? "INFO" : step === 4 ? "EMAIL" : step === 5 ? "STORE" : step === 6 ? "OWNER" : step === 7 ? "BANK" : step === 8 ? "KYC" : step === 9 ? "REVIEW" : "DONE"}
 </div>
 
-<h1 className="text-5xl font-bold mb-6">
+<h1 className="relative z-10 mb-5 max-w-xl text-center text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">
 
   {
   step === 1
     ? "Tell Us About Your Kitchen"
-  : step === 2
-    ? "Kitchen Information"
+  : step === 2 ? <>Join Mammy Kitchen Hub<br /><span className="text-[#F5B301]">as a Vendor</span></>
   : step === 3
     ? "Business Information"
   : step === 4
@@ -250,13 +258,12 @@ const sendOtp = async () => {
 
 </h1>
 
-<p className="text-gray-600 text-xl">
+<p className="relative z-10 max-w-md text-center text-base leading-relaxed text-white/85 sm:text-lg">
 
   {
   step === 1
     ? "Choose the type of food business you operate."
-  : step === 2
-    ? "Help customers discover your kitchen."
+  : step === 2 ? "Grow your food business, reach more customers and deliver with MKH."
   : step === 3
     ? "Provide your business information."
   : step === 4
@@ -275,58 +282,215 @@ const sendOtp = async () => {
 }
 
 </p>
-<div
-  className="
-    mt-10
-    bg-white
-    rounded-2xl
-    p-6
-    shadow-sm
-    w-full
-    max-w-md
-  "
->
+{step === 2 && (
+  <div data-mkh-vendor-benefits="step-2" className="relative z-10 mt-4 mb-1 w-full max-w-md space-y-2.5 text-left">
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#D4AF37]/70 bg-white/5 text-[#F5B301]">
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10h18l-2-6H5l-2 6Z"/><path d="M5 10v10h14V10M9 20v-6h6v6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/></svg>
+      </span>
+      <span className="text-sm font-semibold leading-5 text-white sm:text-base">Get your own online store</span>
+    </div>
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#D4AF37]/70 bg-white/5 text-[#F5B301]">
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 8v6M23 11h-6"/></svg>
+      </span>
+      <span className="text-sm font-semibold leading-5 text-white sm:text-base">Reach more customers in your area</span>
+    </div>
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#D4AF37]/70 bg-white/5 text-[#F5B301]">
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 15v-4M13 15V7M18 15V4"/></svg>
+      </span>
+      <span className="text-sm font-semibold leading-5 text-white sm:text-base">Grow your sales with MKH's delivery network</span>
+    </div>
+  </div>
+)}
 
-  <h3 className="font-bold mb-4">
+<div className="relative z-10 mt-5 w-full max-w-md rounded-3xl border border-white/90 bg-white/85 p-6 text-left text-[#0F172A] shadow-[0_18px_55px_rgba(130,75,31,0.10)] backdrop-blur-md">
+
+  <h3 className="mb-4 font-bold text-[#0F172A]">
     Your Progress
   </h3>
 
   <div className="space-y-3 text-left">
 
-    <div>
-      {step >= 1 ? "✅" : "○"} Vendor Type
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 1 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 1
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 1 ? (
+  <svg data-mkh-progress-checkmark="1" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 1 ? "Done" : "Pending"} Vendor Type
+      </span>
     </div>
 
-    <div>
-      {step >= 2 ? "✅" : "○"} Kitchen Information
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 2 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 2
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 2 ? (
+  <svg data-mkh-progress-checkmark="2" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 2 ? "Done" : "Pending"} Kitchen Information
+      </span>
     </div>
 
-    <div>
-      {step >= 3 ? "✅" : "○"} Business Information
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 3 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 3
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 3 ? (
+  <svg data-mkh-progress-checkmark="3" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 3 ? "Done" : "Pending"} Business Information
+      </span>
     </div>
 
-    <div>
-      {step >= 4 ? "✅" : "○"} Email Verification
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 4 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 4
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 4 ? (
+  <svg data-mkh-progress-checkmark="4" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 4 ? "Done" : "Pending"} Email Verification
+      </span>
     </div>
 
-    <div>
-      {step >= 5 ? "✅" : "○"} Vendor Account
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 5 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 5
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 5 ? (
+  <svg data-mkh-progress-checkmark="5" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 5 ? "Done" : "Pending"} Vendor Account
+      </span>
     </div>
 
-    <div>
-      {step >= 6 ? "✅" : "○"} Owner Information
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 6 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 6
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 6 ? (
+  <svg data-mkh-progress-checkmark="6" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 6 ? "Done" : "Pending"} Owner Information
+      </span>
     </div>
 
-    <div>
-      {step >= 7 ? "✅" : "○"} Bank Verification
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 7 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 7
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 7 ? (
+  <svg data-mkh-progress-checkmark="7" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 7 ? "Done" : "Pending"} Bank Verification
+      </span>
     </div>
 
-    <div>
-      {step >= 8 ? "✅" : "○"} KYC Verification
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 8 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 8
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 8 ? (
+  <svg data-mkh-progress-checkmark="8" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 8 ? "Done" : "Pending"} KYC Verification
+      </span>
     </div>
 
-    <div>
-      {step >= 9 ? "✅" : "○"} Review Application
+    <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${step >= 9 ? "bg-emerald-50" : "bg-white"}`}>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${
+          step >= 9
+            ? "border-emerald-500 bg-emerald-500 text-white"
+            : "border-slate-400 bg-white text-transparent"
+        }`}
+      >
+        {step >= 9 ? (
+  <svg data-mkh-progress-checkmark="9" viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+    <path d="M4 10.5 8 14.5 16 5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+) : null}
+      </span>
+      <span className="text-sm font-semibold text-[#0F172A]">
+        {step >= 9 ? "Done" : "Pending"} Review Application
+      </span>
     </div>
 
   </div>
@@ -336,14 +500,7 @@ const sendOtp = async () => {
 
         {/* Right Side */}
 
-        <div
-          className="
-            p-12
-            flex
-            flex-col
-            justify-center
-          "
-        >
+        <div className="relative isolate overflow-hidden bg-white p-7 sm:p-10 lg:p-12 flex min-h-[640px] flex-col justify-center">
             {step > 1 && step < 10 && (
 
   <button
@@ -355,70 +512,184 @@ const sendOtp = async () => {
       text-left
     "
   >
-    ← Previous Step
+    Previous Step
   </button>
 
 )}
 
 
           {step === 1 && (
+
             <>
-              <div className="mb-8">
-                <div className="flex gap-3 mb-8">
-                  <div className="w-4 h-4 rounded-full bg-orange-500" />
-                  <div className="w-4 h-4 rounded-full bg-orange-200" />
-                  <div className="w-4 h-4 rounded-full bg-orange-200" />
-                  <div className="w-4 h-4 rounded-full bg-orange-200" />
-                  <div className="w-4 h-4 rounded-full bg-orange-200" />
-                  <div className="w-4 h-4 rounded-full bg-orange-200" />
+
+              <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 z-0 h-80 w-80 rounded-full bg-orange-200/40 blur-3xl" />
+
+              <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 -left-24 z-0 h-72 w-72 rounded-full bg-amber-100/80 blur-3xl" />
+
+
+
+              <div className="relative z-10 mx-auto flex w-full max-w-lg flex-col items-center">
+
+
+
+                <div className="mb-8 flex w-full justify-center">
+
+                  <div className="w-full max-w-[380px] rounded-3xl border border-orange-100 bg-white p-3 shadow-[0_16px_45px_rgba(183,89,25,0.10)]">
+
+                    <Image
+
+                      src="/logo.png"
+
+                      alt="Mammy Kitchen Hub"
+
+                      width={700}
+
+                      height={280}
+
+                      priority
+
+                      className="h-auto w-full object-contain"
+
+                    />
+
+                  </div>
+
                 </div>
 
-                <h1 className="text-5xl font-bold mb-4">
-                  Welcome
+
+
+                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-orange-200/80 bg-orange-50 px-4 py-2 text-[11px] font-extrabold tracking-[0.2em] text-orange-700">
+
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-orange-500 shadow-[0_0_0_4px_rgba(249,115,22,0.12)]" />
+
+                  MKH VENDOR ONBOARDING
+
+                </div>
+
+
+
+                <div className="mb-8 flex items-center justify-center gap-2.5">
+
+                  <span className="h-2.5 w-11 rounded-full bg-orange-500 shadow-[0_3px_10px_rgba(249,115,22,0.25)]" />
+
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+
+                </div>
+
+
+
+                <h1 className="mb-4 text-center text-4xl font-extrabold tracking-tight text-slate-950 sm:text-5xl">
+
+                  Welcome to <span className="text-orange-500">MKH</span>
+
                 </h1>
 
-                <p className="text-xl text-gray-500">
-                  Let's get your kitchen onboarded.
+
+
+                <p className="max-w-md text-center text-lg leading-relaxed text-slate-500 sm:text-xl">
+
+                  Bring your kitchen to the table. Set up your business profile through a simple guided process and take your first step with Mammy Kitchen Hub.
+
                 </p>
+
+
+
+                <div className="mt-8 flex flex-wrap justify-center gap-2">
+
+                  <span className="rounded-full border border-orange-100 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">
+
+                    Kitchen details
+
+                  </span>
+
+                  <span className="rounded-full border border-orange-100 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">
+
+                    Owner information
+
+                  </span>
+
+                  <span className="rounded-full border border-orange-100 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm">
+
+                    Verification
+
+                  </span>
+
+                </div>
+
+
+
+                <button
+
+                  onClick={() => setStep(2)}
+
+                  className="group mt-10 flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-orange-500 via-orange-500 to-amber-500 px-6 py-5 text-lg font-extrabold text-white shadow-[0_14px_30px_rgba(234,88,12,0.25)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(234,88,12,0.32)] active:translate-y-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-200"
+
+                >
+
+                  <span>Get Started</span>
+
+                  <span aria-hidden="true" className="inline-flex">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-6 w-6 transition-transform duration-300 group-hover:translate-x-1"
+  >
+    <path d="M5 12h14" />
+    <path d="m13 6 6 6-6 6" />
+  </svg>
+</span>
+
+                </button>
+
+
+
+                <p className="mt-5 text-center text-sm font-medium text-slate-400">
+
+                  Your application, guided one step at a time.
+
+                </p>
+
+
+
               </div>
 
-              <button
-                onClick={() => setStep(2)}
-                className="
-                  bg-orange-500
-                  text-white
-                  py-4
-                  rounded-2xl
-                  font-bold
-                  text-lg
-                "
-              >
-                Get Started
-              </button>
             </>
+
           )}
 
         {step === 2 && (
 
-  <div>
+  <div className="relative z-10 mx-auto w-full max-w-xl">
 
-    <div className="flex gap-3 mb-8">
+    <div className="mb-8 flex items-center gap-2.5">
 
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
+      <div className="h-2.5 w-10 rounded-full bg-orange-500 shadow-[0_2px_8px_rgba(234,88,12,0.20)]" />
+      <div className="h-2.5 w-10 rounded-full bg-orange-500 shadow-[0_2px_8px_rgba(234,88,12,0.20)]" />
+      <div className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+      <div className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+      <div className="h-2.5 w-2.5 rounded-full bg-orange-200" />
+      <div className="h-2.5 w-2.5 rounded-full bg-orange-200" />
 
     </div>
 
-    <h1 className="text-4xl font-bold mb-3">
-      Select Vendor Type
+    <div className="mb-3 inline-flex w-fit items-center rounded-full border border-[#D4AF37]/50 bg-white px-3 py-1.5 text-[10px] font-extrabold tracking-[0.18em] text-[#F97316]">CHOOSE YOUR BUSINESS CATEGORY</div><h1 className="mb-3 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">
+      Select Your Kitchen Type
     </h1>
 
-    <p className="text-gray-500 mb-8">
-      Tell us what type of food business you operate.
+    <p className="mb-8 text-base leading-relaxed text-slate-500">
+      Choose the category that best represents the food business you operate.
     </p>
 
     <div className="space-y-4">
@@ -434,22 +705,23 @@ const sendOtp = async () => {
   setStep(3);
 
 }}
-        className="
-          w-full
-          border-2
-          border-gray-200
-          hover:border-orange-500
-          p-6
-          rounded-2xl
-          text-left
-          transition
-        "
+        className="group relative w-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-[0_5px_18px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-orange-400 hover:bg-orange-50/30 hover:shadow-[0_18px_40px_rgba(249,115,22,0.13)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 sm:p-6"
       >
-        <h3 className="font-bold text-xl">
-          🍲 Kitchen / Restaurant
-        </h3>
+        <h3 className="flex items-center gap-4 text-lg font-bold text-slate-900 sm:text-xl">
+  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#0F172A]/[0.04] text-[#F97316] ring-1 ring-[#D4AF37]/55 transition-transform duration-300 group-hover:scale-105">
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 11a3.5 3.5 0 0 1 3-3.5A4.1 4.1 0 0 1 16 7a3.5 3.5 0 0 1 3 4v3H5v-3Z" />
+      <path d="M5 14h14v4H5z" />
+      <path d="M8 18v2m8-2v2M10 5V3m4 2V3" />
+    </svg>
+  </span>
+  <span className="min-w-0 flex-1">Kitchen / Restaurant</span>
+  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-slate-300 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-[#F97316]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</h3>
 
-        <p className="text-gray-500 mt-2">
+        <p className="mt-3 pl-[4.5rem] text-sm leading-6 text-slate-500 sm:text-base">
           Restaurants, cloud kitchens, catering services.
         </p>
       </button>
@@ -465,22 +737,23 @@ const sendOtp = async () => {
   setStep(3);
 
 }}
-        className="
-          w-full
-          border-2
-          border-gray-200
-          hover:border-orange-500
-          p-6
-          rounded-2xl
-          text-left
-          transition
-        "
+        className="group relative w-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-[0_5px_18px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-orange-400 hover:bg-orange-50/30 hover:shadow-[0_18px_40px_rgba(249,115,22,0.13)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 sm:p-6"
       >
-        <h3 className="font-bold text-xl">
-          🧁 Home Food Vendor
-        </h3>
+        <h3 className="flex items-center gap-4 text-lg font-bold text-slate-900 sm:text-xl">
+  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#0F172A]/[0.04] text-[#F97316] ring-1 ring-[#D4AF37]/55 transition-transform duration-300 group-hover:scale-105">
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m3 10 9-7 9 7" />
+      <path d="M5 9.5V21h14V9.5" />
+      <path d="M9 21v-7h6v7" />
+    </svg>
+  </span>
+  <span className="min-w-0 flex-1">Home Food Vendor</span>
+  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-slate-300 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-[#F97316]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</h3>
 
-        <p className="text-gray-500 mt-2">
+        <p className="mt-3 pl-[4.5rem] text-sm leading-6 text-slate-500 sm:text-base">
           Small-scale food sellers operating from home.
         </p>
       </button>
@@ -496,22 +769,23 @@ const sendOtp = async () => {
   setStep(3);
 
 }}
-        className="
-          w-full
-          border-2
-          border-gray-200
-          hover:border-orange-500
-          p-6
-          rounded-2xl
-          text-left
-          transition
-        "
+        className="group relative w-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-[0_5px_18px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-1 hover:border-orange-400 hover:bg-orange-50/30 hover:shadow-[0_18px_40px_rgba(249,115,22,0.13)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 sm:p-6"
       >
-        <h3 className="font-bold text-xl">
-          🍹 Drinks & Beverages
-        </h3>
+        <h3 className="flex items-center gap-4 text-lg font-bold text-slate-900 sm:text-xl">
+  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#0F172A]/[0.04] text-[#F97316] ring-1 ring-[#D4AF37]/55 transition-transform duration-300 group-hover:scale-105">
+    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M7 3h10l-1.5 18h-7L7 3Z" />
+      <path d="M8 13h8M12 3V1" />
+      <path d="M18 6c2 1 2 3 0 4" />
+    </svg>
+  </span>
+  <span className="min-w-0 flex-1">Drinks &amp; Beverages</span>
+  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-slate-300 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-[#F97316]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+</h3>
 
-        <p className="text-gray-500 mt-2">
+        <p className="mt-3 pl-[4.5rem] text-sm leading-6 text-slate-500 sm:text-base">
           Smoothies, cocktails, juice bars and beverage vendors.
         </p>
       </button>
@@ -522,177 +796,146 @@ const sendOtp = async () => {
 
 )}
 {step === 3 && (
-
-  <div>
-
-    <div className="flex gap-3 mb-8">
-
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-
+  <section className="w-full">
+    <div className="mb-7 flex items-center justify-between gap-4">
+      <div>
+        <p className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#F97316]">Vendor onboarding  -  03 / 10</p>
+        <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">Business Information</h1>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">Add your business contact details and confirm its real-world location before continuing.</p>
+      </div>
+      <div className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#D4AF37]/40 bg-[#FFF8E9] text-[#0F172A] sm:flex">
+        <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V21h13V9.5" /><path d="M9 21v-7h6v7" />
+        </svg>
+      </div>
     </div>
 
-    <h1 className="text-4xl font-bold mb-6">
-      Kitchen Information
-    </h1>
-<p className="text-orange-500 font-bold mb-4">
-  Vendor Type: {vendorData.vendorType}
-</p>
-    <div className="space-y-4">
-
-      <input
-  value={vendorData.kitchenName}
-  onChange={(e) =>
-    setVendorData({
-      ...vendorData,
-      kitchenName: e.target.value
-    })
-  }
-  placeholder="Kitchen Name"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
-      />
-
-      <input
-  value={vendorData.phone}
-  onChange={(e) =>
-    setVendorData({
-      ...vendorData,
-      phone: e.target.value
-    })
-  }
-  placeholder="Phone Number"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
-      />
-
-      <input
-  value={vendorData.email}
-  onChange={(e) =>
-    setVendorData({
-      ...vendorData,
-      email: e.target.value
-    })
-  }
-  placeholder="Email Address"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
-      />
-
-     <input
-  value={vendorData.address}
-  onChange={(e) =>
-    setVendorData({
-      ...vendorData,
-      address: e.target.value
-    })
-  }
-  placeholder="Business Address"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
-      />
-
-      <button
-        onClick={sendOtp}
-        className="
-          w-full
-          bg-orange-500
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
-      >
-        Continue
-      </button>
-
+    <div className="mb-6 flex items-center gap-2" aria-label="Onboarding progress, step 3 of 10">
+      <span className="h-2.5 w-9 rounded-full bg-[#F97316]" />
+      <span className="h-2.5 w-9 rounded-full bg-[#F97316]" />
+      <span className="h-2.5 w-9 rounded-full bg-[#F97316]" />
+      <span className="h-2.5 w-2.5 rounded-full bg-[#D4AF37]/50" />
+      <span className="h-2.5 w-2.5 rounded-full bg-[#D4AF37]/50" />
+      <span className="h-2.5 w-2.5 rounded-full bg-[#D4AF37]/50" />
+      <span className="ml-2 text-xs font-semibold text-slate-400">Vendor type: {vendorData.vendorType}</span>
     </div>
 
-  </div>
+    <div className="space-y-5 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.07)] sm:p-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-2 block text-xs font-bold text-[#0F172A]">Business / Kitchen Name</span>
+          <input
+            value={vendorData.kitchenName}
+            onChange={(e) => setVendorData({ ...vendorData, kitchenName: e.target.value })}
+            placeholder="Enter your business name"
+            autoComplete="organization"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-[#0F172A] outline-none transition placeholder:text-slate-400 focus:border-[#F97316] focus:bg-white focus:ring-4 focus:ring-[#F97316]/10"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-2 block text-xs font-bold text-[#0F172A]">Business Phone Number</span>
+          <input
+            type="tel"
+            value={vendorData.phone}
+            onChange={(e) => setVendorData({ ...vendorData, phone: e.target.value })}
+            placeholder="e.g. 08012345678"
+            autoComplete="tel"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-[#0F172A] outline-none transition placeholder:text-slate-400 focus:border-[#F97316] focus:bg-white focus:ring-4 focus:ring-[#F97316]/10"
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="mb-2 block text-xs font-bold text-[#0F172A]">Business Email Address</span>
+          <input
+            type="email"
+            value={vendorData.email}
+            onChange={(e) => setVendorData({ ...vendorData, email: e.target.value })}
+            placeholder="you@yourbusiness.com"
+            autoComplete="email"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-[#0F172A] outline-none transition placeholder:text-slate-400 focus:border-[#F97316] focus:bg-white focus:ring-4 focus:ring-[#F97316]/10"
+          />
+        </label>
+      </div>
 
-)}
-{step === 4 && (
+      <div className="border-t border-slate-100 pt-5">
+        <BusinessLocationSelector
+          onVerified={(result) => {
+            setLocationVerified(result.verified);
+            setVendorData((current) => ({ ...current, address: result.verified ? result.address : "" }));
+          }}
+        />
+      </div>
+
+      <div className="border-t border-slate-100 pt-5">
+        <button
+          type="button"
+          disabled={!locationVerified || !vendorData.address.trim() || sendingOtp}
+          onClick={() => {
+            if (!locationVerified || !vendorData.address.trim()) {
+              alert("Verify your Google Maps address and confirm an active MKH locality before continuing.");
+              return;
+            }
+            sendOtp();
+          }}
+          className="group flex w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-5 py-4 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(249,115,22,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(249,115,22,0.28)] disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none"
+        >
+          <span>{sendingOtp ? "Preparing email verification..." : "Continue to Email Verification"}</span>
+          <svg viewBox="0 0 24 24" className="h-5 w-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+        </button>
+        <p className="mt-3 text-center text-[11px] leading-5 text-slate-400">Your location must be selected from Google Maps and matched to an active locality in the MKH territory database.</p>
+      </div>
+    </div>
+  </section>
+)}{step === 4 && (
 
   <div>
 
     {/* Progress */}
 
-    <div className="flex gap-3 mb-8">
+    <div className="mb-7 flex items-center gap-2.5">
 
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-500" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
-      <div className="w-4 h-4 rounded-full bg-orange-200" />
+      <div className="h-2.5 w-8 rounded-full bg-[#F97316]" />
+      <div className="h-2.5 w-8 rounded-full bg-[#F97316]" />
+      <div className="h-2.5 w-8 rounded-full bg-[#F97316]" />
+      <div className="h-2.5 w-8 rounded-full bg-[#F97316]" />
+      <div className="h-2.5 w-2.5 rounded-full bg-[#D4AF37]/55" />
+      <div className="h-2.5 w-2.5 rounded-full bg-[#D4AF37]/55" />
 
     </div>
 
     <button
       onClick={() => setStep(3)}
-      className="
-        text-orange-500
-        font-bold
-        mb-6
-      "
+      className="hidden"
     >
       
     </button>
 
-    <h1 className="text-4xl font-bold mb-3">
+    <p className="mb-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#F97316]">EMAIL VERIFICATION / STEP 04</p>
+
+<h1 className="mb-3 text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
       Verify Email Address
     </h1>
 
-    <p className="text-gray-500 mb-8">
+    <p className="mb-7 max-w-xl text-sm leading-6 text-slate-500">
       Enter the verification code sent to your email.
     </p>
 
-    <div className="space-y-4">
+    <div className="space-y-5 rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.07)] sm:p-6">
 
-      <input
+      <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">Email address</p>
+<input
         value={vendorData.email}
         readOnly
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-          bg-gray-100
-        "
+        className="w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-4 text-sm font-semibold text-[#0F172A] outline-none transition"
       />
 
-      <input
-        placeholder="Enter OTP Code"
+      <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">6-digit verification code</p>
+<input
+        type="text" placeholder="Enter the 6-digit code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} aria-label="Email verification code"
         value={emailOtp}
         onChange={(e)=>
           setEmailOtp(e.target.value)
         }
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-4 text-lg font-bold tracking-[0.35em] text-[#0F172A] outline-none transition placeholder:tracking-normal placeholder:font-normal placeholder:text-slate-400 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       />
 
       <button
@@ -719,27 +962,14 @@ const sendOtp = async () => {
           }
 
         }}
-        className="
-          w-full
-          bg-orange-500
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="group flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-5 py-4 text-sm font-extrabold text-white shadow-[0_12px_28px_rgba(249,115,22,0.20)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(249,115,22,0.25)]"
       >
         Verify Email
       </button>
 
       <button
         onClick={sendOtp}
-        className="
-          w-full
-          border
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="w-full rounded-xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-bold text-slate-700 transition hover:border-[#D4AF37] hover:bg-[#FFF9EF] focus:outline-none focus:ring-4 focus:ring-[#D4AF37]/15"
       >
         Resend OTP
       </button>
@@ -812,13 +1042,18 @@ const sendOtp = async () => {
 
 
       <input
-        placeholder="Store URL (e.g. mamas-kitchen)"
-        value={vendorData.storeSlug}
+        placeholder="Choose your store URL (e.g. mamas-kitchen)"
+        value={vendorData.storeSlug} maxLength={80}
        onChange={async (e) => {
 
-  const slug = e.target.value
+  const slug = e.target.value.slice(0, 80)
+    .normalize("NFKD")
     .toLowerCase()
-    .replace(/\s+/g, "-");
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
   setVendorData({
     ...vendorData,
@@ -833,36 +1068,28 @@ const sendOtp = async () => {
 
   }
 
-  const { data } = await supabase
-    .from("vendors")
-    .select("id")
-    .eq("slug", slug);
-
-  setSlugAvailable(
-    !data || data.length === 0
-  );
+  try {
+    const response = await fetch("/api/vendor-onboarding/store-slug", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({ slug }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setSlugAvailable(response.ok && result?.success === true ? Boolean(result.available) : null);
+  } catch {
+    setSlugAvailable(null);
+  }
 
 }}
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       />
 <div
-  className="
-    bg-orange-50
-    border
-    border-orange-200
-    rounded-xl
-    p-4
-    text-sm
-  "
+  className="rounded-3xl border border-[#D4AF37]/35 bg-[#FFF8EF] p-5 text-sm text-[#0F172A] shadow-sm"
 >
 
   <div>
-    Your store URL:
+    Your proposed store link
   </div>
 
   <div className="font-bold text-orange-600 mt-1">
@@ -870,18 +1097,11 @@ const sendOtp = async () => {
     {vendorData.storeSlug || "your-store"}
   </div>
 <div
-  className="
-    bg-white
-    border
-    rounded-2xl
-    p-5
-    shadow-sm
-    mt-4
-  "
+  className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_32px_rgba(15,23,42,0.06)]"
 >
 
   <div className="font-bold text-lg mb-3">
-    🏪 Store Preview
+    Store Preview
   </div>
 
   <div className="font-semibold text-orange-600">
@@ -895,11 +1115,11 @@ const sendOtp = async () => {
 
   <div className="mt-4 space-y-2 text-sm">
 
-    <div>✅ Email Verified</div>
+    <div>Email verified</div>
 
-    <div>✅ Phone Verified</div>
+    <div>Phone verified</div>
 
-    <div>🚀 Ready For Approval</div>
+    <div>Ready for MKH review</div>
 
   </div>
 
@@ -908,7 +1128,7 @@ const sendOtp = async () => {
 
     <div className="text-green-600 mt-2">
 
-      ✅ Store URL available
+      Store URL is available
 
     </div>
 
@@ -918,7 +1138,7 @@ const sendOtp = async () => {
 
     <div className="text-red-600 mt-2">
 
-      ❌ Store URL already taken
+      Store URL is already taken
 
     </div>
 
@@ -930,7 +1150,7 @@ const sendOtp = async () => {
 
   <input
     type={showPassword ? "text" : "password"}
-    placeholder="Password"
+    placeholder="Create a password"
     value={vendorData.password}
     onChange={(e)=>
       setVendorData({
@@ -960,7 +1180,7 @@ const sendOtp = async () => {
       text-gray-500
     "
   >
-    {showPassword ? "🙈" : "👁️"}
+    {showPassword ? "Hide" : "Show"}
   </button>
 
 </div>
@@ -1001,7 +1221,7 @@ const sendOtp = async () => {
       text-gray-500
     "
   >
-    {showConfirmPassword ? "🙈" : "👁️"}
+    {showConfirmPassword ? "Hide" : "Show"}
   </button>
 
 </div>
@@ -1060,8 +1280,8 @@ const sendOtp = async () => {
 
     {
       vendorData.password === vendorData.confirmPassword
-        ? "✓ Passwords match"
-        : "✗ Passwords do not match"
+        ? "Passwords match"
+        : "Passwords do not match"
     }
 
   </p>
@@ -1069,6 +1289,28 @@ const sendOtp = async () => {
 )}
       <button
         onClick={async () => {
+
+          if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(vendorData.storeSlug) || !vendorData.storeSlug) {
+            alert("Please choose a valid store URL before creating your vendor account.");
+            return;
+          }
+
+          try {
+            const slugResponse = await fetch("/api/vendor-onboarding/store-slug", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+              body: JSON.stringify({ slug: vendorData.storeSlug }),
+            });
+            const slugResult = await slugResponse.json().catch(() => ({}));
+            if (!slugResponse.ok || slugResult?.success !== true || slugResult.available !== true) {
+              alert(slugResult?.message || "That store URL is no longer available. Choose another URL and try again.");
+              return;
+            }
+          } catch {
+            alert("We could not confirm that store URL. Please try again.");
+            return;
+          }
 
           if (
             vendorData.password !==
@@ -1116,14 +1358,7 @@ const sendOtp = async () => {
           setStep(6);
 
         }}
-        className="
-          w-full
-          bg-orange-500
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Create Account
       </button>
@@ -1167,12 +1402,7 @@ const sendOtp = async () => {
           })
         }
         placeholder="Owner Full Name"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       />
 
       <input
@@ -1184,12 +1414,7 @@ const sendOtp = async () => {
           })
         }
         placeholder="Owner Phone Number"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       />
 
       <input
@@ -1201,24 +1426,12 @@ const sendOtp = async () => {
           })
         }
         placeholder="Owner Email Address"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       />
 
       <button
         onClick={() => setStep(7)}
-        className="
-          w-full
-          bg-orange-500
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Continue
       </button>
@@ -1261,12 +1474,7 @@ const sendOtp = async () => {
             bankCode:e.target.value
           })
         }
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       >
 
         <option value="">
@@ -1320,12 +1528,7 @@ const sendOtp = async () => {
           })
         }
         placeholder="Account Number"
-        className="
-          w-full
-          border
-          p-4
-          rounded-xl
-        "
+        className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
       />
 
       <div
@@ -1425,14 +1628,7 @@ const sendOtp = async () => {
 
         }}
 
-        className="
-          w-full
-          bg-blue-600
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25"
       >
 
         {
@@ -1445,14 +1641,7 @@ const sendOtp = async () => {
 
       <button
         onClick={() => setStep(8)}
-        className="
-          w-full
-          bg-orange-500
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Continue
       </button>
@@ -1509,12 +1698,7 @@ const sendOtp = async () => {
 
         })
       }
-      className="
-        w-full
-        border
-        p-4
-        rounded-xl
-      "
+      className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
     />
 
   </div>
@@ -1540,12 +1724,7 @@ const sendOtp = async () => {
 
             })
           }
-          className="
-            w-full
-            border
-            p-4
-            rounded-xl
-          "
+          className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
         />
 
       </div>
@@ -1570,12 +1749,7 @@ const sendOtp = async () => {
 
       })
     }
-    className="
-      w-full
-      border
-      p-4
-      rounded-xl
-    "
+    className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
   />
 
   <p className="text-sm text-gray-500 mt-2">
@@ -1601,26 +1775,14 @@ const sendOtp = async () => {
 
             })
           }
-          className="
-            w-full
-            border
-            p-4
-            rounded-xl
-          "
+          className="w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-[15px] text-[#0F172A] shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
         />
 
       </div>
 
       <button
         onClick={() => setStep(9)}
-        className="
-          w-full
-          bg-orange-500
-          text-white
-          py-4
-          rounded-xl
-          font-bold
-        "
+        className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Continue
       </button>
@@ -1753,7 +1915,7 @@ const sendOtp = async () => {
 >
 
   <h3 className="font-bold text-lg mb-2">
-    🎯 Application Completion
+    Application Completion
   </h3>
 
   <div className="w-full bg-green-100 rounded-full h-3">
@@ -1781,27 +1943,31 @@ const sendOtp = async () => {
   {vendorData.vendorType === "Kitchen / Restaurant" ? (
 
     vendorData.cacFile
-      ? "✅ CAC Registration Uploaded"
-      : "❌ CAC Registration Required"
+      ? "CAC Registration Uploaded"
+      : "CAC Registration Required"
 
   ) : (
 
-    "ℹ️ CAC Registration Not Required For This Vendor Type"
+    "CAC registration is not required for this vendor type"
 
   )}
 
 </div>
-          {vendorData.idFile ? "✅ National ID Uploaded" : "❌ National ID Missing"}
+          {vendorData.idFile ? "National ID Uploaded" : "National ID Missing"}
         </div>
 
         <div>
-          {vendorData.selfieFile ? "✅ Selfie Uploaded" : "❌ Selfie Missing"}
+          {vendorData.selfieFile ? "Selfie Uploaded" : "Selfie Missing"}
         </div>
 
       </div>
 
      <button
   onClick={async () => {
+
+      if (isSubmitting) return;
+
+      setIsSubmitting(true);
 
     try {
 
@@ -1912,70 +2078,59 @@ const sendOtp = async () => {
             .data.publicUrl;
       }
 
-      const { error } =
-        await supabase
-          .from("vendor_applications")
-          .insert({
+      const applicationResponse = await fetch("/api/vendor-onboarding/application", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendor_type: vendorData.vendorType,
+          kitchen_name: vendorData.kitchenName,
+          email: vendorData.email,
+          phone: vendorData.phone,
+          business_address: vendorData.address,
+          owner_name: vendorData.ownerName,
+          owner_phone: vendorData.ownerPhone,
+          bank_code: vendorData.bankCode,
+          account_number: vendorData.accountNumber,
+          account_name: vendorData.accountName,
+          cac_url: cacUrl,
+          id_url: idUrl,
+          selfie_url: selfieUrl,
+          kitchen_photo_url: kitchenPhotoUrl,
+          store_slug: vendorData.storeSlug,
+        }),
+      });
+      const applicationResult = await applicationResponse.json().catch(() => null);
+      if (!applicationResponse.ok || applicationResult?.success !== true) {
+        throw new Error(
+          typeof applicationResult?.message === "string"
+            ? applicationResult.message
+            : "Your vendor application could not be securely submitted.",
+        );
+      }
+      const applicationRecord = applicationResult.application;
 
-            vendor_type:
-              vendorData.vendorType,
-
-            kitchen_name:
-              vendorData.kitchenName,
-
-            email:
-              vendorData.email,
-
-            phone:
-              vendorData.phone,
-
-            business_address:
-              vendorData.address,
-
-            owner_name:
-              vendorData.ownerName,
-
-            owner_phone:
-              vendorData.ownerPhone,
-
-            bank_code:
-              vendorData.bankCode,
-
-            account_number:
-              vendorData.accountNumber,
-
-            account_name:
-              vendorData.accountName,
-
-            cac_url:
-              cacUrl,
-
-            id_url:
-              idUrl,
-
-            selfie_url:
-              selfieUrl,
-
-            kitchen_photo_url:
-              kitchenPhotoUrl,
-
-            onboarding_status:
-              "pending",
-
-            kyc_status:
-              "pending_review"
+      if (applicationRecord?.id) {
+        try {
+          const profileResponse = await fetch("/api/vendor-onboarding/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ applicationId: applicationRecord.id }),
           });
-
-    if (error) {
-
-  console.error(error);
-
-  alert(
-    JSON.stringify(error, null, 2)
-  );
-
-  return;
-}
+          const profileResult = await profileResponse.json().catch(() => ({}));
+          if (!profileResponse.ok || profileResult?.success !== true) {
+            console.error("Vendor applicant profile setup did not complete:", profileResult?.message || profileResponse.status);
+            setProfileProvisioningWarning(true);
+          }
+        } catch (profileError) {
+          console.error("Vendor applicant profile setup request failed:", profileError);
+          setProfileProvisioningWarning(true);
+        }
+      } else {
+        // The application insert already succeeded, so do not retry and risk a duplicate.
+        setProfileProvisioningWarning(true);
+      }
 
       setStep(10);
 
@@ -1987,19 +2142,18 @@ const sendOtp = async () => {
 
     }
 
+finally {
+
+      setIsSubmitting(false);
+
+    }
+
   }}
 
-  className="
-    w-full
-    bg-orange-500
-    text-white
-    py-4
-    rounded-xl
-    font-bold
-    text-lg
-  "
+  disabled={isSubmitting}
+  className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25 disabled:cursor-not-allowed disabled:opacity-60"
 >
-  Submit Application
+  {isSubmitting ? "Submitting..." : "Submit Application"}
 </button>
 
     </div>
@@ -2018,7 +2172,7 @@ const sendOtp = async () => {
     animate-bounce
   "
 >
-  🎉
+  MKH
 </div>
 
     <h1 className="text-4xl font-bold mb-4">
@@ -2028,6 +2182,11 @@ const sendOtp = async () => {
     <p className="text-gray-500 text-lg mb-8">
       Your vendor application has been received.
     </p>
+    {profileProvisioningWarning && (
+      <div role="alert" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-900">
+        Your application was received successfully. Your login profile needs a final setup by MKH Support. Please do not submit another application.
+      </div>
+    )}
 <div
   className="
     bg-green-50
@@ -2041,7 +2200,7 @@ const sendOtp = async () => {
 >
 
   <p className="font-semibold text-green-700">
-    Welcome to Mammy Kitchen Hub 🎉
+    Welcome to Mammy Kitchen Hub MKH
   </p>
 
   <p className="text-sm text-gray-600 mt-1">
@@ -2080,16 +2239,9 @@ const sendOtp = async () => {
 
     <button
   onClick={() => {
-    window.location.href = "/";
+    window.location.href = "/login";
   }}
-  className="
-    w-full
-    bg-orange-500
-    text-white
-    py-4
-    rounded-xl
-    font-bold
-  "
+  className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#F97316] to-[#D4AF37] px-6 py-4 text-base font-extrabold text-white shadow-[0_12px_26px_rgba(249,115,22,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_rgba(249,115,22,0.25)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#D4AF37]/25 disabled:cursor-not-allowed disabled:opacity-60"
 >
   Return Home
 </button>

@@ -6,14 +6,6 @@ import RiderKPICards from "@/components/territory-manager/RiderKPICards";
 import RiderTable from "@/components/territory-manager/RiderTable";
 import RiderDrawer from "@/components/territory-manager/RiderDrawer";
 
-import {
-  getRiders,
-  getRiderLocations,
-  getRiderWallets,
-  getRiderCurrentOrders,
-  getRiderOperationalStatus,
-} from "@/lib/services/riders";
-
 import { RiderRecord } from "@/types/rider";
 
 export default function RidersPage() {
@@ -29,81 +21,32 @@ export default function RidersPage() {
   async function loadRiders() {
     try {
       setLoading(true);
-
-      const [
-        profiles,
-        locations,
-        wallets,
-        currentOrders,
-      ] = await Promise.all([
-        getRiders(),
-        getRiderLocations(),
-        getRiderWallets(),
-        getRiderCurrentOrders(),
-      ]);
-
-      const merged: RiderRecord[] = profiles.map((profile) => {
-        const wallet = wallets.find(
-          (w) => w.rider_id === profile.id
-        );
-
-        const location = locations.find(
-          (l) => l.rider_id === profile.id
-        );
-
-        const currentOrder =
-          currentOrders.find(
-            (order) => order.rider_id === profile.id
-          ) ?? null;
-
-        const operationalStatus =
-          getRiderOperationalStatus(
-            profile.status,
-            currentOrder
-          );
-
-        return {
-          id: profile.id,
-          full_name: profile.full_name,
-          email: profile.email,
-          phone: profile.phone,
-
-          // Account status remains sourced from profiles.
-          status: profile.status,
-
-          // Live operational status is derived separately.
-          operational_status: operationalStatus,
-
-          available_balance:
-            Number(wallet?.available_balance ?? 0),
-
-          pending_balance:
-            Number(wallet?.pending_balance ?? 0),
-
-          lifetime_earnings:
-            Number(wallet?.lifetime_earnings ?? 0),
-
-          updated_at:
-            location?.updated_at ?? null,
-
-          current_order: currentOrder,
-        };
-      });
-
-      setRiders(merged);
+      const response = await fetch("/api/trm/workspace?section=riders", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Unable to load riders assigned to your territory.");
+      }
+      const latestRiders = Array.isArray(result.riders) ? result.riders as RiderRecord[] : [];
+      setRiders(latestRiders);
     } catch (error) {
-      console.error(
-        "Failed to load TRM riders:",
-        error
-      );
+      console.error("Failed to load territory riders:", error);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadRiders();
+    void loadRiders();
+    const refreshId = window.setInterval(() => void loadRiders(), 30_000);
+    return () => window.clearInterval(refreshId);
   }, []);
+
+  useEffect(() => {
+    if (selectedRider && !riders.some((rider) => rider.id === selectedRider.id)) {
+      setSelectedRider(null);
+      setDrawerOpen(false);
+    }
+  }, [riders, selectedRider]);
 
   const totalRiders = riders.length;
 
@@ -129,7 +72,7 @@ export default function RidersPage() {
     () =>
       riders.reduce(
         (sum, rider) =>
-          sum + rider.pending_balance,
+          sum + (rider.pending_balance ?? 0),
         0
       ),
     [riders]
@@ -176,6 +119,12 @@ export default function RidersPage() {
         offlineRiders={offlineRiders}
         outstandingWallet={outstandingWallet}
       />
+
+      {riders.some((rider) => rider.wallet_scope_limited) && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Some riders are linked to vendors outside this territory. Their account-wide wallet balances are hidden here to prevent cross-territory financial data exposure.
+        </div>
+      )}
 
       <RiderTable
         riders={riders}

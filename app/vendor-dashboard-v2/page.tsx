@@ -1,13 +1,16 @@
 "use client";
 import VendorSidebar from "@/components/vendor/VendorSidebar";
 import VendorDashboardTab from "@/components/vendor/VendorDashboardTab";
+import VendorMarketingLinkCard from "@/components/vendor/VendorMarketingLinkCard";
 import VendorStorefrontCard from "@/components/vendor/VendorStorefrontCard";
 import VendorOrdersTab from "@/components/vendor/VendorOrdersTab";
 import VendorMenuTab from "@/components/vendor/VendorMenuTab";
 import VendorKYCTab from "@/components/vendor/VendorKYCTab";
+import VendorBankAccountTab from "@/components/vendor/VendorBankAccountTab";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { MKH_MENU_CATEGORIES } from "@/lib/constants/menuCategories";
 
 
 type Tab =
@@ -15,6 +18,7 @@ type Tab =
   | "orders"
   | "menu"
   | "earnings"
+  | "bank"
   | "kyc";
 
 export default function VendorDashboardV2() {
@@ -27,6 +31,8 @@ export default function VendorDashboardV2() {
 
   const [loading,setLoading] =
     useState(true);
+
+  const [isKycOnlyApplicant, setIsKycOnlyApplicant] = useState(false);
 
   const [vendorName,setVendorName] =
     useState("");
@@ -125,26 +131,11 @@ const [imageFile,setImageFile] =
   const [availableBalance, setAvailableBalance] =
   useState(0);
 
-const [pendingBalance, setPendingBalance] =
+const [nextPayoutBalance, setNextPayoutBalance] =
   useState(0);
 
-const nextFriday = new Date();
-
-while (nextFriday.getDay() !== 5) {
-  nextFriday.setDate(
-    nextFriday.getDate() + 1
-  );
-}
-
-const nextFridayText =
-  nextFriday.toLocaleDateString(
-    "en-NG",
-    {
-      weekday: "long",
-      month: "short",
-      day: "numeric"
-    }
-  );
+const [pendingBalance, setPendingBalance] =
+  useState(0);
 
 const [totalEarned, setTotalEarned] =
   useState(0);
@@ -238,10 +229,19 @@ const [isPayoutWindowOpen, setIsPayoutWindowOpen] =
       } =
       await supabase
         .from("profiles")
-        .select("vendor_id")
+        .select("vendor_id,role")
         .eq("id",user.id)
         .single();
         console.log("PROFILE:", profile);
+
+      const normalizedProfileRole = String(profile?.role ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+      if (normalizedProfileRole === "vendor_applicant") {
+        setIsKycOnlyApplicant(true);
+        setCurrentTab("kyc");
+        setVendorName("Vendor Application");
+        setLoading(false);
+        return;
+      }
 
       if(!profile?.vendor_id){
 
@@ -271,92 +271,46 @@ console.log(
   wallet
 );
 
-const {
-  data: pendingRequest
-} =
-await supabase
-  .from("payout_requests")
-  .select("id")
-  .eq(
-    "requester_id",
-    profile.vendor_id
-  )
-  .eq(
-    "status",
-    "pending"
-  )
-  .maybeSingle();
+      // MKH_VENDOR_PAYOUT_HISTORY_SERVER_FETCH_V3
+      const payoutHistoryResponse = await fetch(
+        "/api/vendor/payout-history",
+        { cache: "no-store" }
+      );
 
-setHasPendingPayout(
-  !!pendingRequest
-);
+      const payoutHistoryResult = await payoutHistoryResponse
+        .json()
+        .catch(() => null);
 
-const {
-  data: payouts
-} =
-await supabase
-  .from("payout_requests")
-  .select("*")
-  .eq(
-    "requester_id",
-    profile.vendor_id
-  )
-  .order(
-    "requested_at",
-    {
-      ascending:false
-    }
-  );
+      if (!payoutHistoryResponse.ok || payoutHistoryResult?.success !== true) {
+        throw new Error(
+          payoutHistoryResult?.message || "Unable to load withdrawal history."
+        );
+      }
 
-setPayoutHistory(
-  payouts || []
-);
+      const vendorPayoutRecords = Array.isArray(payoutHistoryResult.payouts)
+        ? payoutHistoryResult.payouts
+        : [];
+
+      setPayoutHistory(vendorPayoutRecords);
+      setHasPendingPayout(!!payoutHistoryResult.hasActivePayout);
 
 if (wallet) {
+  const walletAvailableBalance = Number(wallet.available_balance || 0);
+  const walletAccruedBalance = Number(wallet.accrued_balance || 0);
+  const walletReservedBalance = Number(wallet.pending_balance || 0);
+  const payoutEligibleBalance =
+    walletAvailableBalance + walletAccruedBalance;
 
-  let availableBalance =
-    Number(
-      wallet.available_balance || 0
-    );
+  // The payout RPC reserves available + accrued funds only when the
+  // Friday–Sunday vendor request window is open.
+  const payoutWindowOpen = isVendorPayoutWindowOpen();
 
-  let pendingBalance =
-    Number(
-      wallet.accrued_balance || 0
-    );
-
-  // Automatically move matured earnings
-  // into Available Balance during
-  // payout window.
-
-  if (
-
-    isPayoutWindowOpen &&
-
-    pendingBalance > 0
-
-  ) {
-
-    availableBalance +=
-      pendingBalance;
-
-    pendingBalance = 0;
-
-  }
-
+  setNextPayoutBalance(payoutEligibleBalance);
   setAvailableBalance(
-    availableBalance
+    payoutWindowOpen ? payoutEligibleBalance : 0
   );
-
-  setPendingBalance(
-    pendingBalance
-  );
-
-  setTotalEarned(
-    Number(
-      wallet.lifetime_earnings || 0
-    )
-  );
-
+  setPendingBalance(walletReservedBalance);
+  setTotalEarned(Number(wallet.lifetime_earnings || 0));
 }
 
       const {
@@ -419,74 +373,37 @@ async function loadMenuItems(){
 
 }
 
-function checkPayoutWindow() {
+function isVendorPayoutWindowOpen() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
 
-  const now = new Date();
-
-  console.log(
-  "CURRENT TIME:",
-  now.toString()
-);
-
-console.log(
-  "DAY:",
-  now.getDay()
-);
-
-console.log(
-  "HOUR:",
-  now.getHours()
-);
-
-  const day = now.getDay();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-
-  const fridayOpen =
-    day === 5 &&
-    hour >= 16;
-
-  const saturdayOpen =
-    day === 6;
-
-  const sundayOpen =
-    day === 0 &&
-    (
-      hour < 23 ||
-      (
-        hour === 23 &&
-        minute <= 59
-      )
-    );
-
-  const payoutWindowOpen =
-    fridayOpen ||
-    saturdayOpen ||
-    sundayOpen;
-
-    console.log(
-  "PAYOUT WINDOW:",
-  payoutWindowOpen
-);
-
-  setIsPayoutWindowOpen(
-    payoutWindowOpen
+  const lagosTime = Object.fromEntries(
+    parts.map((part) => [part.type, part.value])
   );
+  const day = lagosTime.weekday;
+  const hour = Number(lagosTime.hour);
 
-  if (payoutWindowOpen) {
+  return (
+    (day === "Fri" && hour >= 16) ||
+    day === "Sat" ||
+    day === "Sun"
+  );
+}
 
-    setNextPayoutText(
-      "Withdrawals close Sunday at 11:59 PM"
-    );
+function checkPayoutWindow() {
+  const payoutWindowOpen = isVendorPayoutWindowOpen();
 
-  } else {
-
-    setNextPayoutText(
-      "Next withdrawal window opens Friday at 4:00 PM"
-    );
-
-  }
-
+  setIsPayoutWindowOpen(payoutWindowOpen);
+  setNextPayoutText(
+    payoutWindowOpen
+      ? "Vendor withdrawal requests close Sunday at 11:59 PM"
+      : "Next vendor withdrawal window opens Friday at 4:00 PM"
+  );
 }
 
 async function loadOrders() {
@@ -631,126 +548,179 @@ async function updateOrderStatus(
   }
 }
 
-async function saveMenuItem(){
+async function saveMenuItem() {
+  const isEditing = Boolean(editingId);
 
-  const {
-    data:{ user }
-  } = await supabase.auth.getUser();
-  console.log("SAVE CLICKED");
-console.log("USER:", user);
+  try {
+    // 1. Verify the signed-in user.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-  if(!user) return;
+    if (userError || !user) {
+      alert("Your session could not be verified. Please sign in again.");
+      return;
+    }
 
-  const {
-    data:profile
-  } = await supabase
-    .from("profiles")
-    .select("vendor_id")
-    .eq("id", user.id)
-    .single();
-console.log("PROFILE:", profile);
-console.log("FORM:", form);
-  if(!profile?.vendor_id) return;
+    // 2. Verify the vendor profile.
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("vendor_id")
+      .eq("id", user.id)
+      .single();
 
-  let imageUrl =
-  form.image;
-  if(imageFile){
+    if (profileError) {
+      throw new Error(
+        `Could not verify your vendor profile: ${profileError.message}`
+      );
+    }
 
-  const fileExt =
-    imageFile.name
-      .split(".")
-      .pop();
+    if (!profile?.vendor_id) {
+      alert(
+        "Your account is not linked to a vendor. Please contact MKH support."
+      );
+      return;
+    }
 
-  const fileName =
-    `${Date.now()}.${fileExt}`;
+    // 3. Validate the form.
+    const itemName = form.name.trim();
+    const itemPrice = Number(form.price);
 
-  const {
+    if (!itemName) {
+      alert("Please enter an item name.");
+      return;
+    }
 
-    error:uploadError
+    if (
+      !MKH_MENU_CATEGORIES.some(
+        (category) => category.name === form.category
+      )
+    ) {
+      alert("Please select a category from the dropdown.");
+      return;
+    }
 
-  } =
-  await supabase
-    .storage
-    .from("menu-images")
-    .upload(
-      fileName,
-      imageFile
-    );
+    if (
+      form.price.trim() === "" ||
+      !Number.isFinite(itemPrice) ||
+      itemPrice < 0
+    ) {
+      alert("Please enter a valid item price.");
+      return;
+    }
 
-  if(uploadError){
+    // 4. Upload an image only when a new image is selected.
+    let imageUrl = form.image || "";
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop()?.toLowerCase();
+
+      if (!fileExt) {
+        alert("The selected image filename is invalid.");
+        return;
+      }
+
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("menu-images")
+        .upload(fileName, imageFile);
+
+      if (uploadError) {
+        throw new Error(
+          `Image upload failed: ${uploadError.message}`
+        );
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("menu-images")
+        .getPublicUrl(fileName);
+
+      imageUrl = publicUrlData.publicUrl;
+    }
+
+    // 5. Prepare the data without changing the existing schema.
+    const itemPayload = {
+      name: itemName,
+      description: form.description.trim(),
+      category: form.category,
+      image: imageUrl,
+      price: itemPrice,
+      available: form.available,
+    };
+
+    // 6. Save a new item or update an existing item.
+    if (editingId) {
+      const { data: updatedItem, error: updateError } = await supabase
+        .from("menu_items")
+        .update(itemPayload)
+        .eq("id", editingId)
+        .eq("vendor_id", profile.vendor_id)
+        .select("id")
+        .maybeSingle();
+
+      if (updateError) {
+        throw new Error(
+          `Could not update the item: ${updateError.message}`
+        );
+      }
+
+      if (!updatedItem) {
+        throw new Error(
+          "The item was not updated. It may no longer belong to this vendor or may have been removed."
+        );
+      }
+    } else {
+      const { error: insertError } = await supabase
+        .from("menu_items")
+        .insert({
+          ...itemPayload,
+          vendor_id: profile.vendor_id,
+        });
+
+      if (insertError) {
+        throw new Error(
+          `Could not save the item: ${insertError.message}`
+        );
+      }
+    }
+  } catch (error) {
+    console.error("MKH vendor menu save failed:", error);
 
     alert(
-      uploadError.message
+      error instanceof Error
+        ? error.message
+        : "The item could not be saved. Please try again."
     );
 
+    // Important: keep the form open when saving fails.
     return;
-
   }
 
-  const {
-
-    data
-
-  } =
-  supabase
-    .storage
-    .from("menu-images")
-    .getPublicUrl(
-      fileName
-    );
-
-  imageUrl =
-    data.publicUrl;
-
-}
-  if(editingId){
-
-    await supabase
-      .from("menu_items")
-      .update({
-        name:form.name,
-        description:form.description,
-        category:form.category,
-        image:imageUrl,
-        price:Number(form.price),
-        available:form.available
-      })
-      .eq("id", editingId);
-
-  } else {
-
-    const { data, error } =
-await supabase
-  .from("menu_items")
-  .insert({
-        vendor_id:profile.vendor_id,
-        name:form.name,
-        description:form.description,
-        category:form.category,
-        image:imageUrl,
-        price:Number(form.price),
-        available:form.available
-      });
-      console.log("INSERT DATA:", data);
-console.log("INSERT ERROR:", error);
-
-  }
-
+  // 7. Reset the form only after a successful database response.
   setShowForm(false);
-
   setEditingId(null);
 
   setForm({
-    name:"",
-    description:"",
-    category:"Rice",
-    image:"",
-    price:"",
-    available:true
+    name: "",
+    description: "",
+    category: "",
+    image: "",
+    price: "",
+    available: true,
   });
 
+  setImageFile(null);
+
+  // 8. Refresh the menu after saving.
   await loadMenuItems();
 
+  alert(
+    isEditing
+      ? "Item updated successfully."
+      : "Item saved successfully."
+  );
 }
 async function uploadKycFile(
   file: File,
@@ -971,6 +941,15 @@ async function uploadKycStorePhoto() {
 }
 async function loadStorefrontProfile() {
   try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return;
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role,vendor_id")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileError || !profile?.vendor_id || String(profile.role ?? "").trim().toLowerCase() !== "vendor") return;
+
     const response = await fetch("/api/vendor/storefront-photo", { cache: "no-store" });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.success) {
@@ -1151,138 +1130,42 @@ async function logout(){
 }
 
 async function requestPayout() {
+  if (isSubmittingPayout || hasPendingPayout) return;
+
+  if (!isPayoutWindowOpen) {
+    alert("Vendor payout requests are open Friday 4:00 PM through Sunday 11:59 PM Nigeria time.");
+    return;
+  }
 
   try {
-
     setIsSubmittingPayout(true);
 
-    const {
-      data:{ user }
-    } =
-    await supabase
-      .auth
-      .getUser();
+    const response = await fetch("/api/vendor/payout-request", {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+    const result = await response.json().catch(() => null);
 
-    if(!user){
-
-      return;
-
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.message || "Payout request could not be submitted.");
     }
 
-    const {
-      data: profile
-    } =
-    await supabase
-      .from("profiles")
-      .select("vendor_id")
-      .eq(
-        "id",
-        user.id
-      )
-      .single();
-
-    if(
-      !profile?.vendor_id
-    ){
-
-      alert(
-        "Vendor not found"
-      );
-
-      return;
-
-    }
-
-    const {
-      data: existingRequest
-    } =
-    await supabase
-      .from(
-        "payout_requests"
-      )
-      .select("id")
-      .eq(
-        "requester_id",
-        profile.vendor_id
-      )
-      .eq(
-        "status",
-        "pending"
-      )
-      .maybeSingle();
-
-    if(existingRequest){
-
-      alert(
-        "You already have a pending payout request awaiting approval."
-      );
-
-      return;
-
-    }
-
-    const {
-      error
-    } =
-    await supabase
-      .from(
-        "payout_requests"
-      )
-      .insert({
-
-        requester_id:
-          profile.vendor_id,
-
-        requester_type:
-          "vendor",
-
-        amount:
-          pendingBalance,
-
-        status:
-          "pending"
-
-      });
-
-    if(error){
-
-      console.error(
-        "PAYOUT ERROR:",
-        error
-      );
-
-      alert(
-        JSON.stringify(error)
-      );
-
-      return;
-
-    }
-
-    alert(
-      "Payout request submitted"
+    // The database function has atomically reserved available + accrued funds.
+    const reservedAmount = Number(
+      result.payout?.amount ?? availableBalance
     );
-
-   
-
+    setHasPendingPayout(true);
+    setAvailableBalance(0);
+    setNextPayoutBalance(0);
+    setPendingBalance(reservedAmount);
+    alert(result.message || "Payout request submitted for review.");
+  } catch (error) {
+    console.error("Vendor payout request failed:", error);
+    alert(error instanceof Error ? error.message : "Payout request could not be submitted.");
+  } finally {
+    setIsSubmittingPayout(false);
   }
-
-  catch(error){
-
-    console.error(
-      error
-    );
-
-  }
-
-  finally{
-
-    setIsSubmittingPayout(
-      false
-    );
-
-  }
-
 }
 useEffect(() => {
 
@@ -1298,6 +1181,62 @@ useEffect(() => {
   loadVendorKyc();
 
 }, []);
+    // MKH_VENDOR_PAYOUT_PROGRESS_TRACKER_V2
+  // Authenticated refresh of this vendor's payout history.
+  useEffect(() => {
+    let active = true;
+
+    async function refreshPayoutHistory() {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) return;
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role,vendor_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (profileError || !profile?.vendor_id || String(profile.role ?? "").trim().toLowerCase() !== "vendor") return;
+
+        const response = await fetch(
+          "/api/vendor/payout-history",
+          { cache: "no-store" }
+        );
+
+        const result = await response.json().catch(() => null);
+
+        if (!active) return;
+
+        if (!response.ok || result?.success !== true) {
+          console.warn(
+            "Vendor payout history refresh failed:",
+            result?.message || "Request failed."
+          );
+          return;
+        }
+
+        setPayoutHistory(
+          Array.isArray(result.payouts) ? result.payouts : []
+        );
+
+        setHasPendingPayout(!!result.hasActivePayout);
+      } catch (error) {
+        console.warn("Vendor payout history refresh failed:", error);
+      }
+    }
+
+    void refreshPayoutHistory();
+
+    const refreshTimer = window.setInterval(
+      () => void refreshPayoutHistory(),
+      15000
+    );
+
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, []);
+
 
 
   if(loading){
@@ -1324,6 +1263,34 @@ useEffect(() => {
 
     );
 
+  }
+
+  if (isKycOnlyApplicant) {
+    return (
+      <main className="min-h-screen bg-[#F4F6FA] px-4 py-8 text-[#0F172A] sm:px-6">
+        <div className="mx-auto max-w-4xl">
+          <header className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-[#0F172A] px-6 py-5 text-white shadow-lg">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#D4AF37]">Mammy Kitchen Hub</p>
+              <h1 className="mt-1 text-2xl font-extrabold">Vendor Application Workspace</h1>
+              <p className="mt-1 text-sm text-slate-300">Your account is set up for application and KYC review.</p>
+            </div>
+            <button type="button" onClick={logout} className="rounded-xl bg-[#F97316] px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600">Sign out</button>
+          </header>
+          <div className="mb-6 rounded-xl border border-[#D4AF37]/50 bg-white p-4 text-sm leading-6 text-slate-700">
+            This workspace is limited to KYC verification while your vendor application is under review. Orders, menu management, earnings and payouts become available only after the vendor business approval and account-linking process is completed.
+          </div>
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-8">
+            <VendorKYCTab
+              kycStatus={kycStatus}
+              reviewNotes={kycReviewNotes}
+              onResubmit={submitKyc}
+              submitting={submittingKyc}
+            />
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return(
@@ -1363,6 +1330,7 @@ useEffect(() => {
               <>
 
 <VendorDashboardTab vendorName={vendorName} orders={orders} averageRating={averageRating} reviewCount={reviewCount} />
+              <VendorMarketingLinkCard />
               <VendorStorefrontCard
                 vendorName={vendorName}
                 image={kitchenImage}
@@ -1431,7 +1399,9 @@ useEffect(() => {
 >
 
   <p className="text-orange-100">
-    Available for Withdrawal
+    {isPayoutWindowOpen
+      ? "Available for Withdrawal"
+      : "Accrued for Next Payout"}
   </p>
 
   <h2
@@ -1441,7 +1411,11 @@ useEffect(() => {
       mt-2
     "
   >
-    ₦{pendingBalance.toLocaleString()}
+    ₦{(
+      isPayoutWindowOpen
+        ? availableBalance
+        : nextPayoutBalance
+    ).toLocaleString()}
   </h2>
 
   <p
@@ -1452,10 +1426,8 @@ useEffect(() => {
   >
     {
       isPayoutWindowOpen
-
-        ? "Withdrawal window is open"
-
-        : "Withdrawal window opens Friday 4PM"
+        ? "Withdrawal window closes Sunday 11:59 PM"
+        : "Withdrawal window opens Friday at 4:00 PM"
     }
   </p>
 
@@ -1464,7 +1436,7 @@ useEffect(() => {
     disabled={
       !isPayoutWindowOpen ||
       isSubmittingPayout ||
-      pendingBalance <= 0 ||
+      availableBalance <= 0 ||
       hasPendingPayout
     }
     className={`
@@ -1499,11 +1471,15 @@ useEffect(() => {
 
         ? "Payout Request Submitted"
 
-        : isPayoutWindowOpen
+        : !isPayoutWindowOpen
 
-        ? "Withdraw Funds"
+        ? "Available Friday 4PM - Sunday 11:59PM"
 
-        : "Available Friday 4PM - Sunday 11:59PM"
+        : availableBalance <= 0
+
+        ? "No Funds Available"
+
+        : "Withdraw Funds"
 
     }
 
@@ -1568,7 +1544,9 @@ useEffect(() => {
       }
     `}
   >
-    Available on {nextFridayText}
+    {pendingBalance > 0
+      ? "Funds reserved for an active payout request"
+      : "No funds currently reserved for payout"}
   </p>
 
 </div>
@@ -1720,71 +1698,192 @@ useEffect(() => {
 
   ) : (
 
-    payoutHistory.map((payout) => (
+    payoutHistory.map((payout) => {
+      const rawStatus = String(payout.status ?? "pending").toLowerCase();
 
-      <div
-        key={payout.id}
-        className="
-          border-b
-          py-4
-          flex
-          justify-between
-          items-center
-        "
-      >
+      const progressStatus =
+        rawStatus === "on_hold"
+          ? String(payout.status_before_hold || "approved").toLowerCase()
+          : rawStatus;
 
-        <div>
+      const stages = [
+        { status: "pending", label: "Submitted" },
+        { status: "approved", label: "TRM approved" },
+        { status: "processing", label: "Finance processing" },
+        { status: "transfer_submitted", label: "Transfer submitted" },
+        { status: "paid", label: "Paid" },
+      ];
 
-          <p className="font-semibold">
-            ₦{Number(
-              payout.amount
-            ).toLocaleString()}
+      const currentStage = stages.findIndex(
+        (stage) => stage.status === progressStatus
+      );
+
+      const isException = ["rejected", "failed"].includes(rawStatus);
+
+      const statusLabels: Record<string, string> = {
+        pending: "Awaiting TRM approval",
+        approved: "Approved by TRM",
+        processing: "Finance processing",
+        transfer_submitted: "Transfer submitted",
+        on_hold: "Temporarily on hold",
+        paid: "Payment completed",
+        rejected: "Request rejected",
+        failed: "Transfer failed",
+      };
+
+      const statusStyles: Record<string, string> = {
+        pending: "bg-amber-100 text-amber-800",
+        approved: "bg-blue-100 text-blue-800",
+        processing: "bg-purple-100 text-purple-800",
+        transfer_submitted: "bg-indigo-100 text-indigo-800",
+        on_hold: "bg-orange-100 text-orange-800",
+        paid: "bg-emerald-100 text-emerald-800",
+        rejected: "bg-rose-100 text-rose-800",
+        failed: "bg-rose-100 text-rose-800",
+      };
+
+      const exceptionReason =
+        payout.rejection_reason ||
+        payout.hold_reason ||
+        payout.admin_note ||
+        "Please contact MKH Finance for further information.";
+
+      return (
+        <article
+          key={payout.id}
+          className="border-b border-slate-200 py-5"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xl font-extrabold text-slate-900">
+                {String.fromCharCode(8358)}
+                {Number(payout.amount ?? 0).toLocaleString("en-NG")}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Requested:{" "}
+                {payout.requested_at
+                  ? new Date(payout.requested_at).toLocaleString("en-NG")
+                  : "Date unavailable"}
+              </p>
+
+              <p className="mt-1 break-all text-[10px] text-slate-400">
+                Request ID: {payout.id}
+              </p>
+            </div>
+
+            <span
+              className={`rounded-full px-3 py-2 text-xs font-bold ${
+                statusStyles[rawStatus] || "bg-slate-100 text-slate-700"
+              }`}
+            >
+              {statusLabels[rawStatus] ||
+                rawStatus.replace(/_/g, " ").toUpperCase()}
+            </span>
+          </div>
+
+          {!isException && (
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="mb-4 text-xs font-extrabold uppercase tracking-wide text-slate-600">
+                Withdrawal progress
+              </p>
+
+              <div className="grid grid-cols-5 gap-2">
+                {stages.map((stage, index) => {
+                  const completed =
+                    currentStage >= index && currentStage >= 0;
+
+                  return (
+                    <div key={stage.status} className="min-w-0 text-center">
+                      <div
+                        className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold ${
+                          completed
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-200 text-slate-500"
+                        }`}
+                      >
+                        {completed ? (
+                          <svg
+                            viewBox="0 0 20 20"
+                            className="h-4 w-4"
+                            fill="none"
+                            aria-label="Completed"
+                            role="img"
+                          >
+                            <path
+                              d="m4 10 4 4 8-8"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : index + 1}
+                      </div>
+
+                      <p
+                        className={`mt-2 text-[9px] leading-4 sm:text-[11px] ${
+                          completed
+                            ? "font-bold text-slate-800"
+                            : "text-slate-400"
+                        }`}
+                      >
+                        {stage.label}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {rawStatus === "on_hold" && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <strong>This payout is temporarily on hold.</strong>
+                  {payout.hold_reason && (
+                    <p className="mt-1">{payout.hold_reason}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isException && (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+              <strong>
+                {rawStatus === "rejected"
+                  ? "Withdrawal request rejected"
+                  : "Transfer reported as failed"}
+              </strong>
+              <p className="mt-1">{exceptionReason}</p>
+            </div>
+          )}
+
+          {payout.transfer_reference && (
+            <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+              Transfer reference:
+              <strong className="ml-1 break-all">
+                {payout.transfer_reference}
+              </strong>
+            </div>
+          )}
+
+          <p className="mt-3 text-[10px] text-slate-400">
+            Last updated:{" "}
+            {payout.status_updated_at || payout.processed_at
+              ? new Date(
+                  payout.status_updated_at || payout.processed_at
+                ).toLocaleString("en-NG")
+              : "Awaiting status update"}
           </p>
-
-          <p className="text-sm text-gray-500">
-            {new Date(
-              payout.requested_at
-            ).toLocaleDateString()}
-          </p>
-
-        </div>
-
-        <div>
-
-          <span
-            className={`
-              px-3
-              py-2
-              rounded-full
-              text-xs
-              font-semibold
-
-              ${
-                payout.status === "pending"
-                  ? "bg-orange-100 text-orange-700"
-                  : payout.status === "approved"
-                  ? "bg-blue-100 text-blue-700"
-                  : payout.status === "processing"
-                  ? "bg-purple-100 text-purple-700"
-                  : payout.status === "paid"
-                  ? "bg-green-100 text-green-700"
-                  : "bg-red-100 text-red-700"
-              }
-            `}
-          >
-            {payout.status.toUpperCase()}
-          </span>
-
-        </div>
-
-      </div>
-
-    ))
+        </article>
+      );
+    })
 
   )}
 
 </div>
 )}
+
+       {currentTab === "bank" && <VendorBankAccountTab />}
 
        {currentTab === "kyc" && (
   <>

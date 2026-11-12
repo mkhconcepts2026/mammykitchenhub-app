@@ -52,7 +52,8 @@ function extractReference(
 
 /**
  * Supports legacy public-URL values already saved in rows and new path-only values.
- * Identity documents are always signed server-side from a private bucket.
+ * Every KYC document, including the storefront image, is returned through a
+ * short-lived signed URL so the review UI never exposes a permanent storage URL.
  */
 export function resolveKycObjectReference(
   reference: string | null | undefined,
@@ -78,12 +79,6 @@ export async function makeSignedDocumentUrl(
 ): Promise<string | null> {
   const resolved = resolveKycObjectReference(reference, source, documentKey);
   if (!resolved) return null;
-
-  // Kitchen images are intentionally public media, separate from identity files.
-  if (documentKey === "kitchenPhoto" && resolved.bucket === "vendor-kitchen-images") {
-    const { data } = adminClient.storage.from(resolved.bucket).getPublicUrl(resolved.path);
-    return data.publicUrl || null;
-  }
 
   const { data, error } = await adminClient.storage
     .from(resolved.bucket)

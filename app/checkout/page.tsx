@@ -7,6 +7,29 @@ import { useCart } from "@/components/CartContext";
 
 type PaymentMethod = "cash_on_delivery" | "wallet";
 
+type LocalityOption = {
+  id: string;
+  name: string;
+  localityType: string | null;
+  geocodingStatus: string | null;
+  lcdaName: string | null;
+};
+
+type DeliveryQuote = {
+  quoteId: string;
+  distanceKm: number;
+  deliveryFee: number;
+  platformFee: number;
+  subtotal: number;
+  total: number;
+  rateVersion: number;
+  expiresAt: string;
+  resolvedVendorAddress: string;
+  resolvedDestinationAddress: string;
+  localityName: string;
+  lgaName?: string | null;
+};
+
 export default function CheckoutPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -23,7 +46,16 @@ export default function CheckoutPage() {
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState("");
   const [pageError, setPageError] = useState("");
+  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+  const [localitySearch, setLocalitySearch] = useState("");
+  const [localityResults, setLocalityResults] = useState<LocalityOption[]>([]);
+  const [selectedLocality, setSelectedLocality] = useState<LocalityOption | null>(null);
+  const [localityLoading, setLocalityLoading] = useState(false);
+  const [localityError, setLocalityError] = useState("");
   const codCheckoutReference = useRef<string | null>(null);
+  const walletCheckoutReference = useRef<string | null>(null);
 
   async function getCodCheckoutReference(): Promise<string> {
     const signatureInput = JSON.stringify({
@@ -77,12 +109,128 @@ export default function CheckoutPage() {
     }
   }
 
-  const deliveryFee = 1500;
-  const platformFee = 300;
-  const total = subtotal + deliveryFee + platformFee;
+
+  async function getWalletCheckoutReference(): Promise<string> {
+    const signatureInput = JSON.stringify({
+      cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
+      address: deliveryAddress.trim(),
+      phone: phoneNumber.trim(),
+      notes: customerNotes.trim() || null,
+      deliveryQuoteId: deliveryQuote?.quoteId ?? null,
+    });
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(signatureInput));
+    const signature = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const storageKey = "mkh:wallet-checkout-attempt";
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.signature === signature && typeof parsed.reference === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.reference)) {
+          walletCheckoutReference.current = parsed.reference;
+          return parsed.reference;
+        }
+      }
+      const reference = crypto.randomUUID();
+      walletCheckoutReference.current = reference;
+      sessionStorage.setItem(storageKey, JSON.stringify({ signature, reference }));
+      return reference;
+    } catch {
+      if (!walletCheckoutReference.current) walletCheckoutReference.current = crypto.randomUUID();
+      return walletCheckoutReference.current;
+    }
+  }
+
+  const deliveryFee = deliveryQuote?.deliveryFee ?? 0;
+  const platformFee = deliveryQuote?.platformFee ?? 300;
+  const total = deliveryQuote?.total ?? subtotal + platformFee;
 
   const formatNaira = (amount: number) =>
     `₦${amount.toLocaleString("en-NG")}`;
+  async function searchDeliveryLocalities() {
+    setLocalityError("");
+    setLocalityResults([]);
+    setSelectedLocality(null);
+    setDeliveryQuote(null);
+    setQuoteError("");
+    const query = localitySearch.trim();
+    if (query.length < 2) {
+      setLocalityError("Enter at least two characters to search MKH localities.");
+      return;
+    }
+
+    setLocalityLoading(true);
+    try {
+      const response = await fetch(`/api/customer/delivery-localities?q=${encodeURIComponent(query)}`, {
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true || !Array.isArray(result.localities)) {
+        throw new Error(typeof result?.message === "string" ? result.message : "MKH localities could not be loaded.");
+      }
+      setLocalityResults(result.localities as LocalityOption[]);
+      if (result.localities.length === 0) {
+        setLocalityError("No active MKH locality matched that search. Try another spelling or nearby area.");
+      }
+    } catch (error) {
+      setLocalityError(error instanceof Error ? error.message : "MKH localities could not be loaded. Please try again.");
+    } finally {
+      setLocalityLoading(false);
+    }
+  }
+  async function calculateDeliveryQuote() {
+    setQuoteError("");
+    setPageError("");
+    setDeliveryQuote(null);
+
+    if (!deliveryAddress.trim()) {
+      setQuoteError("Enter the complete delivery address first.");
+      return;
+    }
+    if (!selectedLocality) {
+      setLocalityError("Search for and select your delivery locality from MKH records.");
+      return;
+    }
+    if (items.length === 0) {
+      setQuoteError("Your cart is empty.");
+      return;
+    }
+    if (items.some((item) => item.vendor_id !== items[0]?.vendor_id)) {
+      setQuoteError("Please order from one vendor at a time.");
+      return;
+    }
+
+    setQuoteLoading(true);
+    try {
+      const response = await fetch("/api/customer/delivery-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
+          deliveryAddress: deliveryAddress.trim(),
+          deliveryLocalityId: selectedLocality.id,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true || !result?.quote) {
+        throw new Error(typeof result?.message === "string" ? result.message : "We could not calculate delivery for this address.");
+      }
+
+      const quote = result.quote as DeliveryQuote;
+      if (Math.round(Number(quote.subtotal) * 100) !== Math.round(Number(subtotal) * 100)) {
+        throw new Error("Menu prices changed since the cart was loaded. Refresh your cart and calculate delivery again.");
+      }
+      if (!quote.quoteId || !Number.isFinite(Number(quote.deliveryFee)) || !Number.isFinite(Number(quote.distanceKm)) || !quote.expiresAt || quote.localityName !== selectedLocality.name) {
+        throw new Error("The delivery service returned an invalid quote. Please try again.");
+      }
+      setDeliveryQuote(quote);
+    } catch (error) {
+      setDeliveryQuote(null);
+      setQuoteError(error instanceof Error ? error.message : "Delivery could not be calculated. Please try again.");
+    } finally {
+      setQuoteLoading(false);
+    }
+  }
 
   const loadWalletBalance = useCallback(async () => {
     setWalletLoading(true);
@@ -170,25 +318,20 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (paymentMethod === "wallet") {
-      if (walletLoading) {
-        setPageError("Please wait while we check your wallet balance.");
-        return;
-      }
+    if (!deliveryQuote) {
+      setPageError("Confirm your delivery address and calculate delivery before placing the test order.");
+      return;
+    }
 
-      if (walletBalance === null) {
-        setPageError(
-          walletError || "Your wallet balance is currently unavailable."
-        );
-        return;
-      }
+    if (!Number.isFinite(Date.parse(deliveryQuote.expiresAt)) || Date.parse(deliveryQuote.expiresAt) <= Date.now()) {
+      setDeliveryQuote(null);
+      setPageError("Your delivery quote has expired. Calculate delivery again before placing the order.");
+      return;
+    }
 
-      if (walletBalance < total) {
-        setPageError(
-          `Insufficient wallet balance. Your order total is ${formatNaira(total)}.`
-        );
-        return;
-      }
+    if (paymentMethod === "wallet" && (walletBalance === null || walletBalance < total)) {
+      setPageError("Your MKH Wallet balance is insufficient. Add money to your wallet or choose another payment method.");
+      return;
     }
 
     setLoading(true);
@@ -204,80 +347,44 @@ export default function CheckoutPage() {
         return;
       }
 
-      if (paymentMethod === "wallet") {
-        const response = await fetch("/api/customer/wallet/checkout", {
+      const isWalletPayment = paymentMethod === "wallet";
+      // Keep payment-method references separate so a COD retry can never be
+      // replayed as a wallet debit, or vice versa.
+      const checkoutReference = isWalletPayment
+        ? await getWalletCheckoutReference()
+        : await getCodCheckoutReference();
+
+      const response = await fetch(
+        isWalletPayment ? "/api/customer/wallet/checkout" : "/api/customer/cod/checkout",
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            cart: items.map((item) => ({
-              menu_item_id: item.id,
-              quantity: item.quantity,
-            })),
-            deliveryAddress: deliveryAddress.trim(),
-            phoneNumber: phoneNumber.trim(),
-            customerNotes: customerNotes.trim() || null,
-            checkoutReference: crypto.randomUUID(),
+            cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
+            address: deliveryAddress.trim(),
+            phone: phoneNumber.trim(),
+            notes: customerNotes.trim() || null,
+            checkoutReference,
+            deliveryQuoteId: deliveryQuote.quoteId,
           }),
-        });
-
-        const result = await response.json();
-
-        if (
-          !response.ok ||
-          result.success !== true ||
-          !result.orderId
-        ) {
-          throw new Error(
-            typeof result.message === "string"
-              ? result.message
-              : "Wallet checkout could not be completed."
-          );
         }
+      );
 
-        clearCart();
-        router.push(
-          `/success?order=${encodeURIComponent(result.orderId)}`
-        );
-        return;
-      }
-
-      // Reuse the reference for identical checkout details, including after reload.
-      const checkoutReference = await getCodCheckoutReference();
-
-      const response = await fetch("/api/customer/cod/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cart: items.map((item) => ({
-            menu_item_id: item.id,
-            quantity: item.quantity,
-          })),
-          address: deliveryAddress.trim(),
-          phone: phoneNumber.trim(),
-          notes: customerNotes.trim() || null,
-          checkoutReference,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (
-        !response.ok ||
-        result.success !== true ||
-        typeof result.orderId !== "string"
-      ) {
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true || typeof result?.orderId !== "string") {
         throw new Error(
-          typeof result.error === "string"
-            ? result.error
-            : "Cash on Delivery checkout could not be completed."
+          typeof result?.error === "string" ? result.error :
+          typeof result?.message === "string" ? result.message :
+          (isWalletPayment ? "MKH Wallet checkout could not be completed." : "Cash on Delivery checkout could not be completed.")
         );
       }
 
-      codCheckoutReference.current = null;
-      try {
-        sessionStorage.removeItem("mkh:cod-checkout-attempt");
-      } catch {
-        // Storage may be unavailable; successful checkout must still continue.
+      if (isWalletPayment) {
+        walletCheckoutReference.current = null;
+        try { sessionStorage.removeItem("mkh:wallet-checkout-attempt"); } catch { /* storage may be unavailable */ }
+      } else {
+        codCheckoutReference.current = null;
+        try { sessionStorage.removeItem("mkh:cod-checkout-attempt"); } catch { /* storage may be unavailable */ }
       }
       clearCart();
       router.push(
@@ -325,11 +432,93 @@ export default function CheckoutPage() {
                 required
                 autoComplete="street-address"
                 maxLength={1000}
-                placeholder="Enter delivery address"
+                placeholder="e.g. 9 Bamidele Adebule Street, Arowojobe Estate"
                 value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
+                onChange={(e) => {
+                  setDeliveryAddress(e.target.value);
+                  setDeliveryQuote(null);
+                  setQuoteError("");
+                }}
                 className="w-full rounded-xl border p-4 outline-none focus:border-orange-500"
               />
+            </div>
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+                            <div className="mb-4 space-y-2">
+                <label htmlFor="deliveryLocalitySearch" className="block text-sm font-semibold text-gray-800">Delivery locality (from MKH records)</label>
+                <div className="flex gap-2">
+                  <input
+                    id="deliveryLocalitySearch"
+                    type="search"
+                    value={localitySearch}
+                    onChange={(e) => {
+                      setLocalitySearch(e.target.value);
+                      setSelectedLocality(null);
+                      setLocalityResults([]);
+                      setDeliveryQuote(null);
+                      setQuoteError("");
+                      setLocalityError("");
+                    }}
+                    maxLength={100}
+                    placeholder="Search e.g. Mende, Maryland, Ikeja GRA"
+                    className="min-w-0 flex-1 rounded-lg border bg-white p-3 outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={searchDeliveryLocalities}
+                    disabled={localityLoading || localitySearch.trim().length < 2}
+                    className="rounded-lg border border-orange-300 px-4 py-2 font-semibold text-orange-700 disabled:opacity-50"
+                  >
+                    {localityLoading ? "Searching…" : "Search"}
+                  </button>
+                </div>
+                <select
+                  id="deliveryLocality"
+                  value={selectedLocality?.id ?? ""}
+                  onChange={(e) => {
+                    const match = localityResults.find((locality) => locality.id === e.target.value) ?? null;
+                    setSelectedLocality(match);
+                    setDeliveryQuote(null);
+                    setQuoteError("");
+                    setLocalityError("");
+                  }}
+                  disabled={localityLoading || localityResults.length === 0}
+                  className="w-full rounded-lg border bg-white p-3 outline-none focus:border-orange-500 disabled:bg-gray-100"
+                >
+                  <option value="">Select a matching MKH locality</option>
+                  {localityResults.map((locality) => (
+                    <option key={locality.id} value={locality.id}>
+                      {locality.name}{locality.lcdaName ? ` — ${locality.lcdaName}` : ""}{locality.localityType ? ` (${locality.localityType})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedLocality && (
+                  <p className="text-xs text-green-800">
+                    Selected from MKH records: {selectedLocality.name}
+                    {selectedLocality.geocodingStatus ? ` · coordinate status: ${selectedLocality.geocodingStatus}` : ""}
+                  </p>
+                )}
+                {localityError && <p role="alert" className="text-sm text-red-700">{localityError}</p>}
+                <p className="text-xs text-gray-600">Enter the house number and street name (including Street, Road, Close, etc.) plus the estate or landmark above. An estate name alone is not enough for a reliable road-distance quote. MKH supplies the locality and LGA; Google must match the actual street before a quote is issued.</p>
+              </div><button
+                type="button"
+                onClick={calculateDeliveryQuote}
+                disabled={quoteLoading || !deliveryAddress.trim() || !selectedLocality || items.length === 0}
+                className="w-full rounded-xl bg-orange-500 p-3 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {quoteLoading ? "Calculating road distance..." : "Confirm Address & Calculate Delivery"}
+              </button>
+              {quoteError && <p role="alert" className="mt-3 text-sm text-red-700">{quoteError}</p>}
+              {deliveryQuote && (
+                <div className="mt-3 space-y-1 text-sm text-green-800">
+                  <p><strong>From vendor:</strong> {deliveryQuote.resolvedVendorAddress}</p>
+                  <p><strong>MKH locality:</strong> {deliveryQuote.localityName}</p>
+                  <p><strong>MKH LGA:</strong> {deliveryQuote.lgaName || "Not assigned"}</p>
+                  <p><strong>Mapped destination:</strong> {deliveryQuote.resolvedDestinationAddress}</p>
+                  <p>Road distance: {deliveryQuote.distanceKm.toFixed(2)} km</p>
+                  <p>Delivery fee: {formatNaira(deliveryQuote.deliveryFee)}</p>
+                  <p className="text-xs text-gray-600">Quote expires at {new Date(deliveryQuote.expiresAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}.</p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -486,8 +675,14 @@ export default function CheckoutPage() {
 
             <div className="flex justify-between gap-4">
               <span>Delivery Fee</span>
-              <span>{formatNaira(deliveryFee)}</span>
+              <span>{deliveryQuote ? formatNaira(deliveryFee) : "Calculated after address confirmation"}</span>
             </div>
+            {deliveryQuote && (
+              <div className="flex justify-between gap-4 text-sm text-gray-600">
+                <span>Road distance</span>
+                <span>{deliveryQuote.distanceKm.toFixed(2)} km</span>
+              </div>
+            )}
 
             <div className="flex justify-between gap-4">
               <span>Service Fee</span>
@@ -495,7 +690,7 @@ export default function CheckoutPage() {
             </div>
 
             <div className="flex justify-between gap-4 border-t pt-4 text-xl font-bold">
-              <span>Total</span>
+              <span>{deliveryQuote ? "Total" : "Estimated total (before delivery)"}</span>
               <span>{formatNaira(total)}</span>
             </div>
           </div>
@@ -503,31 +698,12 @@ export default function CheckoutPage() {
           <button
             type="button"
             onClick={placeOrder}
-            disabled={
-              !deliveryAddress.trim() ||
-              !/^0\d{10}$/.test(phoneNumber.trim()) ||
-              loading ||
-              items.length === 0 ||
-              (paymentMethod === "wallet" &&
-                (walletLoading ||
-                  walletBalance === null ||
-                  walletBalance < total))
-            }
+            disabled={loading || quoteLoading || items.length === 0 || !deliveryQuote || (paymentMethod === "wallet" && (walletLoading || walletBalance === null || walletBalance < total))}
             className="mt-8 w-full rounded-xl bg-orange-500 p-4 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading
-              ? paymentMethod === "wallet"
-                ? "Processing Wallet Payment..."
-                : "Placing Order..."
-              : paymentMethod === "wallet"
-                ? "Pay with MKH Wallet"
-                : "Place Order"}
-          </button>
+          >{loading ? "Processing order…" : paymentMethod === "wallet" ? "Pay with MKH Wallet" : "Place Test COD Order"}</button>
 
-          <p className="mt-4 text-xs leading-5 text-gray-500">
-            Wallet payments are processed by the MKH server. Card payment
-            is not yet available.
-          </p>
+          <p className="mt-3 text-xs leading-5 text-amber-800">Cash on Delivery is enabled for TEST orders only and will be disabled for production. MKH Wallet orders use the confirmed delivery quote and an atomic wallet debit.</p>
+          <p className="mt-4 text-xs leading-5 text-gray-500">Paystack card payment at checkout is not yet available. Wallet funding is available through the customer dashboard.</p>
         </aside>
       </div>
     </main>

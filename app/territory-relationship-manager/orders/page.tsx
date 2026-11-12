@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import EnterpriseOrderSidebar from "@/components/territory-manager/EnterpriseOrderSidebar";
 import EnterpriseIntelligencePanel from "@/components/territory-manager/EnterpriseIntelligencePanel";
 export default function TerritoryRelationshipManagerOrdersPage() {
@@ -20,101 +19,39 @@ export default function TerritoryRelationshipManagerOrdersPage() {
 
   async function loadOrders() {
     setLoading(true);
-
-    const { data, error } = await supabase
-      .from("orders")
-      .select(`
-        *,
-        vendors (
-          id,
-          name,
-          cuisine,
-          location,
-          status
-        ),
-        rider:profiles!orders_rider_id_fkey (
-          id,
-          full_name,
-          phone
-        ),
-        profiles!orders_user_id_fkey (
-          id,
-          full_name,
-          email,
-          phone
-        )
-      `)
-      .order("created_at", {
-        ascending: false,
-      });
-
-    if (error) {
-      console.error("Orders:", error);
-    } else {
-      const latestOrders = data || [];
-
+    try {
+      const response = await fetch("/api/trm/workspace?section=orders", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Unable to load orders for your assigned territory.");
+      }
+      const latestOrders = Array.isArray(result.orders) ? result.orders : [];
       setOrders(latestOrders);
-
       if (selectedOrderRef.current) {
-        const updatedOrder = latestOrders.find(
-          (order) => order.id === selectedOrderRef.current.id
-        );
-
+        const updatedOrder = latestOrders.find((order: any) => order.id === selectedOrderRef.current.id);
         if (updatedOrder) {
           selectedOrderRef.current = updatedOrder;
           setSelectedOrder(updatedOrder);
+        } else {
+          // Clear a previously selected order immediately if it no longer
+          // belongs to the current server-verified territory scope.
+          selectedOrderRef.current = null;
+          setSelectedOrder(null);
         }
       }
+    } catch (error) {
+      console.error("TRM territory orders:", error);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-  }
-
-  async function refreshWorkspace() {
-    await loadOrders();
   }
 
   useEffect(() => {
-    loadOrders();
-  }, []);
-
-  useEffect(() => {
-    const ordersChannel = supabase
-      .channel("orders-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-        },
-        () => {
-          console.log("ORDER EVENT RECEIVED: orders");
-          refreshWorkspace();
-        }
-      )
-      .subscribe();
-
-    const orderEventsChannel = supabase
-      .channel("order-events-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "order_events",
-        },
-        () => {
-          console.log("ORDER EVENT RECEIVED: order_events");
-          refreshWorkspace();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(ordersChannel);
-      supabase.removeChannel(orderEventsChannel);
-    };
+    void loadOrders();
+    // Poll the authenticated server endpoint. Do not subscribe to global
+    // orders/order_events channels from the browser.
+    const refreshId = window.setInterval(() => void loadOrders(), 30_000);
+    return () => window.clearInterval(refreshId);
   }, []);
 
   const liveOrders = orders.filter(
@@ -149,7 +86,7 @@ export default function TerritoryRelationshipManagerOrdersPage() {
 
   const averageSLA =
     deliveredOrders.length === 0
-      ? 0
+      ? null
       : Math.round(
           deliveredOrders.reduce((sum, order) => {
             return (
@@ -253,7 +190,7 @@ export default function TerritoryRelationshipManagerOrdersPage() {
     },
     {
       title: "Avg SLA",
-      value: `${averageSLA} mins`,
+      value: averageSLA === null ? "N/A" : `${averageSLA} mins`,
       color: "border-slate-500",
       bg: "bg-slate-100",
       icon: "⏱",
@@ -278,7 +215,7 @@ export default function TerritoryRelationshipManagerOrdersPage() {
           </h2>
 
           <p className="mt-3 text-xs font-medium text-slate-400">
-            Waiting for live data...
+            Territory orders only
           </p>
 
         </div>
@@ -372,7 +309,9 @@ export default function TerritoryRelationshipManagerOrdersPage() {
 
     <tbody>
 
-     {filteredOrders.map((order) => {
+     {filteredOrders.length === 0 ? (
+       <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500">No orders are currently recorded for your assigned territory.</td></tr>
+     ) : filteredOrders.map((order) => {
   const created = new Date(order.created_at);
   const minutesOpen = Math.floor(
     (Date.now() - created.getTime()) / 1000 / 60

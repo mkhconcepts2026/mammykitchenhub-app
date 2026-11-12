@@ -38,11 +38,13 @@ export async function POST() {
       );
     }
 
-    // Enforce the payout window using Nigeria time on the server.
+    // Enforce the vendor request window using Nigeria time on the server:
+    // Friday 4:00 PM inclusive through Monday 12:00 AM exclusive.
     const lagosParts = new Intl.DateTimeFormat("en-US", {
       timeZone: "Africa/Lagos",
       weekday: "short",
       hour: "2-digit",
+      minute: "2-digit",
       hourCycle: "h23",
     }).formatToParts(new Date());
 
@@ -52,12 +54,10 @@ export async function POST() {
 
     const day = lagosTime.weekday;
     const hour = Number(lagosTime.hour);
-
     const payoutWindowOpen =
       (day === "Fri" && hour >= 16) ||
       day === "Sat" ||
       day === "Sun";
-
     if (!payoutWindowOpen) {
       return NextResponse.json(
         {

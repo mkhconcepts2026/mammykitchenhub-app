@@ -58,6 +58,27 @@ export async function POST(request: Request) {
 
     const employee = await prepareEmployee(body);
 
+    // Validate the selected LGA against the selected State on the server.
+    const { data: lgaRecord, error: lgaLookupError } = await adminClient
+      .from("local_governments")
+      .select("id, state_id")
+      .eq("id", employee.lgaId)
+      .maybeSingle();
+
+    if (lgaLookupError || !lgaRecord) {
+      return NextResponse.json(
+        { success: false, message: "Select a valid Local Government Area (LGA)." },
+        { status: 400 }
+      );
+    }
+
+    if (lgaRecord.state_id !== employee.stateId) {
+      return NextResponse.json(
+        { success: false, message: "The selected LGA does not belong to the selected State." },
+        { status: 400 }
+      );
+    }
+
     // ---------------------------------------
     // Get Role Name
     // ---------------------------------------

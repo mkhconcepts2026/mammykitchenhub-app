@@ -282,7 +282,12 @@ export default function RiderDrawer({
 
             </h3>
 
-            <div className="grid grid-cols-1 gap-4">
+            {rider.wallet_scope_limited ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Account-wide wallet balances are hidden in this territory view because this rider is linked to vendors outside your assigned territory.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
 
               <div className="rounded-xl bg-orange-50 p-4">
 
@@ -329,7 +334,8 @@ export default function RiderDrawer({
 
               </div>
 
-            </div>
+              </div>
+            )}
 
           </section>
 

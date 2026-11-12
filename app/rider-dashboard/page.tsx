@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import RiderWalletSummary from "@/components/rider/RiderWalletSummary";
+import RiderPayoutCentre from "@/components/rider/RiderPayoutCentre";
 
 import {
   Bike,
@@ -43,6 +45,10 @@ type Order = {
   customer_notes?: string | null;
   delivery_otp?: string | null;
   otp_verified?: boolean;
+
+  // Payment fields used by the COD completion flow
+  payment_method?: string | null;
+  payment_status?: string | null;
 
   vendors?: {
     name: string;
@@ -157,6 +163,7 @@ async function loadDashboard() {
       delivery_address,
       customer_notes,
       payment_status,
+      payment_method,
       otp_verified,
       picked_up_at,
       delivered_at,
@@ -261,6 +268,7 @@ setMyOrders(
         delivery_address,
         customer_notes,
         payment_status,
+        payment_method,
         otp_verified,
         picked_up_at,
         delivered_at,
@@ -457,7 +465,8 @@ async function acceptDelivery(orderId: string) {
 
   async function updateStatus(
     orderId: string,
-    status: string
+    status: string,
+    paymentMethod?: string
   ) {
     try {
       const {
@@ -523,10 +532,35 @@ async function acceptDelivery(orderId: string) {
 
       
       if (status === "delivered") {
-        const { data, error } = await supabase.rpc(
-          "complete_my_delivery",
-          { p_order_id: orderId }
-        );
+        let data: any = null;
+        let error: any = null;
+
+        if (paymentMethod === "cash_on_delivery") {
+          const cashCollected = window.confirm(
+            "Confirm that you have physically collected the full COD payment from the customer. Continue only after the cash has been received."
+          );
+
+          if (!cashCollected) return;
+
+          const result = await supabase.rpc(
+            "mkh_complete_cod_delivery",
+            {
+              p_order_id: orderId,
+              p_cash_collected: true,
+            }
+          );
+
+          data = result.data;
+          error = result.error;
+        } else {
+          const result = await supabase.rpc(
+            "complete_my_delivery",
+            { p_order_id: orderId }
+          );
+
+          data = result.data;
+          error = result.error;
+        }
 
         if (error) {
           console.error("DELIVERY COMPLETION ERROR:", error);
@@ -751,6 +785,10 @@ async function verifyOtp(orderId: string) {
             </div>
           </div>
         </header>
+
+        <RiderWalletSummary />
+
+        <RiderPayoutCentre />
 
         {/* Delivery workspace */}
         <main className="px-3 pb-6 pt-4 sm:px-4">
@@ -1460,10 +1498,7 @@ async function verifyOtp(orderId: string) {
                         order.otp_verified && (
                           <button
                             onClick={() =>
-                              updateStatus(
-                                order.id,
-                                "delivered"
-                              )
+                              updateStatus(order.id, "delivered", order.payment_method ?? undefined)
                             }
                             className="
                               bg-green-500

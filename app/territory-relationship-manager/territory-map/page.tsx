@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import TerritoryMap from "@/components/territory-manager/TerritoryMap";
 import RiderLocationPanel from "@/components/territory-manager/RiderLocationPanel";
 
-import { getRiderLocations } from "@/lib/services/territory-map";
 
 export default function TerritoryMapPage() {
 
@@ -14,18 +13,22 @@ export default function TerritoryMapPage() {
 useEffect(() => {
   async function loadMap() {
     try {
-      const data = await getRiderLocations();
-      setRiders(data);
+      const response = await fetch("/api/trm/workspace?section=map", { cache: "no-store" });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || "Unable to load rider locations for your territory.");
+      }
+      setRiders(Array.isArray(result.riders) ? result.riders : []);
     } catch (error) {
       console.error("Failed to load rider locations:", error);
     }
   }
 
-  loadMap();
+  void loadMap();
 
   const refreshInterval = setInterval(() => {
-    loadMap();
-  }, 5000);
+    void loadMap();
+  }, 15000);
 
   return () => {
     clearInterval(refreshInterval);
@@ -48,7 +51,7 @@ useEffect(() => {
         </h1>
 
         <p className="mt-4 text-slate-300">
-          Monitor live rider movement across your territory.
+          Monitor location updates for riders assigned to vendors in your territory. Updates every 15 seconds.
         </p>
 
       </section>

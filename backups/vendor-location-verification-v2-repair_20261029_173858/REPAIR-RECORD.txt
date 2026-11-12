@@ -1,0 +1,9 @@
+﻿MKH Vendor Location Verification V2 local repair
+Timestamp: 20261029_173858
+Backup: C:\MKH\mkh-app\backups\vendor-location-verification-v2-repair_20261029_173858
+Changes:
+ - Missing NIPOST key now records provider status unavailable and allows save to remain pending.
+ - NIPOST success is read from documented response field data.valid only.
+ - Delivery quote gate explicitly rejects null/undefined/out-of-range coordinates.
+ - KYC review cast is updated through unknown to resolve the reported TypeScript cast error without changing query logic.
+No SQL executed. No GitHub push or deployment performed.
