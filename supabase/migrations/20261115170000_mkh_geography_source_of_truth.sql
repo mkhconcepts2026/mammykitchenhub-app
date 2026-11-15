@@ -92,7 +92,7 @@ BEGIN
     IF p_locality_id IS NULL OR p_territory_id IS NULL OR p_changed_by IS NULL THEN
         RAISE EXCEPTION 'Locality, territory and responsible Admin are required';
     END IF;
-    IF p_action NOT IN ('assign', 'unassign') THEN
+    IF p_action IS NULL OR p_action NOT IN ('assign', 'unassign') THEN
         RAISE EXCEPTION 'Choose a valid mapping action';
     END IF;
     IF length(btrim(COALESCE(p_change_reason, ''))) NOT BETWEEN 10 AND 500 THEN
@@ -401,7 +401,7 @@ BEGIN
            AND tl.territory_id = v_zone_territory_id
            AND tl.status = 'active'
     ) THEN
-        RAISE EXCEPTION 'The selected zone is outside the territory coverage mapped to this vendor\'s verified MKH locality';
+        RAISE EXCEPTION 'The selected zone is outside the territory coverage mapped to this vendor''s verified MKH locality';
     END IF;
 
     SELECT count(*)
