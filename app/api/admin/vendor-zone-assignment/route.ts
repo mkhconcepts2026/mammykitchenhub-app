@@ -74,7 +74,6 @@ export async function GET(request: Request) {
     }
 
     const territories = (territoryRes.data ?? []).filter((row: any) => String(row.lga_id) === String(locality?.lga_id));
-    const territoriesById = new Map(territories.map((row: any) => [String(row.id), row]));
     const currentZone = currentZoneRes.data;
     const territoryIdsToLabel = Array.from(new Set([
       ...territories.map((row: any) => String(row.id)),
@@ -84,7 +83,7 @@ export async function GET(request: Request) {
       ? await adminClient.from("territories").select("id,name").in("id", territoryIdsToLabel)
       : { data: [], error: null } as any;
     if (labelsError) return fail("Unable to load the current territory label.", 500);
-    const territoryNames = new Map((allTerritories ?? []).map((row: any) => [String(row.id), String(row.name)]));
+    const territoryNames = new Map<string, string>((allTerritories ?? []).map((row: any) => [String(row.id), String(row.name)] as [string, string]));
 
     const lgaIds = Array.from(new Set([
       locality?.lga_id,
@@ -94,7 +93,7 @@ export async function GET(request: Request) {
       ? await adminClient.from("local_governments").select("id,name").in("id", lgaIds)
       : { data: [], error: null } as any;
     if (lgaError) return fail("Unable to load the MKH LGA labels.", 500);
-    const lgaNames = new Map((lgas ?? []).map((row: any) => [String(row.id), String(row.name)]));
+    const lgaNames = new Map<string, string>((lgas ?? []).map((row: any) => [String(row.id), String(row.name)] as [string, string]));
 
     const currentAssignment = assignments[0] ? {
       id: String(assignments[0].id),
