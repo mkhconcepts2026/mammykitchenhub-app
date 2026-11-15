@@ -79,23 +79,6 @@ function addressFromRecord(record: Record<string, unknown> | null) {
   return "";
 }
 
-function addressWithSelectedLocality(address: string, localityContext: string[]) {
-  const normalizeForMatch = (value: string) =>
-    value.toLocaleLowerCase("en-NG").replace(/[^a-z0-9]+/g, " ").trim();
-  const foldedAddress = normalizeForMatch(address);
-  const missingContext = localityContext
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .filter((value) => {
-      const parentheticalAlias = value.match(/\(([^)]+)\)/)?.[1]?.trim();
-      const aliases = [value, parentheticalAlias || ""]
-        .map(normalizeForMatch)
-        .filter(Boolean);
-      return !aliases.some((alias) => foldedAddress.includes(alias));
-    });
-  const fullAddress = missingContext.length ? `${address}, ${missingContext.join(", ")}` : address;
-  return normaliseAddress(fullAddress);
-}
 
 type StreetTarget = {
   streetTokens: string[];
@@ -553,7 +536,6 @@ export async function POST(request: Request) {
     if (!body || typeof body !== "object" || Array.isArray(body)) return fail("Invalid quote request.", 400);
     const input = body as Record<string, unknown>;
     const deliveryAddress = input.deliveryAddress;
-    const deliveryLocalityId = input.deliveryLocalityId;
     const cart = input.cart;
     if (typeof deliveryAddress !== "string" || !deliveryAddress.trim() || deliveryAddress.trim().length > 1000) {
       return fail("Enter the complete street address before calculating the fee.", 400);
@@ -613,57 +595,7 @@ export async function POST(request: Request) {
     }
     if (!Array.isArray(cart) || cart.length < 1 || cart.length > 50) return fail("Your cart is empty or invalid.", 400);
 
-    const { data: selectedLocality, error: localityError } = await adminClient
-      .from("localities")
-      .select("id, name, locality_type, is_active, latitude, longitude, lga_id, lcda_id")
-      .eq("id", deliveryLocalityId)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (localityError) {
-      console.error("Delivery quote locality lookup failed:", localityError.message);
-      return fail("We could not verify the selected locality against MKH records. Please try again.", 503);
-    }
-    if (!selectedLocality || typeof selectedLocality.name !== "string" || !selectedLocality.name.trim()) {
-      return fail("Choose an active locality from MKH's list, then try again.", 422);
-    }
-    const selectedLocalityName = selectedLocality.name.trim();
-
-    // MKH owns the administrative assignment. Google receives this context only
-    // to improve street-level resolution; Google's administrative labels are not
-    // used as MKH's source of truth.
-    let selectedLgaName = "";
-    if (typeof (selectedLocality as any).lga_id === "string") {
-      const { data: lga, error: lgaError } = await adminClient
-        .from("local_governments")
-        .select("id, name")
-        .eq("id", (selectedLocality as any).lga_id)
-        .maybeSingle();
-      if (lgaError) {
-        console.error("Delivery quote LGA lookup failed:", lgaError.message);
-        return fail("We could not verify the selected locality's local government. Please try again.", 503);
-      }
-      selectedLgaName = typeof lga?.name === "string" ? lga.name.trim() : "";
-    }
-
-    let selectedLcdaName = "";
-    if (typeof (selectedLocality as any).lcda_id === "string") {
-      const { data: lcda, error: lcdaError } = await adminClient
-        .from("local_council_development_areas")
-        .select("id, name")
-        .eq("id", (selectedLocality as any).lcda_id)
-        .maybeSingle();
-      if (lcdaError) {
-        console.error("Delivery quote LCDA lookup failed:", lcdaError.message);
-        return fail("We could not verify the selected locality's council area. Please try again.", 503);
-      }
-      selectedLcdaName = typeof lcda?.name === "string" ? lcda.name.trim() : "";
-    }
-
-    const localityDisambiguator = selectedLocalityName.match(/\(([^)]+)\)/)?.[1]?.trim() || selectedLocalityName;
-    const destinationAddressForGeocoding = addressWithSelectedLocality(
-      deliveryAddress.trim(),
-      [localityDisambiguator, selectedLcdaName, selectedLgaName],
-    );
+    const destinationAddressForGeocoding = normaliseAddress(deliveryAddress.trim());
 
     const seen = new Set<string>();
     const items: CartItem[] = [];
@@ -796,13 +728,6 @@ export async function POST(request: Request) {
     let resolvedDestinationAddress: string;
     let resolvedDestinationPoint: GeocodedAddress;
     try {
-      const localityLatitude = Number((selectedLocality as any).latitude);
-      const localityLongitude = Number((selectedLocality as any).longitude);
-      const localityCenter = Number.isFinite(localityLatitude) && localityLatitude >= -90 && localityLatitude <= 90 &&
-        Number.isFinite(localityLongitude) && localityLongitude >= -180 && localityLongitude <= 180
-        ? { latitude: localityLatitude, longitude: localityLongitude }
-        : null;
-
       const resolveCustomerDestination = async (): Promise<GeocodedAddress | null> => {
         if (destinationCaptureMethod === "google_place") {
           return geocodePlaceId(destinationPlaceId, geocodingApiKey);
@@ -920,7 +845,6 @@ export async function POST(request: Request) {
     // Checkout revalidates this hash against the saved quote; the full address remains on the order, not the quote.
     const addressHash = hash(JSON.stringify({
       address: deliveryAddress.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
-      localityId: selectedLocality.id,
     }));
     const cartHash = hash(JSON.stringify(canonicalCart));
     const expiresAt = new Date(Date.now() + QUOTE_TTL_MINUTES * 60 * 1000).toISOString();
@@ -929,7 +853,6 @@ export async function POST(request: Request) {
       .insert({
         customer_id: user.id,
         vendor_id: vendorId,
-        destination_locality_id: selectedLocality.id,
         cart_hash: cartHash,
         destination_address_hash: addressHash,
         subtotal_amount: subtotal,
@@ -963,14 +886,6 @@ export async function POST(request: Request) {
         distanceKm: Number(distanceKm.toFixed(3)),
         resolvedVendorAddress,
         resolvedDestinationAddress,
-        // These are MKH administrative labels, kept separate from Google's
-        // formatted street address so Google cannot override MKH's assignments.
-        localityName: selectedLocalityName,
-        lcdaName: selectedLcdaName || null,
-        lgaName: selectedLgaName || null,
-        administrativeLabel: [selectedLocalityName, selectedLcdaName, selectedLgaName, "Lagos", "Nigeria"]
-          .filter(Boolean)
-          .join(", "),
         deliveryFee: rate.deliveryFee,
         riderPayout: rate.riderPayout,
         fixedBeneficiaryShares: rate.fixedBeneficiaryShares,

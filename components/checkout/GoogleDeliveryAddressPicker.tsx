@@ -16,7 +16,6 @@ export type GoogleDestination = {
 };
 
 type Props = {
-  localityLabel: string;
   selectedLocation: GoogleDestination | null;
   disabled?: boolean;
   onLocationSelected: (location: GoogleDestination) => void;
@@ -70,7 +69,6 @@ const mapContainerStyle = {
 };
 
 export default function GoogleDeliveryAddressPicker({
-  localityLabel,
   selectedLocation,
   disabled = false,
   onLocationSelected,

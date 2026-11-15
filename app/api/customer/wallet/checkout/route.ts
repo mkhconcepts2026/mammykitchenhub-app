@@ -150,11 +150,11 @@ export async function POST(request: Request) {
       });
     }
 
-    // Recreate the exact canonical hashes used when MKH created this quote.
+    // Recreate the canonical cart and Google Maps address hashes.
     // The database RPC performs the final validation under a row lock.
     const { data: quoteSnapshot, error: quoteLookupError } = await adminClient
       .from("delivery_quotes")
-      .select("id, customer_id, destination_locality_id")
+      .select("id, customer_id")
       .eq("id", deliveryQuoteId)
       .maybeSingle();
 
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
       return errorResponse("We could not verify your delivery quote. Please calculate delivery again.", 503);
     }
 
-    if (!quoteSnapshot || quoteSnapshot.customer_id !== user.id || typeof quoteSnapshot.destination_locality_id !== "string") {
+    if (!quoteSnapshot || quoteSnapshot.customer_id !== user.id) {
       return errorResponse("This delivery quote is unavailable. Please calculate delivery again.", 409);
     }
 
@@ -176,7 +176,6 @@ export async function POST(request: Request) {
     const destinationAddressHash = createHash("sha256")
       .update(JSON.stringify({
         address: deliveryAddress.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
-        localityId: quoteSnapshot.destination_locality_id,
       }), "utf8")
       .digest("hex");
 
