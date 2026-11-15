@@ -189,7 +189,7 @@ export async function POST(request: Request) {
 
     if (
       !quoteSnapshot ||
-      quoteSnapshot.customer_id !== user.id ||
+      quoteSnapshot.customer_id !== user.id
     ) {
       return NextResponse.json(
         { error: "This delivery quote is unavailable. Please calculate delivery again." },
