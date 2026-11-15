@@ -1,49 +1,55 @@
-# MKH geography and operational placement — corrected implementation
+# MKH Google Maps, customer delivery and rider GPS — Production rollout
 
-## Approved MKH design
+## Approved geographical separation
 
-The agreed separation is:
+**Google Maps is the source of precise address and route evidence. MKH records are the source of operational placement.**
 
-- **Google Maps** verifies the vendor's precise business address and supplies reliable coordinates.
-- **Google Maps Geocoding and Routes** resolve the customer's delivery address and calculate the road route/distance from the vendor's verified coordinates to the customer's delivery coordinates.
-- **MKH records** remain the operational source of truth for where a vendor is placed: Admin selects an existing MKH Territory and then a Zone belonging to that Territory.
-- Google locality or administrative-area labels must never create, select, or override an MKH Territory or Zone.
+### Vendor address verification
+- Admin continues to use Google Places to find and verify a vendor's exact business premises.
+- The verified Google Place ID, formatted address and coordinates are saved against the vendor's business-location record.
+- The existing Admin verification safeguards remain in force: verification status, MKH locality matching for the vendor record, active MKH locality, Place ID and coordinate validation. These safeguards must not be bypassed.
 
-## Existing Admin workflow retained
+### Customer delivery
+- Checkout no longer asks a customer to search for or select an MKH locality or LGA.
+- The customer selects a Google Maps address or confirms the precise delivery entrance with a Google Maps pin.
+- Selecting the Google destination automatically requests a delivery quote.
+- Google uses the vendor's Admin-verified business coordinates as the route origin and the customer's selected Google destination as the route destination.
+- Google Routes calculates the driving distance. MKH applies the existing active distance-rate card, 3 km pilot limit, delivery-fee calculation and approved delivery allocation logic.
+- COD and MKH Wallet checkout both validate the same Google-address-based quote hash. Quote ownership, cart hash, expiry, rate, fee and order-consumption checks remain in place.
+- New quote rows leave `destination_locality_id` null. The column remains nullable for historical compatibility. Existing delivery quotes and orders are not rewritten.
 
-MKH already has these Admin modules:
+### Operational placement
+- Admin continues to create and maintain MKH Territories.
+- Admin creates Zones under those Territories.
+- Admin assigns vendors through the existing Territory → Zone vendor-assignment workflow.
+- Google administrative-area labels do not create or select MKH Territories or Zones.
+- There is no separate Territory Locality Mapping page in the approved workflow.
 
-1. **Territory Management** — Admin creates and manages territories, including their LGA.
-2. **Zone Management** — Admin creates and manages zones under the selected territory.
-3. **Vendor assignment** — Admin opens the existing vendor assignment workflow, selects a Territory, selects an active Zone under that Territory, and assigns the vendor.
+## Rider GPS and TRM live tracking
 
-There is no separate locality-to-territory coverage administration page in the approved workflow.
+- The Rider Dashboard requests a fresh browser-device location when the dashboard is active.
+- It attempts a GPS update every 15 seconds and requests another update when the browser tab becomes visible or network connectivity returns.
+- The rider sees diagnostic status for permission denial, unavailable device location, offline connectivity and database write failure, with a Retry GPS action.
+- A TRM rider is counted as GPS Live only when the rider account is active and a GPS row has been saved within the preceding 60 seconds.
+- The map retains a stale coordinate as a last-known position, dims the marker and labels the position as last known; it is not counted as GPS Live.
+- Browser GPS cannot be guaranteed while the browser or phone is suspended or the device has disabled location access. The Rider Dashboard must remain active in the foreground for continuous browser-based reporting.
 
-## Corrective action
+## Database and data preservation
 
-The feature branch briefly introduced a new locality-to-territory mapping page, dedicated APIs, and database triggers/RPCs requiring an explicit locality coverage link before a vendor could be assigned to a zone. This was an unnecessary additional workflow and was not part of the approved design.
+Production migration `20261115190000_mkh_google_only_customer_delivery_quotes` removes the customer-locality-only rejection from the existing COD and MKH Wallet order-creation functions. It retains their other validation logic.
 
-The feature page, navigation link, and feature-specific APIs have been removed. The existing Admin dashboard and Vendor Business Locations page have been restored from the pre-feature security branch.
+Verified after migration:
+- The COD and Wallet order-creation functions no longer reject a quote solely because `destination_locality_id` is null.
+- The `destination_locality_id` column remains nullable.
+- Existing quote and order record counts remain unchanged.
+- The previous unnecessary locality-to-territory audit tables, enforcement triggers, helper functions and extra index remain absent.
+- Existing territories, zones, vendor assignments, vendor-business-location records and their audit history remain preserved.
 
-A forward corrective migration, `20261115211000_restore_mkh_vendor_zone_assignment_workflow.sql`, removes only the functions, triggers, audit tables and unique index that were introduced for the unnecessary feature. It preserves the original `territory_localities` table and all existing operational records.
+No order, quote, wallet, payment, payout, commission, delivery-allocation or settlement record was backfilled or deleted by the customer-locality correction.
 
-## Data preservation boundaries
+## Deployment model
 
-The corrective migration does not update or delete:
-
-- MKH localities, LGAs, territories or zones;
-- existing vendor-zone assignment rows or assignment history;
-- vendor business-location rows or address verification audit history;
-- customer orders, payment records, wallets, commissions, allocation ledgers, payouts or settlement records.
-
-The two temporary audit tables were verified empty before removal.
-
-## Deployment/testing
-
-The Vercel Preview branch continues to use MKH-PRODUCTION as the working database, per the approved MKH development model. The MKH-PRODUCTION BACKUP remains the separate recovery copy. No MKH-TEST project is part of this plan.
-
-After the corrective migration is applied, verify that:
-- both temporary geography triggers and their helper functions are gone;
-- Admin Territory Management and Zone Management remain available;
-- the existing Admin vendor assignment modal can again select an active Territory and an active Zone under it;
-- Google Maps vendor address verification and customer delivery geocoding/Routes remain unchanged.
+- **MKH-PRODUCTION** is the working database and the target for the live application.
+- **MKH-PRODUCTION BACKUP** remains the separate recovery copy.
+- Vercel Production at `app.mammykitchenhub.com` is the application the team uses for ongoing testing and launch preparation.
+- No MKH-TEST project is required or part of this deployment model.
