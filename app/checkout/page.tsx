@@ -4,6 +4,9 @@ import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useCart } from "@/components/CartContext";
+import GoogleDeliveryAddressPicker, {
+  type GoogleDestination,
+} from "@/components/checkout/GoogleDeliveryAddressPicker";
 
 type PaymentMethod = "cash_on_delivery" | "wallet";
 
@@ -30,6 +33,7 @@ type DeliveryQuote = {
   lgaName?: string | null;
 };
 
+
 export default function CheckoutPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -37,6 +41,8 @@ export default function CheckoutPage() {
 
   const [loading, setLoading] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [googleDestination, setGoogleDestination] =
+    useState<GoogleDestination | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
   const [paymentMethod, setPaymentMethod] =
@@ -182,8 +188,15 @@ export default function CheckoutPage() {
     setPageError("");
     setDeliveryQuote(null);
 
+    if (!googleDestination) {
+      setQuoteError(
+        "Select your address from Google Maps or pin the exact delivery point on the map."
+      );
+      return;
+    }
+
     if (!deliveryAddress.trim()) {
-      setQuoteError("Enter the complete delivery address first.");
+      setQuoteError("Confirm your Google Maps delivery location first.");
       return;
     }
     if (!selectedLocality) {
@@ -209,6 +222,12 @@ export default function CheckoutPage() {
           cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
           deliveryAddress: deliveryAddress.trim(),
           deliveryLocalityId: selectedLocality.id,
+          googleDestination: {
+            placeId: googleDestination.placeId,
+            latitude: googleDestination.latitude,
+            longitude: googleDestination.longitude,
+            captureMethod: googleDestination.captureMethod,
+          },
         }),
       });
       const result = await response.json().catch(() => null);
@@ -286,8 +305,15 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!googleDestination) {
+      setPageError(
+        "Select your delivery address from Google Maps or pin the exact point on the map."
+      );
+      return;
+    }
+
     if (!deliveryAddress.trim()) {
-      setPageError("Please enter your delivery address.");
+      setPageError("Please confirm your Google Maps delivery address.");
       return;
     }
 
@@ -422,28 +448,39 @@ export default function CheckoutPage() {
 
           <div className="space-y-6">
             <div>
-              <label
-                htmlFor="deliveryAddress"
-                className="mb-2 block font-semibold"
-              >Delivery Address *</label>
-              <input
-                id="deliveryAddress"
-                type="text"
-                required
-                autoComplete="street-address"
-                maxLength={1000}
-                placeholder="e.g. 9 Bamidele Adebule Street, Arowojobe Estate"
-                value={deliveryAddress}
-                onChange={(e) => {
-                  setDeliveryAddress(e.target.value);
+              <label className="mb-2 block font-semibold">
+                Google Maps delivery location *
+              </label>
+
+              <GoogleDeliveryAddressPicker
+                localityLabel="Lagos, Nigeria"
+                selectedLocation={googleDestination}
+                disabled={loading || quoteLoading}
+                onLocationSelected={(destination) => {
+                  setGoogleDestination(destination);
+                  setDeliveryAddress(destination.formattedAddress);
+                  setDeliveryQuote(null);
+                  setQuoteError("");
+                  setPageError("");
+                }}
+                onSelectionCleared={() => {
+                  setGoogleDestination(null);
+                  setDeliveryAddress("");
                   setDeliveryQuote(null);
                   setQuoteError("");
                 }}
-                className="w-full rounded-xl border p-4 outline-none focus:border-orange-500"
               />
+
+              {googleDestination && (
+                <p className="mt-2 text-xs text-slate-600">
+                  Your selected Google Maps point will be used for road-distance
+                  calculation. It will not be replaced by the approximate MKH
+                  locality reference point.
+                </p>
+              )}
             </div>
-            <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-                            <div className="mb-4 space-y-2">
+                        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
+              <div className="mb-4 space-y-2">
                 <label htmlFor="deliveryLocalitySearch" className="block text-sm font-semibold text-gray-800">Delivery locality (from MKH records)</label>
                 <div className="flex gap-2">
                   <input
@@ -492,17 +529,25 @@ export default function CheckoutPage() {
                   ))}
                 </select>
                 {selectedLocality && (
-                  <p className="text-xs text-green-800">
-                    Selected from MKH records: {selectedLocality.name}
-                    {selectedLocality.geocodingStatus ? ` · coordinate status: ${selectedLocality.geocodingStatus}` : ""}
-                  </p>
+                  <>
+                    <p className="text-xs text-green-800">
+                      Selected from MKH records: {selectedLocality.name}
+                      {selectedLocality.geocodingStatus ? ` · coordinate status: ${selectedLocality.geocodingStatus}` : ""}
+                    </p>
+                    <p className="text-xs leading-5 text-slate-600">
+                      This coordinate status describes MKH's locality reference
+                      point only. Your individual delivery destination is captured
+                      separately from Google Maps above.
+                    </p>
+                  </>
                 )}
                 {localityError && <p role="alert" className="text-sm text-red-700">{localityError}</p>}
-                <p className="text-xs text-gray-600">Enter the house number and street name (including Street, Road, Close, etc.) plus the estate or landmark above. An estate name alone is not enough for a reliable road-distance quote. MKH supplies the locality and LGA; Google must match the actual street before a quote is issued.</p>
-              </div><button
+                <p className="text-xs text-gray-600">Search Google Maps with the house number and street name, plus the estate or locality. An estate or neighbourhood name alone is not a delivery address. Google must confirm the full street address, or you must place the map pin at the exact delivery entrance. MKH locality and LGA are stored separately.</p>
+              </div>
+<button
                 type="button"
                 onClick={calculateDeliveryQuote}
-                disabled={quoteLoading || !deliveryAddress.trim() || !selectedLocality || items.length === 0}
+                disabled={quoteLoading || !googleDestination || !deliveryAddress.trim() || !selectedLocality || items.length === 0}
                 className="w-full rounded-xl bg-orange-500 p-3 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {quoteLoading ? "Calculating road distance..." : "Confirm Address & Calculate Delivery"}
@@ -513,7 +558,7 @@ export default function CheckoutPage() {
                   <p><strong>From vendor:</strong> {deliveryQuote.resolvedVendorAddress}</p>
                   <p><strong>MKH locality:</strong> {deliveryQuote.localityName}</p>
                   <p><strong>MKH LGA:</strong> {deliveryQuote.lgaName || "Not assigned"}</p>
-                  <p><strong>Mapped destination:</strong> {deliveryQuote.resolvedDestinationAddress}</p>
+                  <p><strong>Google destination used for route:</strong> {deliveryQuote.resolvedDestinationAddress}</p>
                   <p>Road distance: {deliveryQuote.distanceKm.toFixed(2)} km</p>
                   <p>Delivery fee: {formatNaira(deliveryQuote.deliveryFee)}</p>
                   <p className="text-xs text-gray-600">Quote expires at {new Date(deliveryQuote.expiresAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}.</p>
@@ -547,13 +592,13 @@ export default function CheckoutPage() {
                 htmlFor="customerNotes"
                 className="mb-2 block font-semibold"
               >
-                Delivery Notes
+                House number, unit and delivery instructions (optional)
               </label>
               <textarea
                 id="customerNotes"
                 value={customerNotes}
                 onChange={(e) => setCustomerNotes(e.target.value)}
-                placeholder="Landmark, gate code, directions..."
+                placeholder="House number, flat/unit, building, gate, landmark or gate code (e.g. No. 14, second entrance)..."
                 maxLength={2000}
                 rows={3}
                 className="w-full rounded-xl border p-4 outline-none focus:border-orange-500"
