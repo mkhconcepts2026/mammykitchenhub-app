@@ -10,14 +10,6 @@ import GoogleDeliveryAddressPicker, {
 
 type PaymentMethod = "cash_on_delivery" | "wallet";
 
-type LocalityOption = {
-  id: string;
-  name: string;
-  localityType: string | null;
-  geocodingStatus: string | null;
-  lcdaName: string | null;
-};
-
 type DeliveryQuote = {
   quoteId: string;
   distanceKm: number;
@@ -29,8 +21,6 @@ type DeliveryQuote = {
   expiresAt: string;
   resolvedVendorAddress: string;
   resolvedDestinationAddress: string;
-  localityName: string;
-  lgaName?: string | null;
 };
 
 
@@ -55,11 +45,6 @@ export default function CheckoutPage() {
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
-  const [localitySearch, setLocalitySearch] = useState("");
-  const [localityResults, setLocalityResults] = useState<LocalityOption[]>([]);
-  const [selectedLocality, setSelectedLocality] = useState<LocalityOption | null>(null);
-  const [localityLoading, setLocalityLoading] = useState(false);
-  const [localityError, setLocalityError] = useState("");
   const codCheckoutReference = useRef<string | null>(null);
   const walletCheckoutReference = useRef<string | null>(null);
 
@@ -152,37 +137,6 @@ export default function CheckoutPage() {
 
   const formatNaira = (amount: number) =>
     `₦${amount.toLocaleString("en-NG")}`;
-  async function searchDeliveryLocalities() {
-    setLocalityError("");
-    setLocalityResults([]);
-    setSelectedLocality(null);
-    setDeliveryQuote(null);
-    setQuoteError("");
-    const query = localitySearch.trim();
-    if (query.length < 2) {
-      setLocalityError("Enter at least two characters to search MKH localities.");
-      return;
-    }
-
-    setLocalityLoading(true);
-    try {
-      const response = await fetch(`/api/customer/delivery-localities?q=${encodeURIComponent(query)}`, {
-        cache: "no-store",
-      });
-      const result = await response.json().catch(() => null);
-      if (!response.ok || result?.success !== true || !Array.isArray(result.localities)) {
-        throw new Error(typeof result?.message === "string" ? result.message : "MKH localities could not be loaded.");
-      }
-      setLocalityResults(result.localities as LocalityOption[]);
-      if (result.localities.length === 0) {
-        setLocalityError("No active MKH locality matched that search. Try another spelling or nearby area.");
-      }
-    } catch (error) {
-      setLocalityError(error instanceof Error ? error.message : "MKH localities could not be loaded. Please try again.");
-    } finally {
-      setLocalityLoading(false);
-    }
-  }
   async function calculateDeliveryQuote() {
     setQuoteError("");
     setPageError("");
@@ -197,10 +151,6 @@ export default function CheckoutPage() {
 
     if (!deliveryAddress.trim()) {
       setQuoteError("Confirm your Google Maps delivery location first.");
-      return;
-    }
-    if (!selectedLocality) {
-      setLocalityError("Search for and select your delivery locality from MKH records.");
       return;
     }
     if (items.length === 0) {
@@ -221,7 +171,6 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           cart: items.map((item) => ({ menu_item_id: item.id, quantity: item.quantity })),
           deliveryAddress: deliveryAddress.trim(),
-          deliveryLocalityId: selectedLocality.id,
           googleDestination: {
             placeId: googleDestination.placeId,
             latitude: googleDestination.latitude,
@@ -239,7 +188,7 @@ export default function CheckoutPage() {
       if (Math.round(Number(quote.subtotal) * 100) !== Math.round(Number(subtotal) * 100)) {
         throw new Error("Menu prices changed since the cart was loaded. Refresh your cart and calculate delivery again.");
       }
-      if (!quote.quoteId || !Number.isFinite(Number(quote.deliveryFee)) || !Number.isFinite(Number(quote.distanceKm)) || !quote.expiresAt || quote.localityName !== selectedLocality.name) {
+      if (!quote.quoteId || !Number.isFinite(Number(quote.deliveryFee)) || !Number.isFinite(Number(quote.distanceKm)) || !quote.expiresAt) {
         throw new Error("The delivery service returned an invalid quote. Please try again.");
       }
       setDeliveryQuote(quote);
@@ -473,81 +422,21 @@ export default function CheckoutPage() {
 
               {googleDestination && (
                 <p className="mt-2 text-xs text-slate-600">
-                  Your selected Google Maps point will be used for road-distance
-                  calculation. It will not be replaced by the approximate MKH
-                  locality reference point.
+                  The exact Google Maps address or delivery pin you select will be
+                  used for road-distance calculation.
                 </p>
               )}
             </div>
                         <div className="rounded-xl border border-orange-200 bg-orange-50 p-4">
-              <div className="mb-4 space-y-2">
-                <label htmlFor="deliveryLocalitySearch" className="block text-sm font-semibold text-gray-800">Delivery locality (from MKH records)</label>
-                <div className="flex gap-2">
-                  <input
-                    id="deliveryLocalitySearch"
-                    type="search"
-                    value={localitySearch}
-                    onChange={(e) => {
-                      setLocalitySearch(e.target.value);
-                      setSelectedLocality(null);
-                      setLocalityResults([]);
-                      setDeliveryQuote(null);
-                      setQuoteError("");
-                      setLocalityError("");
-                    }}
-                    maxLength={100}
-                    placeholder="Search e.g. Mende, Maryland, Ikeja GRA"
-                    className="min-w-0 flex-1 rounded-lg border bg-white p-3 outline-none focus:border-orange-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={searchDeliveryLocalities}
-                    disabled={localityLoading || localitySearch.trim().length < 2}
-                    className="rounded-lg border border-orange-300 px-4 py-2 font-semibold text-orange-700 disabled:opacity-50"
-                  >
-                    {localityLoading ? "Searching…" : "Search"}
-                  </button>
-                </div>
-                <select
-                  id="deliveryLocality"
-                  value={selectedLocality?.id ?? ""}
-                  onChange={(e) => {
-                    const match = localityResults.find((locality) => locality.id === e.target.value) ?? null;
-                    setSelectedLocality(match);
-                    setDeliveryQuote(null);
-                    setQuoteError("");
-                    setLocalityError("");
-                  }}
-                  disabled={localityLoading || localityResults.length === 0}
-                  className="w-full rounded-lg border bg-white p-3 outline-none focus:border-orange-500 disabled:bg-gray-100"
-                >
-                  <option value="">Select a matching MKH locality</option>
-                  {localityResults.map((locality) => (
-                    <option key={locality.id} value={locality.id}>
-                      {locality.name}{locality.lcdaName ? ` — ${locality.lcdaName}` : ""}{locality.localityType ? ` (${locality.localityType})` : ""}
-                    </option>
-                  ))}
-                </select>
-                {selectedLocality && (
-                  <>
-                    <p className="text-xs text-green-800">
-                      Selected from MKH records: {selectedLocality.name}
-                      {selectedLocality.geocodingStatus ? ` · coordinate status: ${selectedLocality.geocodingStatus}` : ""}
-                    </p>
-                    <p className="text-xs leading-5 text-slate-600">
-                      This coordinate status describes MKH's locality reference
-                      point only. Your individual delivery destination is captured
-                      separately from Google Maps above.
-                    </p>
-                  </>
-                )}
-                {localityError && <p role="alert" className="text-sm text-red-700">{localityError}</p>}
-                <p className="text-xs text-gray-600">Search Google Maps with the house number and street name, plus the estate or locality. An estate or neighbourhood name alone is not a delivery address. Google must confirm the full street address, or you must place the map pin at the exact delivery entrance. MKH locality and LGA are stored separately.</p>
-              </div>
-<button
+              <p className="mb-4 text-sm text-slate-600">
+                Your Google Maps street address or exact delivery pin is used for
+                routing and delivery calculation. MKH locality, territory and zone
+                assignments are managed internally and are not required at checkout.
+              </p>
+              <button
                 type="button"
                 onClick={calculateDeliveryQuote}
-                disabled={quoteLoading || !googleDestination || !deliveryAddress.trim() || !selectedLocality || items.length === 0}
+                disabled={quoteLoading || !googleDestination || !deliveryAddress.trim() || items.length === 0}
                 className="w-full rounded-xl bg-orange-500 p-3 font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {quoteLoading ? "Calculating road distance..." : "Confirm Address & Calculate Delivery"}
@@ -556,8 +445,6 @@ export default function CheckoutPage() {
               {deliveryQuote && (
                 <div className="mt-3 space-y-1 text-sm text-green-800">
                   <p><strong>From vendor:</strong> {deliveryQuote.resolvedVendorAddress}</p>
-                  <p><strong>MKH locality:</strong> {deliveryQuote.localityName}</p>
-                  <p><strong>MKH LGA:</strong> {deliveryQuote.lgaName || "Not assigned"}</p>
                   <p><strong>Google destination used for route:</strong> {deliveryQuote.resolvedDestinationAddress}</p>
                   <p>Road distance: {deliveryQuote.distanceKm.toFixed(2)} km</p>
                   <p>Delivery fee: {formatNaira(deliveryQuote.deliveryFee)}</p>
@@ -565,7 +452,6 @@ export default function CheckoutPage() {
                 </div>
               )}
             </div>
-
             <div>
               <label
                 htmlFor="phoneNumber"
