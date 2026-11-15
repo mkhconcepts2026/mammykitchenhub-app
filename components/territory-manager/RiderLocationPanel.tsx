@@ -18,7 +18,8 @@ interface Rider {
   speed: number;
   heading: number;
   accuracy: number;
-  updated_at: string;
+  updated_at: string | null;
+  gps_status?: "live" | "stale";
 
   profiles?: {
     full_name: string | null;
@@ -93,8 +94,8 @@ function formatOrderStatus(status: string) {
   }
 }
 
-function getGpsFreshness(updatedAt: string) {
-  const updatedTime = new Date(updatedAt).getTime();
+function getGpsFreshness(updatedAt: string | null) {
+  const updatedTime = updatedAt ? new Date(updatedAt).getTime() : NaN;
 
   if (Number.isNaN(updatedTime)) {
     return "Unknown";
@@ -104,12 +105,12 @@ function getGpsFreshness(updatedAt: string) {
     (Date.now() - updatedTime) / 1000
   );
 
-  if (ageSeconds <= 15) {
+  if (ageSeconds <= 60) {
     return "Live";
   }
 
-  if (ageSeconds <= 60) {
-    return `${ageSeconds}s ago`;
+  if (ageSeconds < 300) {
+    return `${Math.floor(ageSeconds / 60)}m ago`;
   }
 
   const ageMinutes = Math.floor(ageSeconds / 60);
@@ -138,6 +139,7 @@ function getGpsFreshnessStyle(updatedAt: string) {
 export default function RiderLocationPanel({
   riders,
 }: Props) {
+  const gpsLiveCount = riders.filter((rider) => rider.gps_status === "live").length;
   return (
     <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-6 py-5">
@@ -148,13 +150,12 @@ export default function RiderLocationPanel({
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Real-time rider GPS and operational activity.
+              Live means a GPS update was saved within the last 60 seconds. Older pins are last-known locations.
             </p>
           </div>
 
           <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-            {riders.length} Rider
-            {riders.length === 1 ? "" : "s"}
+            {gpsLiveCount} GPS Live
           </div>
         </div>
       </div>
@@ -289,13 +290,11 @@ export default function RiderLocationPanel({
                     </p>
 
                     <p className="font-semibold text-[#0F172A]">
-                      {new Date(
-                        rider.updated_at
-                      ).toLocaleTimeString([], {
+                      {rider.updated_at ? new Date(rider.updated_at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                         second: "2-digit",
-                      })}
+                      }) : "Not recorded"}
                     </p>
                   </div>
                 </div>
