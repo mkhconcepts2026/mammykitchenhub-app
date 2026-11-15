@@ -584,8 +584,6 @@ export async function POST(request: Request) {
     }
     if (!Array.isArray(cart) || cart.length < 1 || cart.length > 50) return fail("Your cart is empty or invalid.", 400);
 
-    const destinationAddressForGeocoding = normaliseAddress(deliveryAddress.trim());
-
     const seen = new Set<string>();
     const items: CartItem[] = [];
     for (const raw of cart) {
