@@ -245,6 +245,7 @@ DECLARE
     v_locality_lga_id uuid;
     v_zone_territory_id uuid;
     v_territory_lga_id uuid;
+    v_mapping_id uuid;
 BEGIN
     IF NEW.status <> 'active' THEN
         RETURN NEW;
@@ -294,13 +295,14 @@ BEGIN
         RAISE EXCEPTION 'Vendor locality and selected zone territory do not belong to the same MKH LGA';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-          FROM public.territory_localities tl
-         WHERE tl.locality_id = v_locality_id
-           AND tl.territory_id = v_zone_territory_id
-           AND tl.status = 'active'
-    ) THEN
+    SELECT tl.id
+      INTO v_mapping_id
+      FROM public.territory_localities tl
+     WHERE tl.locality_id = v_locality_id
+       AND tl.territory_id = v_zone_territory_id
+       AND tl.status = 'active'
+     FOR SHARE;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'The vendor verified MKH locality is not mapped to the selected zone territory';
     END IF;
 
@@ -331,6 +333,7 @@ DECLARE
     v_zone_territory_id uuid;
     v_territory_lga_id uuid;
     v_territory_active boolean;
+    v_mapping_id uuid;
     v_assignment record;
 BEGIN
     IF NEW.address_verification_status IS DISTINCT FROM 'verified'
@@ -366,13 +369,14 @@ BEGIN
         IF v_locality_lga_id IS DISTINCT FROM v_territory_lga_id THEN
             RAISE EXCEPTION 'The new verified MKH locality belongs to a different LGA from the vendor''s active zone territory';
         END IF;
-        IF NOT EXISTS (
-            SELECT 1
-              FROM public.territory_localities tl
-             WHERE tl.locality_id = NEW.locality_id
-               AND tl.territory_id = v_zone_territory_id
-               AND tl.status = 'active'
-        ) THEN
+        SELECT tl.id
+          INTO v_mapping_id
+          FROM public.territory_localities tl
+         WHERE tl.locality_id = NEW.locality_id
+           AND tl.territory_id = v_zone_territory_id
+           AND tl.status = 'active'
+         FOR SHARE;
+        IF NOT FOUND THEN
             RAISE EXCEPTION 'Map the new verified MKH locality to the vendor''s active zone territory before completing this location change';
         END IF;
     END LOOP;
@@ -411,6 +415,7 @@ DECLARE
     v_locality_lga_id uuid;
     v_zone_territory_id uuid;
     v_territory_lga_id uuid;
+    v_mapping_id uuid;
     v_active_count integer;
     v_previous_id uuid;
     v_previous_zone_id uuid;
@@ -477,13 +482,14 @@ BEGIN
         RAISE EXCEPTION 'Vendor locality and selected zone territory do not belong to the same MKH LGA';
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1
-          FROM public.territory_localities tl
-         WHERE tl.locality_id = v_locality_id
-           AND tl.territory_id = v_zone_territory_id
-           AND tl.status = 'active'
-    ) THEN
+    SELECT tl.id
+      INTO v_mapping_id
+      FROM public.territory_localities tl
+     WHERE tl.locality_id = v_locality_id
+       AND tl.territory_id = v_zone_territory_id
+       AND tl.status = 'active'
+     FOR SHARE;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'The selected zone is outside the territory coverage mapped to this vendor''s verified MKH locality';
     END IF;
 
