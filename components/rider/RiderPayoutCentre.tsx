@@ -244,8 +244,8 @@ export default function RiderPayoutCentre() {
                       {bankAccount.bank_name} · •••• {bankAccount.account_number_last4}
                     </p>
                   </div>
-                  <span className="rounded-full bg-[#16A34A]/10 px-3 py-1 text-xs font-bold text-[#16A34A]">
-                    Verified
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${bankAccount.verification_status === "verified" ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-amber-100 text-amber-800"}`}>
+                    {bankAccount.verification_status === "verified" ? "Verified" : "Verification required"}
                   </span>
                 </div>
               ) : (
@@ -260,7 +260,7 @@ export default function RiderPayoutCentre() {
                     >
                       <option value="">Select a bank</option>
                       {banks.map((bank) => (
-                        <option key={bank.code} value={bank.code}>{bank.name}</option>
+                        <option key={bank.code} value={bank.code}>{bank.name} ({bank.code})</option>
                       ))}
                     </select>
                   </label>
