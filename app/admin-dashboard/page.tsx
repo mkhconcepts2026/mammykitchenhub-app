@@ -4365,6 +4365,11 @@ if (ordersData) {
 
       <div className="space-y-6">
 
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <p><strong>Verified MKH locality:</strong> {vendorZoneLocality?.name || "Not available"}{vendorZoneLocality?.lgaName ? ` · ${vendorZoneLocality.lgaName}` : ""}</p>
+          <p className="mt-1 text-xs leading-5">Territory options are restricted to active MKH coverage links for this locality. Google Maps is not used to assign the vendor to a territory or zone.</p>
+        </div>
+
         <div>
 
           <label className="block font-medium mb-2">
@@ -4385,7 +4390,7 @@ if (ordersData) {
               Select Territory
             </option>
 
-            {territories.map((territory) => (
+            {eligibleVendorTerritories.map((territory) => (
               <option
                 key={territory.id}
                 value={territory.id}
@@ -4447,6 +4452,22 @@ if (ordersData) {
             </div>
           )}
 
+        <div>
+          <label className="mb-2 block text-sm font-medium" htmlFor="vendor-zone-assignment-reason">
+            Reason for this assignment
+          </label>
+          <textarea
+            id="vendor-zone-assignment-reason"
+            value={zoneAssignmentReason}
+            onChange={(event) => setZoneAssignmentReason(event.target.value)}
+            rows={3}
+            maxLength={500}
+            placeholder="Explain why this vendor is being assigned to the selected MKH zone."
+            className="w-full rounded-xl border p-3 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500">A reason is required and will be saved in the vendor-zone assignment audit.</p>
+        </div>
+
         <div className="flex gap-4 pt-4">
 
           <button
@@ -4468,7 +4489,9 @@ if (ordersData) {
             onClick={saveVendorZone}
             disabled={
               !selectedTerritoryId ||
-              !selectedZoneId
+              !selectedZoneId ||
+              zoneAssignmentReason.trim().length < 10 ||
+              zoneAssignmentReason.trim().length > 500
             }
             className="
               flex-1
