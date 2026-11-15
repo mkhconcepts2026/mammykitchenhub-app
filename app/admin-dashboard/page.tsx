@@ -594,6 +594,9 @@ const [zoneForm, setZoneForm] = useState({
 const [selectedTerritoryId, setSelectedTerritoryId] = useState("");
 const [selectedZoneId, setSelectedZoneId] = useState("");
 const [currentVendorZone, setCurrentVendorZone] = useState<any>(null);
+const [eligibleVendorTerritories, setEligibleVendorTerritories] = useState<any[]>([]);
+const [vendorZoneLocality, setVendorZoneLocality] = useState<any>(null);
+const [zoneAssignmentReason, setZoneAssignmentReason] = useState("");
 const [showAssignZone, setShowAssignZone] = useState(false);
 const [loadingZoneAssignment, setLoadingZoneAssignment] = useState(false);
 
@@ -812,74 +815,67 @@ const openVendorDetails = async (vendorApplication: any) => {
 };
 
 const openAssignZone = async () => {
+  if (!selectedVendor?.vendor_id) {
+    alert("Vendor record not found.");
+    return;
+  }
+
   setLoadingZoneAssignment(true);
-
-  const { data, error } = await supabase
-    .from("territories")
-    .select(`
-      id,
-      name,
-      lga_id,
-      is_active
-    `)
-    .eq("is_active", true)
-    .order("name");
-
-  if (error) {
-    console.error(
-      "Territories load error:",
-      error
+  try {
+    const response = await fetch(
+      `/api/admin/vendor-zone-assignment?vendorId=${encodeURIComponent(selectedVendor.vendor_id)}`,
+      { cache: "no-store" }
     );
-    alert("Unable to load Territories");
-    setLoadingZoneAssignment(false);
-    return;
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result?.success !== true) {
+      throw new Error(typeof result?.message === "string" ? result.message : "Unable to check this vendor's MKH territory coverage.");
+    }
 
-  }
+    setVendorZoneLocality(result.locality ?? null);
+    setEligibleVendorTerritories(Array.isArray(result.territories) ? result.territories : []);
 
-    setTerritories(data || []);
+    if (result.eligible !== true) {
+      alert(result.message || "This vendor is not yet eligible for a new zone assignment.");
+      return;
+    }
 
-const existingTerritoryId =
-  currentVendorZone?.zones?.territory_id || "";
+    const currentAssignment = result.currentAssignment ?? null;
+    const choices = Array.isArray(result.territories) ? result.territories : [];
+    const selectedTerritory = choices.find((row: any) => row.id === currentAssignment?.territoryId) ?? choices[0] ?? null;
+    const territoryId = selectedTerritory?.id ?? "";
+    const availableZones = (Array.isArray(result.zones) ? result.zones : [])
+      .filter((row: any) => row.territoryId === territoryId)
+      .map((row: any) => ({ ...row, territory_id: row.territoryId }));
 
-const existingZoneId =
-  currentVendorZone?.zone_id || "";
-
-setSelectedTerritoryId(existingTerritoryId);
-setSelectedZoneId(existingZoneId);
-
-if (existingTerritoryId) {
-  const { data: existingZones, error: zonesError } =
-    await supabase
-      .from("zones")
-      .select(`
-        id,
-        name,
-        code,
-        territory_id,
-        is_active
-      `)
-      .eq("territory_id", existingTerritoryId)
-      .eq("is_active", true)
-      .order("name");
-
-  if (zonesError) {
-    console.error(
-      "Existing Zones load error:",
-      zonesError
+    setCurrentVendorZone(currentAssignment ? {
+      id: currentAssignment.id,
+      zone_id: currentAssignment.zoneId,
+      status: "active",
+      zones: {
+        id: currentAssignment.zoneId,
+        name: currentAssignment.zoneName,
+        territory_id: currentAssignment.territoryId,
+        territories: {
+          id: currentAssignment.territoryId,
+          name: currentAssignment.territoryName,
+        },
+      },
+    } : null);
+    setSelectedTerritoryId(territoryId);
+    setZones(availableZones);
+    setSelectedZoneId(
+      availableZones.some((row: any) => row.id === currentAssignment?.zoneId)
+        ? currentAssignment.zoneId
+        : ""
     );
-    alert("Unable to load existing Zones");
+    setZoneAssignmentReason("");
+    setShowAssignZone(true);
+  } catch (error) {
+    console.error("Vendor MKH territory eligibility check failed:", error);
+    alert(error instanceof Error ? error.message : "Unable to check this vendor's MKH territory coverage.");
+  } finally {
     setLoadingZoneAssignment(false);
-    return;
   }
-
-  setZones(existingZones || []);
-} else {
-  setZones([]);
-}
-
-setShowAssignZone(true);
-
-  setLoadingZoneAssignment(false);
 };
 
 const saveVendorZone = async () => {
@@ -887,77 +883,49 @@ const saveVendorZone = async () => {
     alert("Vendor record not found.");
     return;
   }
-
   if (!selectedTerritoryId || !selectedZoneId) {
-    alert("Please select a Territory and Zone.");
+    alert("Please select an MKH-mapped Territory and an active Zone.");
+    return;
+  }
+  if (zoneAssignmentReason.trim().length < 10 || zoneAssignmentReason.trim().length > 500) {
+    alert("Enter an assignment reason between 10 and 500 characters.");
     return;
   }
 
   setLoadingZoneAssignment(true);
-
   try {
-    // Verify the selected Zone belongs to the selected Territory
-    const { data: zone, error: zoneError } = await supabase
-      .from("zones")
-      .select("id, territory_id, is_active")
-      .eq("id", selectedZoneId)
-      .eq("territory_id", selectedTerritoryId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (zoneError) throw zoneError;
-
-    if (!zone) {
-      alert("Invalid or inactive Zone selected.");
-      return;
+    const response = await fetch("/api/admin/vendor-zone-assignment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        vendorId: selectedVendor.vendor_id,
+        zoneId: selectedZoneId,
+        reason: zoneAssignmentReason.trim(),
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result?.success !== true) {
+      throw new Error(typeof result?.message === "string" ? result.message : "The vendor zone assignment was rejected.");
     }
 
-    // Deactivate existing active Vendor → Zone assignment
-    if (currentVendorZone?.id) {
-      const { error: deactivateError } = await supabase
-        .from("zone_vendors")
-        .update({
-          status: "inactive",
-          unassigned_at: new Date().toISOString(),
-        })
-        .eq("id", currentVendorZone.id);
-
-      if (deactivateError) throw deactivateError;
-    }
-
-    // Create the new active assignment
-    const { data: newAssignment, error: insertError } = await supabase
-      .from("zone_vendors")
-      .insert({
-        vendor_id: selectedVendor.vendor_id,
-        zone_id: selectedZoneId,
-        status: "active",
-        assigned_at: new Date().toISOString(),
-      })
-      .select(`
-        id,
-        vendor_id,
-        zone_id,
-        status,
-        assigned_at,
-        zones (
-          id,
-          name,
-          territory_id,
-          territories (
-            id,
-            name
-          )
-        )
-      `)
-      .single();
-
-    if (insertError) throw insertError;
-
-    setCurrentVendorZone(newAssignment);
+    const selectedZone = zones.find((row: any) => row.id === selectedZoneId);
+    const selectedTerritory = eligibleVendorTerritories.find((row: any) => row.id === selectedTerritoryId);
+    setCurrentVendorZone({
+      id: result.result?.assignment_id ?? currentVendorZone?.id ?? null,
+      vendor_id: selectedVendor.vendor_id,
+      zone_id: selectedZoneId,
+      status: "active",
+      zones: {
+        id: selectedZoneId,
+        name: selectedZone?.name ?? "",
+        territory_id: selectedTerritoryId,
+        territories: { id: selectedTerritoryId, name: selectedTerritory?.name ?? "" },
+      },
+    });
     setShowAssignZone(false);
-
-    alert("Vendor Zone assignment saved successfully.");
+    setZoneAssignmentReason("");
+    alert(result.message || "Vendor Zone assignment saved successfully.");
   } catch (error: any) {
     console.error("saveVendorZone error:", error);
     alert(error?.message || "Failed to save Vendor Zone assignment.");
