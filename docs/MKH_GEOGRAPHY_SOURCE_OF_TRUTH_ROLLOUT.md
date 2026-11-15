@@ -1,76 +1,49 @@
-# MKH geography source-of-truth separation
+# MKH geography and operational placement — corrected implementation
 
-## Approved operating rule
+## Approved MKH design
 
-- Google Maps supplies exact street-address evidence for vendor business-location verification.
-- Google Maps geocoding and Routes are used to resolve the customer's delivery street and calculate road distance.
-- MKH's own active locality, LGA, territory, and zone records determine operational coverage and vendor placement.
-- Google's locality and administrative-area labels are hints only. They do not create or select an MKH territory.
-- Financial allocations, delivery charges, vendor/rider commissions, wallet balances, payout eligibility, and settlement workflows are outside this change.
+The agreed separation is:
 
-## Current production baseline reviewed (read-only, 15 November 2026)
+- **Google Maps** verifies the vendor's precise business address and supplies reliable coordinates.
+- **Google Maps Geocoding and Routes** resolve the customer's delivery address and calculate the road route/distance from the vendor's verified coordinates to the customer's delivery coordinates.
+- **MKH records** remain the operational source of truth for where a vendor is placed: Admin selects an existing MKH Territory and then a Zone belonging to that Territory.
+- Google locality or administrative-area labels must never create, select, or override an MKH Territory or Zone.
 
-The read-only review found:
+## Existing Admin workflow retained
 
-| Record set | Current count |
-|---|---:|
-| Active MKH localities | 274 |
-| Active territories | 19 |
-| Active zones | 1 |
-| Active locality-to-territory links | 0 |
-| Active vendor-to-zone assignments | 6 |
-| Vendor business-location records | 12 |
-| Vendor business-location audit entries | 12 |
+MKH already has these Admin modules:
 
-The six active vendor-zone assignments all had an existing verified/matched MKH locality and their current territory was in the same LGA. There were no explicit active territory_localities links, so the database does not currently contain enough MKH coverage data to prove which individual locality belongs to which operational territory. Multiple territories share the same LGA. **Do not infer a territory from LGA alone and do not bulk-populate the links from Google labels.**
+1. **Territory Management** — Admin creates and manages territories, including their LGA.
+2. **Zone Management** — Admin creates and manages zones under the selected territory.
+3. **Vendor assignment** — Admin opens the existing vendor assignment workflow, selects a Territory, selects an active Zone under that Territory, and assigns the vendor.
 
-Existing assignments and location history are not rewritten by this change.
+There is no separate locality-to-territory coverage administration page in the approved workflow.
 
-## New Admin workflow
+## Corrective action
 
-1. Admin/COO verifies the vendor's precise business address using the existing Google Places verification process.
-2. Admin/COO explicitly matches the premises to an active MKH locality. The Google locality text remains a hint, not the selection authority.
-3. Admin/COO opens **Admin → Vendor Business Locations → Manage MKH Territory Coverage** and maps that locality to one or more MKH territories from the same LGA. A reason is mandatory and the action is audited.
-4. Admin/COO assigns the vendor to an active zone within one of the territories explicitly mapped to the vendor's verified MKH locality. A reason is mandatory and the assignment is audited.
-5. If a vendor's verified locality changes, the new locality must cover the vendor's current active territory. Otherwise the verified change is rejected until the coverage/assignment is reconciled. A pending address update remains possible and continues to block delivery quotes under the existing safeguards.
+The feature branch briefly introduced a new locality-to-territory mapping page, dedicated APIs, and database triggers/RPCs requiring an explicit locality coverage link before a vendor could be assigned to a zone. This was an unnecessary additional workflow and was not part of the approved design.
 
-A locality can be linked to more than one territory where the MKH operational boundary requires it. The application does not infer this relationship automatically.
+The feature page, navigation link, and feature-specific APIs have been removed. The existing Admin dashboard and Vendor Business Locations page have been restored from the pre-feature security branch.
 
-## Database protections added by the migration
+A forward corrective migration, `20261115211000_restore_mkh_vendor_zone_assignment_workflow.sql`, removes only the functions, triggers, audit tables and unique index that were introduced for the unnecessary feature. It preserves the original `territory_localities` table and all existing operational records.
 
-- Prevent duplicate active links for the same locality/territory pair, while retaining the existing many-to-many model.
-- Preserve removed mapping links as inactive history rather than deleting them.
-- Add append-only audit records for territory-locality coverage and vendor-zone changes, including actor and reason.
-- Validate active locality, territory, zone, same-LGA relationship, and explicit MKH coverage when an active vendor-zone assignment is created or reactivated.
-- Keep the existing vendor address-verification and MKH locality-match checks as prerequisites.
-- Prevent a newly verified locality from contradicting an existing active vendor-zone assignment.
-- Keep Admin/COO writes behind server-side authorization and service-role RPC calls; browser clients do not write the audit tables.
+## Data preservation boundaries
 
-## Files in this change
+The corrective migration does not update or delete:
 
-- supabase/migrations/20261115170000_mkh_geography_source_of_truth.sql
-- app/api/admin/territory-locality-mappings/route.ts
-- app/api/admin/vendor-zone-assignment/route.ts
-- app/admin-dashboard/territory-locality-mapping/page.tsx
-- app/admin-dashboard/page.tsx (vendor-zone assignment UI)
-- app/admin-dashboard/vendor-locations/page.tsx (coverage-management link)
+- MKH localities, LGAs, territories or zones;
+- existing vendor-zone assignment rows or assignment history;
+- vendor business-location rows or address verification audit history;
+- customer orders, payment records, wallets, commissions, allocation ledgers, payouts or settlement records.
 
-## TEST-first validation plan
+The two temporary audit tables were verified empty before removal.
 
-Apply the migration to MKH-TEST only after the SQL and API review. Do not apply it to MKH-PRODUCTION as part of this feature-branch work.
+## Deployment/testing
 
-1. Confirm the two audit tables, partial unique index, RPC functions, and triggers exist in MKH-TEST.
-2. Confirm all 274 active localities and all 19 active territories load in the coverage manager.
-3. Map one known locality to a territory from the same LGA; confirm the reason and actor are written to the audit table.
-4. Attempt a locality-to-territory link across different LGAs; it must fail and write no active link.
-5. Assign a test vendor whose address is verified and locality matched to a zone in an explicitly mapped territory; confirm the new active assignment and audit record.
-6. Attempt assignment to a zone in an unmapped territory; it must fail.
-7. Attempt assignment when the business address is pending/rejected or the MKH locality is pending/inactive; it must fail.
-8. Attempt to remove a coverage link used by an active vendor assignment; it must fail.
-9. Attempt to verify a changed locality that does not cover the vendor's existing zone territory; it must fail without replacing the prior verified record.
-10. Reassign a test vendor between valid zones; confirm the old zone_vendors row remains with status inactive and unassigned_at, the new row is active, and the assignment audit is recorded.
-11. Confirm the customer delivery-quote flow still uses the selected MKH customer locality and Google street geocoding/Routes for distance. Check its quote amounts against the existing approved rate card; this change must not alter any financial calculation.
+The Vercel Preview branch continues to use MKH-PRODUCTION as the working database, per the approved MKH development model. The MKH-PRODUCTION BACKUP remains the separate recovery copy. No MKH-TEST project is part of this plan.
 
-## Deployment boundary
-
-This branch is based on security/vendor-bank-encryption-rollout-preview-20261113. It does not merge into the production branch, apply SQL to any Supabase project, or deploy to Vercel. Production rollout requires a separate approval after MKH-TEST validation.
+After the corrective migration is applied, verify that:
+- both temporary geography triggers and their helper functions are gone;
+- Admin Territory Management and Zone Management remain available;
+- the existing Admin vendor assignment modal can again select an active Territory and an active Zone under it;
+- Google Maps vendor address verification and customer delivery geocoding/Routes remain unchanged.
