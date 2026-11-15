@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
@@ -62,11 +63,14 @@ export async function POST(request: Request) {
     const input = body as Record<string, unknown>;
     const {
       cart,
-      deliveryAddress,
-      phoneNumber,
-      customerNotes,
       checkoutReference,
+      deliveryQuoteId,
     } = input;
+    // Use the same field names as the COD checkout contract. Keep aliases for
+    // clients already using the wallet endpoint's earlier request shape.
+    const deliveryAddress = input.address ?? input.deliveryAddress;
+    const phoneNumber = input.phone ?? input.phoneNumber;
+    const customerNotes = input.notes ?? input.customerNotes;
 
     if (
       typeof deliveryAddress !== "string" ||
@@ -101,6 +105,10 @@ export async function POST(request: Request) {
 
     if (!Array.isArray(cart) || cart.length === 0 || cart.length > 50) {
       return errorResponse("Your cart is empty or contains too many items.", 400);
+    }
+
+    if (typeof deliveryQuoteId !== "string" || !UUID_PATTERN.test(deliveryQuoteId)) {
+      return errorResponse("Confirm your delivery address and calculate a fresh delivery quote first.", 400);
     }
 
     const seenIds = new Set<string>();
@@ -142,6 +150,36 @@ export async function POST(request: Request) {
       });
     }
 
+    // Recreate the exact canonical hashes used when MKH created this quote.
+    // The database RPC performs the final validation under a row lock.
+    const { data: quoteSnapshot, error: quoteLookupError } = await adminClient
+      .from("delivery_quotes")
+      .select("id, customer_id, destination_locality_id")
+      .eq("id", deliveryQuoteId)
+      .maybeSingle();
+
+    if (quoteLookupError) {
+      console.error("WALLET checkout delivery quote lookup failed:", quoteLookupError.message);
+      return errorResponse("We could not verify your delivery quote. Please calculate delivery again.", 503);
+    }
+
+    if (!quoteSnapshot || quoteSnapshot.customer_id !== user.id || typeof quoteSnapshot.destination_locality_id !== "string") {
+      return errorResponse("This delivery quote is unavailable. Please calculate delivery again.", 409);
+    }
+
+    const canonicalCart = [...normalizedCart].sort((a, b) =>
+      a.menu_item_id.localeCompare(b.menu_item_id)
+    );
+    const cartHash = createHash("sha256")
+      .update(JSON.stringify(canonicalCart), "utf8")
+      .digest("hex");
+    const destinationAddressHash = createHash("sha256")
+      .update(JSON.stringify({
+        address: deliveryAddress.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
+        localityId: quoteSnapshot.destination_locality_id,
+      }), "utf8")
+      .digest("hex");
+
     // Vendor order screens read customer contact from profiles.phone.
     if (typeof phoneNumber !== "string" || !/^0\d{10}$/.test(phoneNumber.trim())) {
       return Response.json({ error: "Phone number must be exactly 11 digits and start with 0 (e.g. 08012345678)." }, { status: 400 });
@@ -165,7 +203,7 @@ export async function POST(request: Request) {
     // The database function calculates prices and performs the
     // order creation, wallet debit, and ledger insert atomically.
     const { data, error } = await adminClient.rpc(
-      "create_customer_wallet_order",
+      "create_customer_wallet_order_from_quote",
       {
         p_customer_id: user.id,
         p_cart: normalizedCart,
@@ -174,6 +212,9 @@ export async function POST(request: Request) {
         p_customer_notes:
           typeof customerNotes === "string" ? customerNotes.trim() || null : null,
         p_checkout_reference: checkoutReference,
+        p_delivery_quote_id: deliveryQuoteId,
+        p_cart_hash: cartHash,
+        p_destination_address_hash: destinationAddressHash,
       }
     );
 
@@ -194,7 +235,10 @@ export async function POST(request: Request) {
         message.includes("invalid") ||
         message.includes("mixed-vendor") ||
         message.includes("Invalid checkout details") ||
-        message.includes("Checkout reference already used")
+        message.includes("Checkout reference already used") ||
+        message.includes("Delivery quote") ||
+        message.includes("delivery quote") ||
+        message.includes("Cart or delivery address changed")
       ) {
         return errorResponse(
           "Your cart or checkout details have changed. Please review and try again.",

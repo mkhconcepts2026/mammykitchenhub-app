@@ -43,10 +43,7 @@ export default function VendorPage() {
         await supabase
           .from("vendors")
           .select("*")
-          .eq(
-            "slug",
-            slug
-          )
+          .eq("slug", slug).eq("status", "active")
           .single();
 
       if (!vendorData) {

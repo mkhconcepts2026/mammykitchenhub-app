@@ -145,13 +145,7 @@ const [
       head: true,
     }),
 
-  supabase
-    .from("employees")
-    .select("*", {
-      count: "exact",
-      head: true,
-    })
-    .eq("status", "pending"),
+    (supabase as any).rpc("hr_list_pending_employee_approvals"),
 
   supabase
     .from("departments")
@@ -169,7 +163,19 @@ const [
 ]);
 
 setEmployeeCount(employeesResult.count || 0);
-setPendingCount(pendingResult.count || 0);
+if (pendingResult.error) {
+  console.error(
+    "Unable to load pending employee approvals:",
+    pendingResult.error
+  );
+  setPendingCount(0);
+} else {
+  setPendingCount(
+    Array.isArray(pendingResult.data)
+      ? pendingResult.data.length
+      : 0
+  );
+}
 setDepartmentCount(departmentsResult.count || 0);
 setRoleCount(rolesResult.count || 0);
 
@@ -377,9 +383,20 @@ if (loading) {
           className="group rounded-3xl border bg-white p-7 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
         >
           <div className="mb-6 flex items-center justify-between">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-purple-100 text-3xl font-bold text-purple-700">
-              â†”
-            </div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-purple-100 text-3xl font-bold text-purple-700"><svg
+  aria-hidden="true"
+  viewBox="0 0 24 24"
+  className="h-8 w-8"
+  fill="none"
+  stroke="currentColor"
+  strokeWidth="1.8"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+>
+  <circle cx="12" cy="8" r="4" />
+  <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+  <path d="M19 8h3m-1.5-1.5v3" />
+</svg></div>
             <ArrowRight className="text-gray-300 transition group-hover:text-purple-600" />
           </div>
           <h2 className="text-2xl font-bold">Role Changes</h2>

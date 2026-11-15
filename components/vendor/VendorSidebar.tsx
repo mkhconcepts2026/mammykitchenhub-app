@@ -5,12 +5,13 @@ import {
   ClipboardList,
   UtensilsCrossed,
   Wallet,
+  Landmark,
   ShieldCheck,
   LogOut,
   ArrowUpRight,
 } from "lucide-react";
 
-type Tab = "dashboard" | "orders" | "menu" | "earnings" | "kyc";
+type Tab = "dashboard" | "orders" | "menu" | "earnings" | "bank" | "kyc";
 
 type Props = {
   currentTab: string;
@@ -28,6 +29,7 @@ const navigation: Array<{
   { tab: "orders", label: "Orders", Icon: ClipboardList },
   { tab: "menu", label: "Menu & availability", Icon: UtensilsCrossed },
   { tab: "earnings", label: "Earnings & payouts", Icon: Wallet },
+  { tab: "bank", label: "Bank account", Icon: Landmark },
   { tab: "kyc", label: "KYC verification", Icon: ShieldCheck },
 ];
 

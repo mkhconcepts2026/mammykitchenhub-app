@@ -8,8 +8,8 @@ const terminalStatuses = new Set(["approved", "verified", "rejected"]);
 const hasAnyDocument = (row: any) =>
   Boolean(row.cac_url || row.id_url || row.national_id_url || row.selfie_url || row.kitchen_photo_url);
 
-export async function GET() {
-  const auth = await authorizeKycAdmin();
+export async function GET(request: Request) {
+  const auth = await authorizeKycAdmin(request);
   if ("response" in auth) return auth.response;
 
   try {
@@ -17,12 +17,12 @@ export async function GET() {
       adminClient
         .from("vendor_applications")
         .select(
-          "id,kitchen_name,vendor_type,email,phone,owner_name,status,onboarding_status,kyc_status,cac_url,id_url,selfie_url,kitchen_photo_url,created_at",
+          "id,kitchen_name,vendor_type,email,phone,owner_name,business_address,status,onboarding_status,kyc_status,kyc_review_notes,cac_url,id_url,selfie_url,kitchen_photo_url,created_at",
         )
         .order("created_at", { ascending: false }),
       adminClient
         .from("vendor_kyc")
-        .select("id,vendor_id,cac_url,national_id_url,selfie_url,kitchen_photo_url,status,created_at")
+        .select("id,vendor_id,cac_url,national_id_url,selfie_url,kitchen_photo_url,status,review_notes,created_at")
         .order("created_at", { ascending: false }),
     ]);
 
@@ -43,7 +43,11 @@ export async function GET() {
         source: "application" as const,
         id: row.id,
         displayName: row.kitchen_name || row.owner_name || row.email || "Vendor application",
+        ownerName: row.owner_name ?? null,
         email: row.email ?? null,
+        phone: row.phone ?? null,
+        businessAddress: row.business_address ?? null,
+        reviewNotes: row.kyc_review_notes ?? null,
         vendorType: row.vendor_type ?? null,
         applicationStatus: row.status ?? null,
         kycStatus: row.kyc_status || "pending_review",
@@ -99,7 +103,11 @@ export async function GET() {
           displayName:
             (profile?.vendor_id && vendorNameById.get(profile.vendor_id)) ||
             profile?.full_name || profile?.email || "Vendor KYC submission",
+          ownerName: profile?.full_name ?? null,
           email: profile?.email ?? null,
+          phone: null,
+          businessAddress: null,
+          reviewNotes: row.review_notes ?? null,
           vendorType: null,
           applicationStatus: null,
           kycStatus: row.status || "pending",

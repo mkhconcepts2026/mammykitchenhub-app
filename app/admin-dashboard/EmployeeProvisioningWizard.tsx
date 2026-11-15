@@ -197,9 +197,19 @@ function validateCurrentStep() {
 
       return true;
 
-    case 3:
+    case 3: {
+      if (!formData.stateId) {
+        alert("State is required.");
+        return false;
+      }
+
+      if (!formData.lgaId) {
+        alert("Local Government Area (LGA) is required for every employee.");
+        return false;
+      }
 
       return true;
+    }
 
     case 4:
 
@@ -313,6 +323,8 @@ async function createEmployee() {
     { key: "roleId", label: "Employee Role" },
 
     { key: "stateId", label: "State" },
+
+    { key: "lgaId", label: "Local Government Area (LGA)" },
 
   ];
 
@@ -1350,7 +1362,7 @@ setEmployees(employeeData || []);
 
     <label className="mb-2 block font-medium">
 
-      Local Government Area
+      Local Government Area (LGA) *
 
     </label>
 

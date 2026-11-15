@@ -1,0 +1,280 @@
+"use client";
+
+import { useState } from "react";
+
+type PlaceSuggestion = {
+  placeId: string;
+  label: string;
+  mainText: string;
+  secondaryText: string;
+};
+
+type ResolvedPlace = {
+  placeId: string;
+  displayName: string;
+  formattedAddress: string;
+  latitude: number;
+  longitude: number;
+  countryCode: string;
+  localityText: string;
+  adminAreaText: string;
+};
+
+type Locality = {
+  id: string;
+  name: string;
+  localityType: string | null;
+  lgaName: string;
+  lcdaName: string;
+};
+
+type VerificationResult = { verified: boolean; address: string };
+
+export default function BusinessLocationSelector({
+  onVerified,
+}: {
+  onVerified: (result: VerificationResult) => void;
+}) {
+  const [addressQuery, setAddressQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [place, setPlace] = useState<ResolvedPlace | null>(null);
+  const [localityQuery, setLocalityQuery] = useState("");
+  const [localities, setLocalities] = useState<Locality[]>([]);
+  const [localityId, setLocalityId] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
+  const [busy, setBusy] = useState<"places" | "resolve" | "localities" | "verify" | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [verified, setVerified] = useState(false);
+
+  const invalidate = () => {
+    setVerified(false);
+    onVerified({ verified: false, address: "" });
+  };
+
+  async function requestLocation(payload: Record<string, string>) {
+    const response = await fetch("/api/vendor-onboarding/location", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.success !== true) {
+      throw new Error(typeof data?.message === "string" ? data.message : "The location request could not be completed.");
+    }
+    return data;
+  }
+
+  async function searchGooglePlaces() {
+    const query = addressQuery.trim();
+    if (query.length < 3) {
+      setError("Enter at least 3 characters of the business address.");
+      return;
+    }
+    invalidate();
+    setError("");
+    setNotice("");
+    setPlace(null);
+    setLocalities([]);
+    setLocalityId("");
+    setBusy("places");
+    try {
+      const token = sessionToken || (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID().replace(/-/g, "").slice(0, 32) : Math.random().toString(36).slice(2, 14));
+      setSessionToken(token);
+      const data = await requestLocation({ action: "autocomplete", input: query, sessionToken: token });
+      setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+      if (!data.suggestions?.length) setNotice("No Google Maps result was found. Refine the address and search again.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Google Maps search failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function choosePlace(suggestion: PlaceSuggestion) {
+    invalidate();
+    setError("");
+    setNotice("");
+    setBusy("resolve");
+    setSuggestions([]);
+    setLocalities([]);
+    setLocalityId("");
+    try {
+      const data = await requestLocation({ action: "resolve", placeId: suggestion.placeId, sessionToken });
+      const resolved = data.place as ResolvedPlace;
+      setPlace(resolved);
+      setAddressQuery(resolved.formattedAddress);
+      const hint = resolved.localityText || resolved.adminAreaText || "";
+      setLocalityQuery(hint);
+      if (hint.trim().length >= 2) {
+        const localityData = await requestLocation({ action: "localities", search: hint.trim() });
+        setLocalities(Array.isArray(localityData.localities) ? localityData.localities : []);
+      }
+      setNotice("Google Maps resolved this address in Nigeria. Select the correct active MKH locality below.");
+    } catch (requestError) {
+      setPlace(null);
+      setError(requestError instanceof Error ? requestError.message : "Unable to verify the selected Google Maps result.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function searchMkhLocalities() {
+    const query = localityQuery.trim();
+    if (query.length < 2) {
+      setError("Enter at least 2 characters to search MKH localities.");
+      return;
+    }
+    invalidate();
+    setError("");
+    setNotice("");
+    setBusy("localities");
+    try {
+      const data = await requestLocation({ action: "localities", search: query });
+      setLocalities(Array.isArray(data.localities) ? data.localities : []);
+      if (!data.localities?.length) setNotice("No active MKH locality matched that search. Try the neighbourhood or community name.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "MKH locality search failed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmLocation() {
+    if (!place?.placeId) {
+      setError("Select a Google Maps address first.");
+      return;
+    }
+    if (!localityId) {
+      setError("Select an active MKH locality before confirming this address.");
+      return;
+    }
+    setError("");
+    setNotice("");
+    setBusy("verify");
+    invalidate();
+    try {
+      const data = await requestLocation({
+        action: "validate",
+        placeId: place.placeId,
+        localityId,
+        sessionToken,
+      });
+      const verifiedAddress = String(data.place?.formattedAddress ?? "").trim();
+      if (!verifiedAddress || data.locality?.isActive !== true) {
+        throw new Error("The address or selected MKH locality could not be re-verified. Please select them again.");
+      }
+      setPlace(data.place as ResolvedPlace);
+      setAddressQuery(verifiedAddress);
+      setVerified(true);
+      onVerified({ verified: true, address: verifiedAddress });
+      setNotice(`Location confirmed: ${data.locality.name}${data.locality.lcdaName ? `  -  ${data.locality.lcdaName}` : ""}${data.locality.lgaName ? `  -  ${data.locality.lgaName}` : ""}.`);
+    } catch (requestError) {
+      setVerified(false);
+      onVerified({ verified: false, address: "" });
+      setError(requestError instanceof Error ? requestError.message : "The business location could not be verified.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const selectedLocality = localities.find((row) => row.id === localityId) ?? null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF4E8] text-[#F97316]">
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></svg>
+        </div>
+        <div>
+          <h2 className="text-base font-extrabold text-[#0F172A]">Business Location</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Find the exact business address on Google Maps, then select its matching operational locality from MKH.</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+        <label className="mb-2 block text-xs font-bold text-[#0F172A]" htmlFor="mkh-google-address">Search Google Maps</label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            id="mkh-google-address"
+            value={addressQuery}
+            onChange={(event) => {
+              setAddressQuery(event.target.value);
+              setSuggestions([]);
+              setPlace(null);
+              setLocalities([]);
+              setLocalityId("");
+              setSessionToken("");
+              setError("");
+              invalidate();
+            }}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchGooglePlaces(); } }}
+            placeholder="Street, building, landmark or business name"
+            autoComplete="off"
+            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#0F172A] outline-none transition placeholder:text-slate-400 focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10"
+          />
+          <button type="button" onClick={() => void searchGooglePlaces()} disabled={busy !== null} className="shrink-0 rounded-xl bg-[#0F172A] px-5 py-3 text-xs font-bold text-white transition hover:bg-slate-700 disabled:opacity-50">
+            {busy === "places" ? "Searching..." : "Search address"}
+          </button>
+        </div>
+
+        {suggestions.length > 0 && (
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+            <p className="border-b border-slate-100 px-4 py-2 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Google Maps results</p>
+            {suggestions.map((suggestion) => (
+              <button key={suggestion.placeId} type="button" onClick={() => void choosePlace(suggestion)} className="flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-orange-50">
+                <span className="mt-0.5 text-[#F97316]" aria-hidden="true"><svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></svg></span>
+                <span className="min-w-0"><span className="block text-sm font-bold text-[#0F172A]">{suggestion.mainText}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{suggestion.secondaryText || suggestion.label}</span></span>
+              </button>
+            ))}
+            <div className="flex justify-end border-t border-slate-100 px-4 py-2.5"><img src="https://maps.gstatic.com/mapfiles/api-3/images/powered-by-google-on-white3.png" alt="Powered by Google" width={120} height={14} /></div>
+          </div>
+        )}
+
+        {place && (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div className="flex items-start gap-2">
+              <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
+              <div><p className="text-xs font-extrabold text-emerald-900">Google Maps address selected</p><p className="mt-1 text-xs leading-5 text-emerald-800">{place.formattedAddress}</p><p className="mt-1 text-[10px] text-emerald-700">Google locality hint: {place.localityText || place.adminAreaText || "Not provided"}</p></div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold text-[#0F172A]">Match to MKH locality</h3><p className="mt-1 text-xs text-slate-500">Google's locality text is a guide. MKH's active locality database is the operational authority.</p></div><span className="rounded-full bg-[#FFF4E8] px-3 py-1 text-[10px] font-bold text-[#C65A12]">MKH database</span></div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={localityQuery}
+            onChange={(event) => { setLocalityQuery(event.target.value); setLocalityId(""); setLocalities([]); setVerified(false); invalidate(); }}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchMkhLocalities(); } }}
+            placeholder="Search locality or neighbourhood"
+            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-[#0F172A] outline-none transition placeholder:text-slate-400 focus:border-[#F97316] focus:bg-white focus:ring-4 focus:ring-[#F97316]/10"
+          />
+          <button type="button" onClick={() => void searchMkhLocalities()} disabled={busy !== null} className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-xs font-bold text-[#0F172A] transition hover:border-[#F97316] hover:text-[#C65A12] disabled:opacity-50">{busy === "localities" ? "Searching..." : "Find locality"}</button>
+        </div>
+
+        {localities.length > 0 && (
+          <label className="mt-3 block"><span className="mb-2 block text-[11px] font-bold text-slate-600">Select the correct active MKH locality</span>
+            <select value={localityId} onChange={(event) => { setLocalityId(event.target.value); setVerified(false); invalidate(); }} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#0F172A] outline-none focus:border-[#F97316] focus:ring-4 focus:ring-[#F97316]/10">
+              <option value="">Choose an MKH locality</option>
+              {localities.map((row) => <option key={row.id} value={row.id}>{row.name}{row.lcdaName ? `  -  ${row.lcdaName}` : ""}{row.lgaName ? `  -  ${row.lgaName}` : ""}</option>)}
+            </select>
+          </label>
+        )}
+
+        {selectedLocality && <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-600"><span className="font-bold text-[#0F172A]">Selected MKH locality:</span> {selectedLocality.name}{selectedLocality.lcdaName ? `  -  ${selectedLocality.lcdaName}` : ""}{selectedLocality.lgaName ? `  -  ${selectedLocality.lgaName}` : ""}</div>}
+
+        <button type="button" onClick={() => void confirmLocation()} disabled={busy !== null || !place || !localityId} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#D4AF37]/60 bg-[#FFF9EC] px-4 py-3 text-xs font-extrabold text-[#72520A] transition hover:bg-[#FFF1CE] disabled:cursor-not-allowed disabled:opacity-45">
+          {busy === "verify" ? "Re-checking address and locality..." : verified ? "Location verified" : "Verify address and MKH locality"}
+          {verified && <span aria-hidden="true"></span>}
+        </button>
+      </div>
+
+      {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs leading-5 text-rose-700">{error}</p>}
+      {notice && !error && <p role="status" className={`rounded-xl px-4 py-3 text-xs leading-5 ${verified ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : "border border-slate-200 bg-slate-50 text-slate-600"}`}>{notice}</p>}
+      <div className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-[10px] leading-5 text-slate-500"><span className="mt-0.5 font-bold text-[#D4AF37]">i</span><p>Address verification and MKH locality matching are separate checks. Selecting a Google Maps result alone does not verify that the locality is operationally supported by MKH.</p></div>
+    </div>
+  );
+}

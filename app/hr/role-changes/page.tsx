@@ -184,7 +184,7 @@ export default function HRRoleChangeRequestsPage() {
           </div>
 
           {loading ? (
-            <p className="py-8 text-sm text-slate-500">Loading pending requestsâ€¦</p>
+            <p className="py-8 text-sm text-slate-500">Loading pending requests…</p>
           ) : requests.length === 0 ? (
             <p className="py-8 text-sm text-slate-500">
               There are no pending role-change requests.
@@ -212,7 +212,7 @@ export default function HRRoleChangeRequestsPage() {
                       </p>
                       <p className="mt-1 text-sm">
                         {request.previous_employee_role || "Unspecified"}
-                        {" â†’ "}
+                        {" → "}
                         <strong>{request.requested_job_role}</strong>
                       </p>
                     </div>
@@ -222,7 +222,7 @@ export default function HRRoleChangeRequestsPage() {
                       </p>
                       <p className="mt-1 text-sm">
                         {request.previous_access_role}
-                        {" â†’ "}
+                        {" → "}
                         <strong>{request.requested_access_role || "Unspecified"}</strong>
                       </p>
                     </div>
@@ -235,7 +235,7 @@ export default function HRRoleChangeRequestsPage() {
                     {request.reason}
                   </p>
                   <p className="mt-2 text-xs text-slate-400">
-                    Requested by {request.requester_name} Â·{" "}
+                    Requested by {request.requester_name} ·{" "}
                     {new Date(request.requested_at).toLocaleString()}
                   </p>
 
@@ -264,7 +264,7 @@ export default function HRRoleChangeRequestsPage() {
                       className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                     >
                       <CheckCircle2 size={17} />
-                      {workingId === request.request_id ? "Processingâ€¦" : "Implement change"}
+                      {workingId === request.request_id ? "Processing…" : "Implement change"}
                     </button>
 
                     <button

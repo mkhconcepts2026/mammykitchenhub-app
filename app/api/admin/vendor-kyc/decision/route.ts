@@ -28,7 +28,7 @@ function jsonError(message: string, status: number) {
 }
 
 export async function POST(request: Request) {
-  const auth = await authorizeKycAdmin();
+  const auth = await authorizeKycAdmin(request);
   if ("response" in auth) return auth.response;
 
   let body: any;

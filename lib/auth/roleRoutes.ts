@@ -8,6 +8,20 @@ export const ROLE_ROUTES: Record<string, string> = {
 
   relationship_manager: "/manager",
 
+  territory: "/territory-relationship-manager",
+  territory_manager: "/territory-relationship-manager",
+  trm: "/territory-relationship-manager",
+  territory_relationship_manager: "/territory-relationship-manager",
+
+  zonal_manager: "/zonal-manager-dashboard",
+  "zonal manager": "/zonal-manager-dashboard",
+  zone_manager: "/zonal-manager-dashboard",
+  "zone manager": "/zonal-manager-dashboard",
+  zm: "/zonal-manager-dashboard",
+  vendor_hub_agent: "/vendor-hub-agent-dashboard",
+  "vendor hub agent": "/vendor-hub-agent-dashboard",
+  vha: "/vendor-hub-agent-dashboard",
+
   finance: "/finance",
 
   hr: "/hr",

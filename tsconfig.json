@@ -1,7 +1,12 @@
+
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +24,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -31,11 +38,14 @@
     "**/*.mts"
   ],
   "exclude": [
-  "node_modules",
-  "**/*-backup*.ts",
-  "**/*-backup*.tsx",
-  "**/*.bak.ts",
-  "**/*.bak.tsx",
-    "_mkh_integration_backups"
+    "node_modules",
+    "**/*-backup*.ts",
+    "**/*-backup*.tsx",
+    "**/*.bak.ts",
+    "**/*.bak.tsx",
+    "_mkh_integration_backups",
+    "backups",
+    "_backups",
+    "patch-backups"
   ]
 }

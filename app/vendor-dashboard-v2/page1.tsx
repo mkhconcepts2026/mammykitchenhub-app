@@ -10,6 +10,7 @@ type Tab =
   | "orders"
   | "menu"
   | "earnings"
+  | "bank"
   | "kyc";
 
 export default function VendorDashboardV2() {

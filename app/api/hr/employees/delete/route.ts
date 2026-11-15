@@ -1,13 +1,11 @@
-
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
-    // 1. Authenticate the caller.
+    // Authenticate the HR operator using their normal user session.
     const supabase = await createClient();
-
     const {
       data: { user },
       error: authUserError,
@@ -20,7 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Authorize through the effective role assignment.
+    // Preserve the existing effective-role authorization rule.
     const { data: callerRole, error: callerRoleError } =
       await (supabase as any).rpc("current_effective_app_role");
 
@@ -31,15 +29,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Forbidden. Only active HR users may delete employee records.",
+          message: "Forbidden. Only active HR users may remove employees from the active roster.",
         },
         { status: 403 }
       );
     }
 
-    // 3. Validate the request body.
     let body: { employeeId?: unknown };
-
     try {
       body = await request.json();
     } catch {
@@ -50,10 +46,7 @@ export async function POST(request: Request) {
     }
 
     const employeeId =
-      typeof body.employeeId === "string"
-        ? body.employeeId.trim()
-        : "";
-
+      typeof body.employeeId === "string" ? body.employeeId.trim() : "";
     const uuidPattern =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -64,17 +57,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Find the employee and linked profile, if any.
-    const { data: employee, error: employeeError } =
-      await adminClient
-        .from("employees")
-        .select("id, profile_id")
-        .eq("id", employeeId)
-        .maybeSingle();
+    const { data: employee, error: employeeError } = await adminClient
+      .from("employees")
+      .select("id, profile_id")
+      .eq("id", employeeId)
+      .maybeSingle();
 
     if (employeeError) {
       console.error("Employee lookup failed:", employeeError);
-
       return NextResponse.json(
         { success: false, message: "Unable to look up the employee." },
         { status: 500 }
@@ -88,71 +78,70 @@ export async function POST(request: Request) {
       );
     }
 
-    // 5. Delete the employee record first.
-    // Foreign keys protect records that must not be deleted.
-    const { error: deleteEmployeeError } =
-      await adminClient
-        .from("employees")
-        .delete()
-        .eq("id", employee.id);
+    // One database transaction deactivates the employee, revokes their
+    // effective assignments, and records an audit event. Historical rows
+    // that reference the employee are deliberately retained.
+    const { data: result, error: deactivationError } = await adminClient.rpc(
+      "hr_deactivate_employee_safely",
+      {
+        p_employee_id: employee.id,
+        p_actor_id: user.id,
+      }
+    );
 
-    if (deleteEmployeeError) {
-      console.error(
-        "Employee deletion blocked:",
-        deleteEmployeeError
-      );
-
+    if (deactivationError) {
+      console.error("Employee deactivation failed:", deactivationError);
       return NextResponse.json(
         {
           success: false,
           message:
-            "The employee could not be deleted because related records may still depend on it. Review the employee's assignments and relationships.",
+            "The employee could not be removed from the active roster. No partial database changes were committed. Check the server log for details.",
         },
         { status: 409 }
       );
     }
 
-    // 6. If there is no linked profile, the employee record
-    // is deleted; do not call Supabase Auth with a null ID.
-    if (!employee.profile_id) {
-      return NextResponse.json({
-        success: true,
-        message: "Employee record deleted. No linked profile existed.",
-      });
-    }
-
-    // 7. Remove the linked Auth account.
-    // The linked profile's FK relationships may prevent deletion.
-    const { error: authDeleteError } =
-      await adminClient.auth.admin.deleteUser(employee.profile_id);
-
-    if (authDeleteError) {
-      console.error(
-        "Linked Auth account deletion failed:",
-        authDeleteError
-      );
-
+    if (!result || result.success !== true) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "The employee record was deleted, but the linked login account could not be deleted. Further cleanup is required.",
+          message: "The database did not confirm employee deactivation.",
         },
         { status: 500 }
       );
     }
 
+    // Ban the linked Auth user after the DB transaction succeeds. The profile
+    // is also made inactive by the transaction, so the app role is revoked.
+    // If Auth banning fails, report the partial security condition clearly.
+    let authBanWarning: string | null = null;
+    if (employee.profile_id) {
+      const { error: authBanError } = await adminClient.auth.admin.updateUserById(
+        employee.profile_id,
+        { ban_duration: "876000h" }
+      );
+
+      if (authBanError) {
+        console.error("Employee Auth ban failed:", authBanError);
+        authBanWarning =
+          "The employee is marked inactive and app access is revoked, but the Auth sign-in ban could not be confirmed. Please review the Auth user before closing this task.";
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: "Employee and linked login account deleted successfully.",
+      message: authBanWarning
+        ? authBanWarning
+        : "Employee removed from the active roster. Login access revoked; historical HR and audit records retained.",
+      historicalRecordRetained: true,
+      authBanWarning,
     });
   } catch (error: unknown) {
-    console.error("Employee deletion error:", error);
-
+    console.error("Employee deactivation error:", error);
     return NextResponse.json(
       {
         success: false,
-        message: "An unexpected error occurred while deleting the employee.",
+        message: "An unexpected error occurred while removing the employee from the active roster.",
       },
       { status: 500 }
     );

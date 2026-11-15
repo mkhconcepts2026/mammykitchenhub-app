@@ -39,9 +39,12 @@ export interface RiderRecord {
    */
   operational_status: RiderOperationalStatus;
 
-  available_balance: number;
-  pending_balance: number;
-  lifetime_earnings: number;
+  available_balance: number | null;
+  pending_balance: number | null;
+  lifetime_earnings: number | null;
+
+  /** True when this rider is linked to vendors beyond the current TRM scope. */
+  wallet_scope_limited?: boolean;
 
   /**
    * Last known rider GPS/location update.

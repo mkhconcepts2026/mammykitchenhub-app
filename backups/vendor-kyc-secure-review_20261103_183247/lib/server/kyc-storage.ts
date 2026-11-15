@@ -1,0 +1,97 @@
+import { adminClient } from "@/lib/supabase/admin";
+
+type KycSource = "application" | "vendor_kyc";
+type DocumentKey = "cac" | "nationalId" | "selfie" | "kitchenPhoto";
+
+type StorageReference = { bucket: string; path: string };
+
+const DOCUMENT_BUCKETS = {
+  application: {
+    bucket: "vendor-documents",
+    folders: new Set(["cac", "ids", "selfies"]),
+  },
+  vendor_kyc: {
+    bucket: "kyc-documents",
+    folders: new Set(["cac", "id", "selfie"]),
+  },
+} as const;
+
+function extractReference(
+  reference: string | null | undefined,
+  expectedBucket: string,
+  allowedFolders: ReadonlySet<string>,
+): StorageReference | null {
+  if (!reference) return null;
+  let path = "";
+
+  if (/^https?:\/\//i.test(reference)) {
+    try {
+      const pathname = new URL(reference).pathname;
+      const markers = [
+        `/object/public/${expectedBucket}/`,
+        `/object/sign/${expectedBucket}/`,
+        `/object/authenticated/${expectedBucket}/`,
+      ];
+      const marker = markers.find((candidate) => pathname.includes(candidate));
+      if (!marker) return null;
+      path = decodeURIComponent(pathname.slice(pathname.indexOf(marker) + marker.length));
+    } catch {
+      return null;
+    }
+  } else {
+    path = reference.replace(/^\/+/, "").split("?")[0];
+  }
+
+  path = path.replace(/^\/+/, "");
+  const folder = path.split("/")[0];
+  if (!path || !allowedFolders.has(folder) || path.includes("..") || path.includes("\\")) {
+    return null;
+  }
+  return { bucket: expectedBucket, path };
+}
+
+/**
+ * Supports legacy public-URL values already saved in rows and new path-only values.
+ * Identity documents are always signed server-side from a private bucket.
+ */
+export function resolveKycObjectReference(
+  reference: string | null | undefined,
+  source: KycSource,
+  documentKey: DocumentKey,
+): StorageReference | null {
+  if (documentKey === "kitchenPhoto") {
+    return extractReference(
+      reference,
+      "vendor-kitchen-images",
+      new Set(["kitchens"]),
+    );
+  }
+
+  const config = DOCUMENT_BUCKETS[source];
+  return extractReference(reference, config.bucket, config.folders);
+}
+
+export async function makeSignedDocumentUrl(
+  reference: string | null | undefined,
+  source: KycSource,
+  documentKey: DocumentKey,
+): Promise<string | null> {
+  const resolved = resolveKycObjectReference(reference, source, documentKey);
+  if (!resolved) return null;
+
+  // Kitchen images are intentionally public media, separate from identity files.
+  if (documentKey === "kitchenPhoto" && resolved.bucket === "vendor-kitchen-images") {
+    const { data } = adminClient.storage.from(resolved.bucket).getPublicUrl(resolved.path);
+    return data.publicUrl || null;
+  }
+
+  const { data, error } = await adminClient.storage
+    .from(resolved.bucket)
+    .createSignedUrl(resolved.path, 5 * 60);
+
+  if (error || !data?.signedUrl) {
+    console.error("KYC signed URL generation failed:", error?.message ?? "No URL returned");
+    return null;
+  }
+  return data.signedUrl;
+}

@@ -9,6 +9,7 @@ export function validateEmployee(data: any) {
     "departmentId",
     "roleId",
     "stateId",
+    "lgaId",
   ];
 
   for (const field of required) {

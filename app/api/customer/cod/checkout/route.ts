@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
+
+export const runtime = "nodejs";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,6 +66,7 @@ export async function POST(request: Request) {
       phone,
       notes,
       checkoutReference,
+      deliveryQuoteId,
     } = body as Record<string, unknown>;
 
     if (
@@ -119,6 +123,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      typeof deliveryQuoteId !== "string" ||
+      !UUID_PATTERN.test(deliveryQuoteId)
+    ) {
+      return NextResponse.json(
+        { error: "Confirm your delivery address and calculate a fresh delivery quote first." },
+        { status: 400 }
+      );
+    }
+
     const seenItemIds = new Set<string>();
 
     for (const item of cart) {
@@ -151,10 +165,54 @@ export async function POST(request: Request) {
 
     const safeCart = cart.map(
       (item: { menu_item_id: string; quantity: number }) => ({
-        menu_item_id: item.menu_item_id,
+        menu_item_id: item.menu_item_id.toLowerCase(),
         quantity: item.quantity,
       })
     );
+
+    // Read the quote's locality so this server calculates the same address hash
+    // used when the quote was created. The database RPC rechecks the quote under
+    // a row lock; this lookup is not the final authorization/consumption check.
+    const { data: quoteSnapshot, error: quoteLookupError } = await adminClient
+      .from("delivery_quotes")
+      .select("id, customer_id, destination_locality_id")
+      .eq("id", deliveryQuoteId)
+      .maybeSingle();
+
+    if (quoteLookupError) {
+      console.error("COD checkout delivery quote lookup failed:", quoteLookupError.message);
+      return NextResponse.json(
+        { error: "We could not verify your delivery quote. Please calculate delivery again." },
+        { status: 503 }
+      );
+    }
+
+    if (
+      !quoteSnapshot ||
+      quoteSnapshot.customer_id !== user.id ||
+      typeof quoteSnapshot.destination_locality_id !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "This delivery quote is unavailable. Please calculate delivery again." },
+        { status: 409 }
+      );
+    }
+
+    const canonicalCart = [...safeCart].sort((a, b) =>
+      a.menu_item_id.localeCompare(b.menu_item_id)
+    );
+    const cartHash = createHash("sha256")
+      .update(JSON.stringify(canonicalCart), "utf8")
+      .digest("hex");
+    const destinationAddressHash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          address: address.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
+          localityId: quoteSnapshot.destination_locality_id,
+        }),
+        "utf8"
+      )
+      .digest("hex");
 
     // Vendor order screens read customer contact from profiles.phone.
     if (typeof phone !== "string" || !/^0\d{10}$/.test(phone.trim())) {
@@ -177,7 +235,7 @@ export async function POST(request: Request) {
     }
 
     const { data, error: orderError } = await adminClient.rpc(
-      "create_customer_cod_order",
+      "create_customer_cod_order_from_quote",
       {
         p_customer_id: user.id,
         p_cart: safeCart,
@@ -186,6 +244,9 @@ export async function POST(request: Request) {
         p_customer_notes:
           typeof notes === "string" ? notes.trim() || null : null,
         p_checkout_reference: checkoutReference,
+        p_delivery_quote_id: deliveryQuoteId,
+        p_cart_hash: cartHash,
+        p_destination_address_hash: destinationAddressHash,
       }
     );
 

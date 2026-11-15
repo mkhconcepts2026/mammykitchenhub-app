@@ -24,7 +24,7 @@ export default function CartPage() {
     subtotal,
   } = useCart();
 
-  const deliveryFee = 1500;
+  const deliveryFee = 0; // Delivery fee is calculated only after address confirmation at checkout.
   const platformFee = 300;
   const total = subtotal + deliveryFee + platformFee;
 
@@ -169,11 +169,9 @@ export default function CartPage() {
                 </div>
 
                 <div className="flex justify-between gap-4">
-                  <span className="text-gray-600">Delivery Fee</span>
-                  <span className="font-medium">
-                    ₦{deliveryFee.toLocaleString("en-NG")}
-                  </span>
-                </div>
+              <span>Delivery Fee</span>
+              <span>Calculated at checkout</span>
+            </div>
 
                 <div className="flex justify-between gap-4">
                   <span className="text-gray-600">Platform Fee</span>
