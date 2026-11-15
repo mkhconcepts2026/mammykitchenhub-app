@@ -317,6 +317,9 @@ ON public.zone_vendors
 FOR EACH ROW
 EXECUTE FUNCTION public.mkh_validate_vendor_zone_geography();
 
+REVOKE ALL ON FUNCTION public.mkh_validate_vendor_zone_geography() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mkh_validate_vendor_zone_geography() TO service_role;
+
 -- A new verified locality must not strand an existing vendor-zone assignment
 -- outside the coverage of that vendor's newly verified MKH locality.
 -- Pending/rejected address updates remain possible and continue to be blocked
@@ -391,6 +394,9 @@ BEFORE INSERT OR UPDATE OF locality_id, address_verification_status, locality_ma
 ON public.vendor_business_locations
 FOR EACH ROW
 EXECUTE FUNCTION public.mkh_validate_vendor_location_zone_coverage();
+
+REVOKE ALL ON FUNCTION public.mkh_validate_vendor_location_zone_coverage() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mkh_validate_vendor_location_zone_coverage() TO service_role;
 
 -- Atomic Admin/COO reassignment. The old zone_vendors row is retained as
 -- inactive history; the new row and audit record are committed together.
