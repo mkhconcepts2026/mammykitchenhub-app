@@ -102,12 +102,12 @@ function getGpsFreshness(updatedAt: string) {
     (Date.now() - updatedTime) / 1000
   );
 
-  if (ageSeconds <= 15) {
+  if (ageSeconds <= 60) {
     return "Live";
   }
 
-  if (ageSeconds <= 60) {
-    return `${ageSeconds}s ago`;
+  if (ageSeconds < 300) {
+    return `${Math.floor(ageSeconds / 60)}m ago`;
   }
 
   const ageMinutes = Math.floor(ageSeconds / 60);
@@ -219,6 +219,7 @@ export default function TerritoryMap({ riders }: Props) {
 
         L.marker(position, {
           icon: riderIcon,
+          opacity: gpsFreshness === "Live" ? 1 : 0.45,
         })
           .addTo(map)
           .bindPopup(`
@@ -256,9 +257,9 @@ export default function TerritoryMap({ riders }: Props) {
                 ${Math.round(rider.accuracy ?? 0)} m
               </div>
 
-              <div>
+              <div style="margin-top: 6px; color: ${gpsFreshness === "Live" ? "#059669" : "#64748B"};">
                 <strong>GPS:</strong>
-                ${gpsFreshness}
+                ${gpsFreshness === "Live" ? "LIVE" : `LAST KNOWN — ${gpsFreshness}`}
               </div>
             </div>
           `);

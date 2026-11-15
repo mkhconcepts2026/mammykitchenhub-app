@@ -170,12 +170,11 @@ export async function POST(request: Request) {
       })
     );
 
-    // Read the quote's locality so this server calculates the same address hash
-    // used when the quote was created. The database RPC rechecks the quote under
-    // a row lock; this lookup is not the final authorization/consumption check.
+    // Read the quote owner before hashing the Google Maps delivery address.
+    // The database RPC rechecks the quote under a row lock.
     const { data: quoteSnapshot, error: quoteLookupError } = await adminClient
       .from("delivery_quotes")
-      .select("id, customer_id, destination_locality_id")
+      .select("id, customer_id")
       .eq("id", deliveryQuoteId)
       .maybeSingle();
 
@@ -189,8 +188,7 @@ export async function POST(request: Request) {
 
     if (
       !quoteSnapshot ||
-      quoteSnapshot.customer_id !== user.id ||
-      typeof quoteSnapshot.destination_locality_id !== "string"
+      quoteSnapshot.customer_id !== user.id
     ) {
       return NextResponse.json(
         { error: "This delivery quote is unavailable. Please calculate delivery again." },
@@ -208,7 +206,6 @@ export async function POST(request: Request) {
       .update(
         JSON.stringify({
           address: address.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
-          localityId: quoteSnapshot.destination_locality_id,
         }),
         "utf8"
       )
