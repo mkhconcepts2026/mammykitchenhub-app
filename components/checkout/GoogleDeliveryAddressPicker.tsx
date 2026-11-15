@@ -217,7 +217,7 @@ export default function GoogleDeliveryAddressPicker({
         });
 
         widget.placeholder =
-          "Enter house number + street name + estate/locality in Google Maps";
+          "Search for your full street address on Google Maps";
 
         widget.style.width = "100%";
         widget.style.display = "block";
@@ -234,30 +234,7 @@ export default function GoogleDeliveryAddressPicker({
         widgetHostRef.current.replaceChildren(widget);
         widgetRef.current = widget;
 
-        // Bias suggestions towards the selected MKH locality.
-        // This is a search preference only, never the delivery destination.
-        if (localityLabel.trim()) {
-          try {
-            const geocoder = new google.maps.Geocoder();
-            const response = await geocoder.geocode({
-              address: `${localityLabel}, Lagos, Nigeria`,
-              region: "NG",
-            });
 
-            const location = response.results?.[0]?.geometry?.location;
-
-            if (active && location && widget) {
-              const bounds = new google.maps.Circle({
-                center: location,
-                radius: 12000,
-              }).getBounds();
-
-              if (bounds) widget.locationBias = bounds;
-            }
-          } catch {
-            // Autocomplete remains available without locality bias.
-          }
-        }
       } catch (error) {
         if (active) {
           setWidgetError(
@@ -283,9 +260,10 @@ export default function GoogleDeliveryAddressPicker({
       widgetRef.current = null;
       widgetHostRef.current?.replaceChildren();
     };
-  }, [isLoaded, localityLabel, disabled]);
+  }, [isLoaded, disabled]);
 
-  // Open the pin picker at the selected MKH area, or at the current selection.
+  // With no Google selection yet, open the pin picker at the Lagos map default.
+  // After a Google Place is selected, centre on that exact Google destination.
   useEffect(() => {
     if (!mapOpen || !isLoaded) return;
 
@@ -300,43 +278,8 @@ export default function GoogleDeliveryAddressPicker({
     }
 
     setPin(null);
-
-    if (!localityLabel.trim()) {
-      setMapCenter(DEFAULT_LAGOS_CENTER);
-      return;
-    }
-
-    let active = true;
-
-    const centreMap = async () => {
-      try {
-        const geocoder = new google.maps.Geocoder();
-        const response = await geocoder.geocode({
-          address: `${localityLabel}, Lagos, Nigeria`,
-          region: "NG",
-        });
-
-        const location = response.results?.[0]?.geometry?.location;
-
-        if (active && location) {
-          setMapCenter({
-            lat: location.lat(),
-            lng: location.lng(),
-          });
-        } else if (active) {
-          setMapCenter(DEFAULT_LAGOS_CENTER);
-        }
-      } catch {
-        if (active) setMapCenter(DEFAULT_LAGOS_CENTER);
-      }
-    };
-
-    void centreMap();
-
-    return () => {
-      active = false;
-    };
-  }, [mapOpen, isLoaded, localityLabel, selectedLocation]);
+    setMapCenter(DEFAULT_LAGOS_CENTER);
+  }, [mapOpen, isLoaded, selectedLocation]);
 
   function openPinPicker() {
     setMapError("");
@@ -518,10 +461,10 @@ export default function GoogleDeliveryAddressPicker({
       </div>
 
       <p className="text-xs leading-5 text-slate-600">
-        Search with your house number and street name, plus the estate or locality,
-        then select the Google result showing that full address. Estate or area-only
-        results are rejected. If Google does not list your exact address, place the
-        pin at the actual delivery entrance and add directions in Delivery Notes.
+        Search with your house number and street name, then select the Google result
+        showing the full street address. Estate or area-only results are rejected.
+        If Google does not list your exact address, place the pin at the actual
+        delivery entrance and add directions in Delivery Notes.
       </p>
 
       {mapOpen && (
