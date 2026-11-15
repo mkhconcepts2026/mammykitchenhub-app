@@ -76,6 +76,7 @@ export async function PUT(request: NextRequest) {
         account_number_last4: accountNumber.slice(-4),
         account_number_encrypted: encryptedAccountNumber,
         paystack_recipient_code: recipientCode,
+        verified: true,
         verification_status: "verified",
         verified_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
