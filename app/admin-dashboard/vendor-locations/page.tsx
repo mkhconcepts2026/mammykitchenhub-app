@@ -305,6 +305,7 @@ export default function VendorLocationsAdminPage() {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => void loadVendors()} disabled={loadingVendors} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">{loadingVendors ? "Refreshing…" : "Refresh vendors"}</button>
+            <Link href="/admin-dashboard/territory-locality-mapping" className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-800">Manage MKH Territory Coverage</Link>
             <Link href="/admin-dashboard" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Back to Admin</Link>
           </div>
         </div>
