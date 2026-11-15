@@ -30,14 +30,17 @@ export async function PUT(request: NextRequest) {
     return riderJson({ success: false, message: "Select a bank and enter a valid 10-digit Nigerian account number." }, 400);
   }
 
+  let verificationStage = "encrypting account number";
   try {
     const encryptedAccountNumber = encryptRiderAccountNumber(accountNumber);
+    verificationStage = "loading Paystack bank directory";
     const bankDirectory = await paystackRequest<any>("/bank?currency=NGN&perPage=300");
     const matchedBank = Array.isArray(bankDirectory.data)
       ? bankDirectory.data.find((item: any) => String(item?.code ?? "") === bankCode && item?.active !== false)
       : null;
     if (!matchedBank) return riderJson({ success: false, message: "Select a valid active Nigerian bank from MKH's bank list." }, 400);
     const verifiedBankName = String(matchedBank.name);
+    verificationStage = "resolving account name";
     const resolved = await paystackRequest<any>(`/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bankCode)}`);
     const accountName = String(resolved?.data?.account_name ?? "").trim();
     if (!accountName) return riderJson({ success: false, message: "Paystack could not confirm the account holder name." }, 422);
@@ -52,6 +55,7 @@ export async function PUT(request: NextRequest) {
     if (activePayoutError) return riderJson({ success: false, message: "Unable to confirm whether an earlier withdrawal is still active. Please retry." }, 500);
     if (activePayout) return riderJson({ success: false, message: "Your bank account cannot be changed while a withdrawal is being processed or reconciled." }, 409);
 
+    verificationStage = "creating Paystack transfer recipient";
     const recipient = await paystackRequest<any>("/transferrecipient", {
       method: "POST",
       body: JSON.stringify({
@@ -66,6 +70,7 @@ export async function PUT(request: NextRequest) {
     const recipientCode = String(recipient?.data?.recipient_code ?? "");
     if (!recipientCode) return riderJson({ success: false, message: "Paystack did not return a transfer recipient code." }, 502);
 
+    verificationStage = "saving encrypted rider bank account";
     const { data: saved, error } = await adminClient
       .from("rider_bank_accounts")
       .upsert({
@@ -91,6 +96,14 @@ export async function PUT(request: NextRequest) {
     return riderJson({ success: true, message: "Bank account verified and saved in TEST mode.", bankAccount: saved });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bank-account verification failed.";
+    console.error("RIDER BANK ACCOUNT UPDATE FAILED:", {
+      riderId: access.user.id,
+      stage: verificationStage,
+      providerStatus: Number.isFinite(Number((error as any)?.httpStatus))
+        ? Number((error as any).httpStatus)
+        : null,
+      message: message.slice(0, 300),
+    });
     return riderJson({ success: false, message }, 502);
   }
 }
