@@ -594,9 +594,6 @@ const [zoneForm, setZoneForm] = useState({
 const [selectedTerritoryId, setSelectedTerritoryId] = useState("");
 const [selectedZoneId, setSelectedZoneId] = useState("");
 const [currentVendorZone, setCurrentVendorZone] = useState<any>(null);
-const [eligibleVendorTerritories, setEligibleVendorTerritories] = useState<any[]>([]);
-const [vendorZoneLocality, setVendorZoneLocality] = useState<any>(null);
-const [zoneAssignmentReason, setZoneAssignmentReason] = useState("");
 const [showAssignZone, setShowAssignZone] = useState(false);
 const [loadingZoneAssignment, setLoadingZoneAssignment] = useState(false);
 
@@ -815,67 +812,74 @@ const openVendorDetails = async (vendorApplication: any) => {
 };
 
 const openAssignZone = async () => {
-  if (!selectedVendor?.vendor_id) {
-    alert("Vendor record not found.");
+  setLoadingZoneAssignment(true);
+
+  const { data, error } = await supabase
+    .from("territories")
+    .select(`
+      id,
+      name,
+      lga_id,
+      is_active
+    `)
+    .eq("is_active", true)
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Territories load error:",
+      error
+    );
+    alert("Unable to load Territories");
+    setLoadingZoneAssignment(false);
+    return;
+
+  }
+
+    setTerritories(data || []);
+
+const existingTerritoryId =
+  currentVendorZone?.zones?.territory_id || "";
+
+const existingZoneId =
+  currentVendorZone?.zone_id || "";
+
+setSelectedTerritoryId(existingTerritoryId);
+setSelectedZoneId(existingZoneId);
+
+if (existingTerritoryId) {
+  const { data: existingZones, error: zonesError } =
+    await supabase
+      .from("zones")
+      .select(`
+        id,
+        name,
+        code,
+        territory_id,
+        is_active
+      `)
+      .eq("territory_id", existingTerritoryId)
+      .eq("is_active", true)
+      .order("name");
+
+  if (zonesError) {
+    console.error(
+      "Existing Zones load error:",
+      zonesError
+    );
+    alert("Unable to load existing Zones");
+    setLoadingZoneAssignment(false);
     return;
   }
 
-  setLoadingZoneAssignment(true);
-  try {
-    const response = await fetch(
-      `/api/admin/vendor-zone-assignment?vendorId=${encodeURIComponent(selectedVendor.vendor_id)}`,
-      { cache: "no-store" }
-    );
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result?.success !== true) {
-      throw new Error(typeof result?.message === "string" ? result.message : "Unable to check this vendor's MKH territory coverage.");
-    }
+  setZones(existingZones || []);
+} else {
+  setZones([]);
+}
 
-    setVendorZoneLocality(result.locality ?? null);
-    setEligibleVendorTerritories(Array.isArray(result.territories) ? result.territories : []);
+setShowAssignZone(true);
 
-    if (result.eligible !== true) {
-      alert(result.message || "This vendor is not yet eligible for a new zone assignment.");
-      return;
-    }
-
-    const currentAssignment = result.currentAssignment ?? null;
-    const choices = Array.isArray(result.territories) ? result.territories : [];
-    const selectedTerritory = choices.find((row: any) => row.id === currentAssignment?.territoryId) ?? choices[0] ?? null;
-    const territoryId = selectedTerritory?.id ?? "";
-    const availableZones = (Array.isArray(result.zones) ? result.zones : [])
-      .filter((row: any) => row.territoryId === territoryId)
-      .map((row: any) => ({ ...row, territory_id: row.territoryId }));
-
-    setCurrentVendorZone(currentAssignment ? {
-      id: currentAssignment.id,
-      zone_id: currentAssignment.zoneId,
-      status: "active",
-      zones: {
-        id: currentAssignment.zoneId,
-        name: currentAssignment.zoneName,
-        territory_id: currentAssignment.territoryId,
-        territories: {
-          id: currentAssignment.territoryId,
-          name: currentAssignment.territoryName,
-        },
-      },
-    } : null);
-    setSelectedTerritoryId(territoryId);
-    setZones(availableZones);
-    setSelectedZoneId(
-      availableZones.some((row: any) => row.id === currentAssignment?.zoneId)
-        ? currentAssignment.zoneId
-        : ""
-    );
-    setZoneAssignmentReason("");
-    setShowAssignZone(true);
-  } catch (error) {
-    console.error("Vendor MKH territory eligibility check failed:", error);
-    alert(error instanceof Error ? error.message : "Unable to check this vendor's MKH territory coverage.");
-  } finally {
-    setLoadingZoneAssignment(false);
-  }
+  setLoadingZoneAssignment(false);
 };
 
 const saveVendorZone = async () => {
@@ -883,49 +887,77 @@ const saveVendorZone = async () => {
     alert("Vendor record not found.");
     return;
   }
+
   if (!selectedTerritoryId || !selectedZoneId) {
-    alert("Please select an MKH-mapped Territory and an active Zone.");
-    return;
-  }
-  if (zoneAssignmentReason.trim().length < 10 || zoneAssignmentReason.trim().length > 500) {
-    alert("Enter an assignment reason between 10 and 500 characters.");
+    alert("Please select a Territory and Zone.");
     return;
   }
 
   setLoadingZoneAssignment(true);
+
   try {
-    const response = await fetch("/api/admin/vendor-zone-assignment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify({
-        vendorId: selectedVendor.vendor_id,
-        zoneId: selectedZoneId,
-        reason: zoneAssignmentReason.trim(),
-      }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result?.success !== true) {
-      throw new Error(typeof result?.message === "string" ? result.message : "The vendor zone assignment was rejected.");
+    // Verify the selected Zone belongs to the selected Territory
+    const { data: zone, error: zoneError } = await supabase
+      .from("zones")
+      .select("id, territory_id, is_active")
+      .eq("id", selectedZoneId)
+      .eq("territory_id", selectedTerritoryId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (zoneError) throw zoneError;
+
+    if (!zone) {
+      alert("Invalid or inactive Zone selected.");
+      return;
     }
 
-    const selectedZone = zones.find((row: any) => row.id === selectedZoneId);
-    const selectedTerritory = eligibleVendorTerritories.find((row: any) => row.id === selectedTerritoryId);
-    setCurrentVendorZone({
-      id: result.result?.assignment_id ?? currentVendorZone?.id ?? null,
-      vendor_id: selectedVendor.vendor_id,
-      zone_id: selectedZoneId,
-      status: "active",
-      zones: {
-        id: selectedZoneId,
-        name: selectedZone?.name ?? "",
-        territory_id: selectedTerritoryId,
-        territories: { id: selectedTerritoryId, name: selectedTerritory?.name ?? "" },
-      },
-    });
+    // Deactivate existing active Vendor → Zone assignment
+    if (currentVendorZone?.id) {
+      const { error: deactivateError } = await supabase
+        .from("zone_vendors")
+        .update({
+          status: "inactive",
+          unassigned_at: new Date().toISOString(),
+        })
+        .eq("id", currentVendorZone.id);
+
+      if (deactivateError) throw deactivateError;
+    }
+
+    // Create the new active assignment
+    const { data: newAssignment, error: insertError } = await supabase
+      .from("zone_vendors")
+      .insert({
+        vendor_id: selectedVendor.vendor_id,
+        zone_id: selectedZoneId,
+        status: "active",
+        assigned_at: new Date().toISOString(),
+      })
+      .select(`
+        id,
+        vendor_id,
+        zone_id,
+        status,
+        assigned_at,
+        zones (
+          id,
+          name,
+          territory_id,
+          territories (
+            id,
+            name
+          )
+        )
+      `)
+      .single();
+
+    if (insertError) throw insertError;
+
+    setCurrentVendorZone(newAssignment);
     setShowAssignZone(false);
-    setZoneAssignmentReason("");
-    alert(result.message || "Vendor Zone assignment saved successfully.");
+
+    alert("Vendor Zone assignment saved successfully.");
   } catch (error: any) {
     console.error("saveVendorZone error:", error);
     alert(error?.message || "Failed to save Vendor Zone assignment.");
@@ -4365,12 +4397,6 @@ if (ordersData) {
 
       <div className="space-y-6">
 
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-          <p><strong>Verified MKH locality:</strong> {vendorZoneLocality?.name || "Not available"}{vendorZoneLocality?.lgaName ? ` · ${vendorZoneLocality.lgaName}` : ""}</p>
-          <p className="mt-1 text-xs leading-5">Territory options are restricted to active MKH coverage links for this locality. Google Maps is not used to assign the vendor to a territory or zone.</p>
-          {currentVendorZone?.zones?.name && <p className="mt-2 text-xs"><strong>Current active assignment:</strong> {currentVendorZone.zones.name}{currentVendorZone.zones.territories?.name ? ` · ${currentVendorZone.zones.territories.name}` : ""}</p>}
-        </div>
-
         <div>
 
           <label className="block font-medium mb-2">
@@ -4391,7 +4417,7 @@ if (ordersData) {
               Select Territory
             </option>
 
-            {eligibleVendorTerritories.map((territory) => (
+            {territories.map((territory) => (
               <option
                 key={territory.id}
                 value={territory.id}
@@ -4453,22 +4479,6 @@ if (ordersData) {
             </div>
           )}
 
-        <div>
-          <label className="mb-2 block text-sm font-medium" htmlFor="vendor-zone-assignment-reason">
-            Reason for this assignment
-          </label>
-          <textarea
-            id="vendor-zone-assignment-reason"
-            value={zoneAssignmentReason}
-            onChange={(event) => setZoneAssignmentReason(event.target.value)}
-            rows={3}
-            maxLength={500}
-            placeholder="Explain why this vendor is being assigned to the selected MKH zone."
-            className="w-full rounded-xl border p-3 text-sm"
-          />
-          <p className="mt-1 text-xs text-gray-500">A reason is required and will be saved in the vendor-zone assignment audit.</p>
-        </div>
-
         <div className="flex gap-4 pt-4">
 
           <button
@@ -4490,9 +4500,7 @@ if (ordersData) {
             onClick={saveVendorZone}
             disabled={
               !selectedTerritoryId ||
-              !selectedZoneId ||
-              zoneAssignmentReason.trim().length < 10 ||
-              zoneAssignmentReason.trim().length > 500
+              !selectedZoneId
             }
             className="
               flex-1
