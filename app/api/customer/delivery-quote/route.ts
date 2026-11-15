@@ -234,21 +234,12 @@ async function searchPlacesAddress(
   address: string,
   apiKey: string,
   streetTarget: StreetTarget,
-  localityCenter: { latitude: number; longitude: number } | null,
 ): Promise<GeocodedAddress | null> {
   const body: Record<string, unknown> = {
     textQuery: normaliseAddress(address),
     languageCode: "en",
     regionCode: "NG",
   };
-  if (localityCenter) {
-    body.locationBias = {
-      circle: {
-        center: localityCenter,
-        radius: 5000,
-      },
-    };
-  }
 
   const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
@@ -590,8 +581,6 @@ export async function POST(request: Request) {
         "The selected map pin must be within Nigeria. Move it to your delivery location and try again.",
         422
       );
-    }if (typeof deliveryLocalityId !== "string" || !UUID_PATTERN.test(deliveryLocalityId)) {
-      return fail("Search for and select your delivery locality from MKH's active locality records.", 400);
     }
     if (!Array.isArray(cart) || cart.length < 1 || cart.length > 50) return fail("Your cart is empty or invalid.", 400);
 
