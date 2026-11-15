@@ -163,7 +163,7 @@ export async function POST(request: Request) {
       return errorResponse("We could not verify your delivery quote. Please calculate delivery again.", 503);
     }
 
-    if (!quoteSnapshot || quoteSnapshot.customer_id !== user.id || typeof quoteSnapshot.destination_locality_id !== "string") {
+    if (!quoteSnapshot || quoteSnapshot.customer_id !== user.id) {
       return errorResponse("This delivery quote is unavailable. Please calculate delivery again.", 409);
     }
 
