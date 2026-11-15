@@ -315,6 +315,79 @@ ON public.zone_vendors
 FOR EACH ROW
 EXECUTE FUNCTION public.mkh_validate_vendor_zone_geography();
 
+-- A new verified locality must not strand an existing vendor-zone assignment
+-- outside the coverage of that vendor's newly verified MKH locality.
+-- Pending/rejected address updates remain possible and continue to be blocked
+-- by the existing delivery-quote safeguards.
+CREATE OR REPLACE FUNCTION public.mkh_validate_vendor_location_zone_coverage()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+DECLARE
+    v_locality_lga_id uuid;
+    v_locality_active boolean;
+    v_zone_territory_id uuid;
+    v_territory_lga_id uuid;
+    v_territory_active boolean;
+    v_assignment record;
+BEGIN
+    IF NEW.address_verification_status IS DISTINCT FROM 'verified'
+       OR NEW.locality_match_status IS DISTINCT FROM 'matched'
+       OR NEW.locality_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT is_active, lga_id
+      INTO v_locality_active, v_locality_lga_id
+      FROM public.localities
+     WHERE id = NEW.locality_id;
+    IF NOT FOUND OR v_locality_active IS DISTINCT FROM true OR v_locality_lga_id IS NULL THEN
+        RAISE EXCEPTION 'A verified vendor business location must reference an active MKH locality with a valid LGA';
+    END IF;
+
+    FOR v_assignment IN
+        SELECT z.territory_id
+          FROM public.zone_vendors zv
+          JOIN public.zones z ON z.id = zv.zone_id
+         WHERE zv.vendor_id = NEW.vendor_id
+           AND zv.status = 'active'
+    LOOP
+        v_zone_territory_id := v_assignment.territory_id;
+        SELECT is_active, lga_id
+          INTO v_territory_active, v_territory_lga_id
+          FROM public.territories
+         WHERE id = v_zone_territory_id;
+
+        IF NOT FOUND OR v_territory_active IS DISTINCT FROM true OR v_territory_lga_id IS NULL THEN
+            RAISE EXCEPTION 'The vendor has an active zone assignment with an inactive or invalid MKH territory';
+        END IF;
+        IF v_locality_lga_id IS DISTINCT FROM v_territory_lga_id THEN
+            RAISE EXCEPTION 'The new verified MKH locality belongs to a different LGA from the vendor''s active zone territory';
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1
+              FROM public.territory_localities tl
+             WHERE tl.locality_id = NEW.locality_id
+               AND tl.territory_id = v_zone_territory_id
+               AND tl.status = 'active'
+        ) THEN
+            RAISE EXCEPTION 'Map the new verified MKH locality to the vendor''s active zone territory before completing this location change';
+        END IF;
+    END LOOP;
+
+    RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_mkh_validate_vendor_location_zone_coverage ON public.vendor_business_locations;
+CREATE TRIGGER trg_mkh_validate_vendor_location_zone_coverage
+BEFORE INSERT OR UPDATE OF locality_id, address_verification_status, locality_match_status
+ON public.vendor_business_locations
+FOR EACH ROW
+EXECUTE FUNCTION public.mkh_validate_vendor_location_zone_coverage();
+
 -- Atomic Admin/COO reassignment. The old zone_vendors row is retained as
 -- inactive history; the new row and audit record are committed together.
 CREATE OR REPLACE FUNCTION public.mkh_admin_assign_vendor_to_zone(
