@@ -63,10 +63,10 @@ export async function GET() {
       return fail("Unable to load MKH LGA/LCDA labels.", 500);
     }
 
-    const lgaNames = new Map((lgasResult.data ?? []).map((row: any) => [String(row.id), String(row.name)]));
-    const lcdaNames = new Map((lcdasResult.data ?? []).map((row: any) => [String(row.id), String(row.name)]));
-    const localityById = new Map(localities.map((row: any) => [String(row.id), row]));
-    const territoryById = new Map(territories.map((row: any) => [String(row.id), row]));
+    const lgaNames = new Map<string, string>((lgasResult.data ?? []).map((row: any) => [String(row.id), String(row.name)] as [string, string]));
+    const lcdaNames = new Map<string, string>((lcdasResult.data ?? []).map((row: any) => [String(row.id), String(row.name)] as [string, string]));
+    const localityById = new Map<string, any>(localities.map((row: any) => [String(row.id), row] as [string, any]));
+    const territoryById = new Map<string, any>(territories.map((row: any) => [String(row.id), row] as [string, any]));
 
     return NextResponse.json({
       success: true,
