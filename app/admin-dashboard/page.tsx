@@ -4368,6 +4368,7 @@ if (ordersData) {
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
           <p><strong>Verified MKH locality:</strong> {vendorZoneLocality?.name || "Not available"}{vendorZoneLocality?.lgaName ? ` · ${vendorZoneLocality.lgaName}` : ""}</p>
           <p className="mt-1 text-xs leading-5">Territory options are restricted to active MKH coverage links for this locality. Google Maps is not used to assign the vendor to a territory or zone.</p>
+          {currentVendorZone?.zones?.name && <p className="mt-2 text-xs"><strong>Current active assignment:</strong> {currentVendorZone.zones.name}{currentVendorZone.zones.territories?.name ? ` · ${currentVendorZone.zones.territories.name}` : ""}</p>}
         </div>
 
         <div>
