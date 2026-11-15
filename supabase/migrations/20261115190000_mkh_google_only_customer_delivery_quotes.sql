@@ -27,6 +27,7 @@ DECLARE
   v_cod regprocedure := 'public.create_customer_cod_order_from_quote(uuid,jsonb,text,text,text,text,uuid,text,text)'::regprocedure;
   v_wallet regprocedure := 'public.create_customer_wallet_order_from_quote(uuid,jsonb,text,text,text,text,uuid,text,text)'::regprocedure;
   v_occurrences integer;
+  v_message_occurrences integer;
 BEGIN
   FOREACH v_signature IN ARRAY ARRAY[v_cod, v_wallet]
   LOOP
@@ -43,11 +44,15 @@ BEGIN
         v_occurrences;
     END IF;
 
-    IF position(v_message_old in v_definition) <> 1
-       AND position(v_message_old in v_definition) = 0 THEN
+    v_message_occurrences := (
+      length(v_definition) - length(replace(v_definition, v_message_old, ''))
+    ) / length(v_message_old);
+
+    IF v_message_occurrences <> 1 THEN
       RAISE EXCEPTION
-        'Expected locality-specific quote validation message was not found in %. No function was changed.',
-        v_signature;
+        'Expected exactly one locality-specific validation message in %, found %. No function was changed.',
+        v_signature,
+        v_message_occurrences;
     END IF;
 
     v_updated := replace(v_definition, v_needle, '');
