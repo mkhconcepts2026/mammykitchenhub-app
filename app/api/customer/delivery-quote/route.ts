@@ -644,7 +644,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (verifiedLocationError) {
       console.error("Verified vendor location lookup failed:", verifiedLocationError.message);
-      return fail("Unable to load the Admin-verified vendor business location. Confirm the vendor-location migration is applied in TEST.", 500);
+      return fail("Unable to load the Admin-verified vendor business location. Confirm the vendor address-verification database migration is applied in MKH-PRODUCTION.", 500);
     }
     // V2 safety gate: never fall back to geocoding a saved-but-pending vendor address.
     // A delivery origin is eligible only when address evidence, MKH locality mapping,
@@ -825,7 +825,7 @@ export async function POST(request: Request) {
       .order("rate_version", { ascending: false });
     if (rateError) {
       console.error("Delivery quote rate-card lookup failed:", rateError.message);
-      return fail("Distance-pricing rules are not available yet. Apply the staged Stage 1 SQL migration in the TEST database, then retry.", 503);
+      return fail("MKH distance-pricing rules are not available. Please contact MKH support; no delivery fee has been charged.", 503);
     }
     const rate = chooseRate((rateCards ?? []) as RateCard[], distanceKm);
     if (!rate || !Number.isFinite(rate.deliveryFee)) return fail("No active delivery price exists for this route distance. Order pricing has been paused for review.", 503);
