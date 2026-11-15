@@ -645,40 +645,25 @@ export async function POST(request: Request) {
     // A precise, Admin-selected Google Place is the preferred origin; it is distinct from the vendor's KYC application text.
     const { data: verifiedVendorLocation, error: verifiedLocationError } = await (adminClient as any)
       .from("vendor_business_locations")
-      .select("business_address,google_place_id,latitude,longitude,locality_id,address_verification_status,locality_match_status")
+      .select("business_address,google_place_id,latitude,longitude,address_verification_status")
       .eq("vendor_id", vendorId)
       .maybeSingle();
     if (verifiedLocationError) {
       console.error("Verified vendor location lookup failed:", verifiedLocationError.message);
       return fail("Unable to load the Admin-verified vendor business location. Confirm the vendor-location migration is applied in TEST.", 500);
     }
-    // V2 safety gate: never fall back to geocoding a saved-but-pending vendor address.
-    // A delivery origin is eligible only when address evidence, MKH locality mapping,
-    // Google Place ID and coordinate pair are all present and verified.
+    // Google Maps verifies the vendor's physical business origin.
+    // MKH locality, territory and zone assignment remains an independent Admin-managed
+    // operational record and is not required to validate this Google address.
+    // Never fall back to geocoding a saved-but-pending vendor address.
     if (verifiedVendorLocation && (
       verifiedVendorLocation.address_verification_status !== "verified" ||
-      verifiedVendorLocation.locality_match_status !== "matched" ||
-      !verifiedVendorLocation.locality_id ||
       typeof verifiedVendorLocation.google_place_id !== "string" ||
       !verifiedVendorLocation.google_place_id.trim() ||
       (verifiedVendorLocation.latitude === null || typeof verifiedVendorLocation.latitude === "undefined" || !Number.isFinite(Number(verifiedVendorLocation.latitude)) || Number(verifiedVendorLocation.latitude) < -90 || Number(verifiedVendorLocation.latitude) > 90) ||
       (verifiedVendorLocation.longitude === null || typeof verifiedVendorLocation.longitude === "undefined" || !Number.isFinite(Number(verifiedVendorLocation.longitude)) || Number(verifiedVendorLocation.longitude) < -180 || Number(verifiedVendorLocation.longitude) > 180)
     )) {
-      return fail("This vendor's saved address is not yet approved as a delivery origin. Admin must finish address verification and MKH locality matching before a quote can be calculated.", 422);
-    }
-    if (verifiedVendorLocation?.locality_id) {
-      const { data: originLocality, error: originLocalityError } = await adminClient
-        .from("localities")
-        .select("id,is_active")
-        .eq("id", verifiedVendorLocation.locality_id)
-        .maybeSingle();
-      if (originLocalityError) {
-        console.error("Verified vendor locality lookup failed:", originLocalityError.message);
-        return fail("Unable to verify the vendor's MKH locality.", 500);
-      }
-      if (!originLocality || originLocality.is_active !== true) {
-        return fail("The vendor's verified MKH locality is no longer active. Admin must review the vendor location before delivery can be quoted.", 422);
-      }
+      return fail("This vendor's Google-verified business address is not yet approved as a delivery origin. Admin must complete Google address verification before a quote can be calculated.", 422);
     }
 
     let originAddress =
