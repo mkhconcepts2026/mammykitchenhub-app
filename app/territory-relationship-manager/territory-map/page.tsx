@@ -9,6 +9,7 @@ import RiderLocationPanel from "@/components/territory-manager/RiderLocationPane
 export default function TerritoryMapPage() {
 
   const [riders, setRiders] = useState<any[]>([]);
+  const liveRiders = riders.filter((rider) => rider.gps_status === "live");
 
 useEffect(() => {
   async function loadMap() {
@@ -62,11 +63,11 @@ useEffect(() => {
 
   <div className="rounded-2xl border-l-4 border-emerald-500 bg-emerald-50 p-6 shadow-sm">
     <p className="text-sm font-semibold text-slate-500">
-      Riders Online
+      GPS Live
     </p>
 
     <h2 className="mt-3 text-3xl font-black text-slate-900">
-      {riders.length}
+      {liveRiders.length}
     </h2>
   </div>
 
@@ -76,13 +77,13 @@ useEffect(() => {
     </p>
 
     <h2 className="mt-3 text-3xl font-black text-slate-900">
-      {riders.length === 0
+      {liveRiders.length === 0
         ? 0
         : Math.round(
-            riders.reduce(
+            liveRiders.reduce(
               (sum, rider) => sum + Number(rider.speed ?? 0),
               0
-            ) / riders.length
+            ) / liveRiders.length
           )} km/h
     </h2>
   </div>
@@ -93,13 +94,13 @@ useEffect(() => {
     </p>
 
     <h2 className="mt-3 text-3xl font-black text-slate-900">
-      {riders.length === 0
+      {liveRiders.length === 0
         ? 0
         : Math.round(
-            riders.reduce(
+            liveRiders.reduce(
               (sum, rider) => sum + Number(rider.accuracy ?? 0),
               0
-            ) / riders.length
+            ) / liveRiders.length
           )} m
     </h2>
   </div>
