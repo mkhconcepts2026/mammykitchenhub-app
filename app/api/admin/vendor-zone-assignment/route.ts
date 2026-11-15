@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       return fail("Unable to load MKH territory and zone options.", 500);
     }
 
-    const territories = territoryRes.data ?? [];
+    const territories = (territoryRes.data ?? []).filter((row: any) => String(row.lga_id) === String(locality?.lga_id));
     const territoriesById = new Map(territories.map((row: any) => [String(row.id), row]));
     const currentZone = currentZoneRes.data;
     const territoryIdsToLabel = Array.from(new Set([
