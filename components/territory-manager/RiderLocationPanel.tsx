@@ -122,7 +122,7 @@ function getGpsFreshness(updatedAt: string | null) {
   return "Stale";
 }
 
-function getGpsFreshnessStyle(updatedAt: string) {
+function getGpsFreshnessStyle(updatedAt: string | null) {
   const freshness = getGpsFreshness(updatedAt);
 
   if (freshness === "Live") {
