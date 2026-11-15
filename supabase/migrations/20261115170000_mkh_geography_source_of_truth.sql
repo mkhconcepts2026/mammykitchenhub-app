@@ -242,7 +242,9 @@ DECLARE
     v_locality_status text;
     v_locality_id uuid;
     v_locality_active boolean;
+    v_locality_lga_id uuid;
     v_zone_territory_id uuid;
+    v_territory_lga_id uuid;
 BEGIN
     IF NEW.status <> 'active' THEN
         RETURN NEW;
@@ -270,16 +272,16 @@ BEGIN
         RAISE EXCEPTION 'Vendor address verification and MKH locality matching must be complete before zone assignment';
     END IF;
 
-    SELECT is_active
-      INTO v_locality_active
+    SELECT is_active, lga_id
+      INTO v_locality_active, v_locality_lga_id
       FROM public.localities
      WHERE id = v_locality_id;
     IF NOT FOUND OR v_locality_active IS DISTINCT FROM true THEN
         RAISE EXCEPTION 'The vendor verified MKH locality is missing or inactive';
     END IF;
 
-    SELECT z.territory_id
-      INTO v_zone_territory_id
+    SELECT z.territory_id, t.lga_id
+      INTO v_zone_territory_id, v_territory_lga_id
       FROM public.zones z
       JOIN public.territories t ON t.id = z.territory_id
      WHERE z.id = NEW.zone_id
@@ -287,6 +289,9 @@ BEGIN
        AND t.is_active = true;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'The selected zone or its MKH territory is missing or inactive';
+    END IF;
+    IF v_locality_lga_id IS DISTINCT FROM v_territory_lga_id THEN
+        RAISE EXCEPTION 'Vendor locality and selected zone territory do not belong to the same MKH LGA';
     END IF;
 
     IF NOT EXISTS (
@@ -330,7 +335,9 @@ DECLARE
     v_locality_status text;
     v_locality_id uuid;
     v_locality_active boolean;
+    v_locality_lga_id uuid;
     v_zone_territory_id uuid;
+    v_territory_lga_id uuid;
     v_active_count integer;
     v_previous_id uuid;
     v_previous_zone_id uuid;
@@ -373,8 +380,8 @@ BEGIN
         RAISE EXCEPTION 'Complete Admin address verification and MKH locality matching before assigning this vendor';
     END IF;
 
-    SELECT is_active
-      INTO v_locality_active
+    SELECT is_active, lga_id
+      INTO v_locality_active, v_locality_lga_id
       FROM public.localities
      WHERE id = v_locality_id
      FOR SHARE;
@@ -382,8 +389,8 @@ BEGIN
         RAISE EXCEPTION 'The vendor verified MKH locality is missing or inactive';
     END IF;
 
-    SELECT z.territory_id
-      INTO v_zone_territory_id
+    SELECT z.territory_id, t.lga_id
+      INTO v_zone_territory_id, v_territory_lga_id
       FROM public.zones z
       JOIN public.territories t ON t.id = z.territory_id
      WHERE z.id = p_zone_id
@@ -392,6 +399,9 @@ BEGIN
      FOR SHARE OF z, t;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'The selected zone or its MKH territory is missing or inactive';
+    END IF;
+    IF v_locality_lga_id IS DISTINCT FROM v_territory_lga_id THEN
+        RAISE EXCEPTION 'Vendor locality and selected zone territory do not belong to the same MKH LGA';
     END IF;
 
     IF NOT EXISTS (
