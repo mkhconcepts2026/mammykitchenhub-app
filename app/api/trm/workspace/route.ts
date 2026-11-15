@@ -7,6 +7,12 @@ export const dynamic = "force-dynamic";
 
 const TRM_ROLES = ["trm", "territory", "territorymanager", "territoryrelationshipmanager"];
 const ACTIVE_ORDER_STATUSES = ["pending", "accepted", "preparing", "ready_for_pickup", "assigned", "picked_up"];
+const GPS_ONLINE_WINDOW_MS = 60_000;
+function isGpsFresh(updatedAt: string | null | undefined, now = Date.now()) {
+  const timestamp = typeof updatedAt === "string" ? Date.parse(updatedAt) : NaN;
+  const age = now - timestamp;
+  return Number.isFinite(timestamp) && age >= 0 && age <= GPS_ONLINE_WINDOW_MS;
+}
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -303,11 +309,23 @@ export async function GET(request: Request) {
       });
       const activeDeliveries = orderRows.filter((row: any) => String(row.status).toLowerCase() === "picked_up").length;
       const readyOrders = orderRows.filter((row: any) => String(row.status).toLowerCase() === "ready_for_pickup").length;
+      const activeOrderRiderIds = orderRows
+        .filter((row: any) => ["assigned", "picked_up"].includes(String(row.status ?? "").toLowerCase()))
+        .map((row: any) => row.rider_id).filter(Boolean) as string[];
+      const trackableRiderIds = [...new Set([...exclusiveRiderIds, ...activeOrderRiderIds])];
+      const { data: gpsRows, error: gpsError } = trackableRiderIds.length
+        ? await adminClient.from("rider_locations").select("rider_id, updated_at, profiles:rider_id (status)").in("rider_id", trackableRiderIds)
+        : { data: [], error: null } as any;
+      if (gpsError) throw new Error("Unable to verify live rider GPS heartbeats.");
+      const now = Date.now();
+      const gpsOnlineIds = new Set((gpsRows ?? [])
+        .filter((row: any) => String(row.profiles?.status ?? "").toLowerCase() === "active" && isGpsFresh(row.updated_at, now))
+        .map((row: any) => row.rider_id).filter(Boolean));
       return json({
         ...identity,
         orders: orderRows,
         territoryEvents,
-        snapshot: { ridersOnline: riders.filter((rider: any) => String(rider.status ?? "").toLowerCase() === "active").length, activeDeliveries, readyOrders, operationalHealth: "Healthy" },
+        snapshot: { ridersOnline: gpsOnlineIds.size, activeDeliveries, readyOrders, operationalHealth: "Healthy" },
         refreshedAt: new Date().toISOString(),
       });
     }
@@ -364,6 +382,7 @@ export async function GET(request: Request) {
           lifetime_earnings: wallet ? Number(wallet.lifetime_earnings ?? 0) : null,
           wallet_scope_limited: !exclusiveRiderIds.includes(rider.id),
           updated_at: location?.updated_at ?? null,
+          gps_status: isGpsFresh(location?.updated_at) ? "live" : "stale",
           current_order: currentOrder,
         };
       });
@@ -382,6 +401,9 @@ export async function GET(request: Request) {
           accuracy: Number(location.accuracy ?? 0),
           current_order: currentOrder,
           operational_status: operationalStatus,
+          gps_status: isGpsFresh(location.updated_at) ? "live" : "stale",
+          gps_age_seconds: location.updated_at ? Math.max(0, Math.floor((Date.now() - new Date(location.updated_at).getTime()) / 1000)) : null,
+
         };
       });
       return json({ ...identity, riders: locationData, refreshedAt: new Date().toISOString() });
