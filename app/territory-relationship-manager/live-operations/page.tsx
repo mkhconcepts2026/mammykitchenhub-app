@@ -81,7 +81,7 @@ export default function LiveOperationsPage() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[
-          { title: "Riders Online", value: snapshot.ridersOnline },
+          { title: "GPS Live", value: snapshot.ridersOnline },
           { title: "Active Deliveries", value: snapshot.activeDeliveries },
           { title: "Ready for Pickup", value: snapshot.readyOrders },
         ].map((card) => (
