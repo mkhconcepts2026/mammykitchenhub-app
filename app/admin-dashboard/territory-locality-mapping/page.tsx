@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Locality = {
   id: string;
@@ -69,7 +69,7 @@ export default function TerritoryLocalityMappingPage() {
 
   const mappedLocalityCount = useMemo(() => new Set(mappings.map((row) => row.localityId)).size, [mappings]);
 
-  async function loadCoverage() {
+  const loadCoverage = useCallback(async () => {
     setLoading(true);
     setPageError("");
     try {
@@ -82,9 +82,9 @@ export default function TerritoryLocalityMappingPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  useEffect(() => { void loadCoverage(); }, []);
+  useEffect(() => { void loadCoverage(); }, [loadCoverage]);
 
   async function changeMapping(action: "assign" | "unassign", localityId: string, territoryId: string) {
     if (changeReason.trim().length < 10) {
