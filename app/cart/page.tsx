@@ -194,14 +194,6 @@ export default function CartPage() {
 
               <button
                 type="button"
-                onClick={() => router.push("/dashboard")}
-                className="mb-3 w-full rounded-xl border border-orange-200 py-3 font-semibold text-orange-700 transition hover:bg-orange-50"
-              >
-                + Add another vendor
-              </button>
-
-              <button
-                type="button"
                 onClick={() => router.push("/checkout")}
                 className="mb-4 w-full rounded-xl bg-orange-500 py-4 font-bold text-white transition hover:bg-orange-600"
               >
