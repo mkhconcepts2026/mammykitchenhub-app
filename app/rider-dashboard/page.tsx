@@ -441,6 +441,14 @@ setMyOrders(
       setGpsStatus("live");
       setGpsUpdatedAt(savedAt);
       setGpsMessage("Your current location was saved to MKH.");
+      const refreshResponse = await fetch("/api/rider/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh" }),
+      });
+      if (refreshResponse.ok) {
+        await loadDispatchInbox();
+      }
     } catch (error) {
       const gpsError = error as GeolocationPositionError;
       if (gpsError?.code === 1) {
@@ -467,10 +475,15 @@ setMyOrders(
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDashboard();
     void checkCurrentLocation();
+    void loadDispatchInbox();
+    const dispatchInterval = window.setInterval(() => { void loadDispatchInbox(); }, 10000);
     const interval = setInterval(() => { void checkCurrentLocation(); }, 15000);
     gpsIntervalRef.current = interval;
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && !isLoggingOut.current) void checkCurrentLocation();
+      if (document.visibilityState === "visible" && !isLoggingOut.current) {
+        void checkCurrentLocation();
+        void loadDispatchInbox();
+      }
     };
     const handleOnline = () => { if (!isLoggingOut.current) void checkCurrentLocation(); };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -483,6 +496,7 @@ setMyOrders(
     return () => {
       isLoggingOut.current = true;
       clearInterval(interval);
+      clearInterval(dispatchInterval);
       gpsIntervalRef.current = null;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
@@ -495,30 +509,12 @@ setMyOrders(
 ----------------------------------- */
 
 
-async function acceptDelivery(orderId: string) {
-  try {
-    const { data, error } = await supabase.rpc(
-      "accept_delivery_order",
-      { p_order_id: orderId }
-    );
+async function acceptDelivery(offerId: string) {
+  await respondToDispatchOffer(offerId, "accept");
+}
 
-    if (error) {
-      console.error("ACCEPT DELIVERY ERROR:", error);
-      alert(error.message);
-      return;
-    }
-
-    if (!data?.success) {
-      alert("Unable to accept this delivery.");
-      return;
-    }
-
-    await loadDashboard();
-    alert("Delivery accepted successfully.");
-  } catch (err) {
-    console.error("ACCEPT DELIVERY ERROR:", err);
-    alert("Unable to accept this delivery.");
-  }
+async function declineDelivery(offerId: string) {
+  await respondToDispatchOffer(offerId, "decline");
 }
 
 
@@ -835,6 +831,22 @@ async function verifyOtp(orderId: string) {
           <div className="pt-5">
             <h2 className="text-xl font-bold tracking-tight">Good evening, {riderFirstName}</h2>
             <p className="mt-2 text-sm text-slate-200">Manage your deliveries, track earnings and complete orders.</p>
+            <div className="mt-3 rounded-xl border border-white/15 bg-white/5 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs text-slate-300">Permanent home zone</p>
+                  <p className="font-bold">{homeZoneName || "Not assigned — contact MKH Admin"}</p>
+                </div>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${dispatchAvailability === "available" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+                  {dispatchAvailability ? dispatchAvailability.toUpperCase() : "NOT CONFIGURED"}
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={()=>void updateDispatchAvailability("available")} disabled={dispatchBusy || dispatchAvailability === "available" || gpsStatus !== "live"} className="rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Set Available</button>
+                <button type="button" onClick={()=>void updateDispatchAvailability("unavailable")} disabled={dispatchBusy || dispatchAvailability === "unavailable" || !dispatchAvailability} className="rounded-lg border border-white/30 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Set Unavailable</button>
+              </div>
+              {dispatchMessage && <p role="status" className="mt-2 text-xs leading-5 text-orange-100">{dispatchMessage}</p>}
+            </div>
             <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${gpsStatus === "live" ? "bg-emerald-500/15 text-emerald-100" : gpsStatus === "checking" ? "bg-amber-500/15 text-amber-100" : "bg-red-500/15 text-red-100"}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold">
@@ -1210,23 +1222,25 @@ async function verifyOtp(orderId: string) {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() =>
-                            acceptDelivery(
-                              order.id
-                            )
-                          }
-                          className="
-                            bg-orange-500
-                            text-white
-                            px-6
-                            py-3
-                            rounded-xl
-                            font-bold
-                          "
-                        >
-                          Accept Delivery
-                        </button>
+                        <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50 p-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-orange-800">
+                            {order.dispatch_mode === "trm_cross_zone" ? "TRM cross-zone pickup offer" : "Vendor coverage pickup offer"}
+                          </p>
+                          {order.dispatch_distance_meters !== null && order.dispatch_distance_meters !== undefined && (
+                            <p className="mt-1 text-xs text-orange-800">
+                              Approx. {order.dispatch_distance_meters < 1000
+                                ? `${Math.round(order.dispatch_distance_meters)} m`
+                                : `${(order.dispatch_distance_meters / 1000).toFixed(1)} km`} from vendor
+                            </p>
+                          )}
+                          {order.dispatch_expires_at && (
+                            <p className="mt-1 text-xs text-orange-800">Offer expires at {new Date(order.dispatch_expires_at).toLocaleTimeString("en-NG")}</p>
+                          )}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" disabled={dispatchBusy} onClick={() => order.dispatch_offer_id && void acceptDelivery(order.dispatch_offer_id)} className="rounded-lg bg-orange-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">Accept Pickup Offer</button>
+                            <button type="button" disabled={dispatchBusy} onClick={() => order.dispatch_offer_id && void declineDelivery(order.dispatch_offer_id)} className="rounded-lg border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 disabled:opacity-50">Decline</button>
+                          </div>
+                        </div>
                       </div>
                     )
                   )
