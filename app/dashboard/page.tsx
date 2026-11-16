@@ -122,6 +122,9 @@ export default function DashboardPage() {
   const [customerName, setCustomerName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [nearbyDistances, setNearbyDistances] = useState<Record<string, number>>({});
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyMessage, setNearbyMessage] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -215,6 +218,77 @@ if (
     loadDashboard();
   }, [router, supabase]);
 
+  async function findNearbyVendors() {
+    if (!navigator.geolocation) {
+      setNearbyMessage("This browser does not support device location. You can still browse all MKH vendors.");
+      return;
+    }
+
+    setNearbyLoading(true);
+    setNearbyMessage("Getting your current location…");
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          setNearbyMessage("Finding verified MKH vendors around you…");
+          const response = await fetch("/api/customer/nearby-vendors", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            }),
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || result?.success !== true) {
+            throw new Error(result?.message || "Nearby vendors could not be loaded.");
+          }
+
+          const nextDistances: Record<string, number> = {};
+          for (const vendor of Array.isArray(result.vendors) ? result.vendors : []) {
+            const vendorId = String(vendor?.vendor_id ?? "");
+            const distance = Number(vendor?.distance_km);
+            if (vendorId && Number.isFinite(distance) && distance >= 0) {
+              nextDistances[vendorId] = distance;
+            }
+          }
+
+          setNearbyDistances(nextDistances);
+          setNearbyMessage(
+            Object.keys(nextDistances).length
+              ? "Nearby vendors are now shown closest first. Distances are approximate."
+              : "No active vendors currently have verified locations for nearby sorting. You can still browse all vendors below."
+          );
+        } catch (error) {
+          console.error("Customer nearby vendor discovery failed:", error);
+          setNearbyMessage(
+            error instanceof Error
+              ? error.message
+              : "Nearby vendors could not be loaded. You can still browse all vendors."
+          );
+        } finally {
+          setNearbyLoading(false);
+        }
+      },
+      (error) => {
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? "Location permission was not granted. Allow location access in your browser settings to find nearby vendors."
+            : error.code === error.TIMEOUT
+              ? "Getting your location timed out. Please try again."
+              : "Your device could not determine its location. You can still browse all vendors.";
+        setNearbyMessage(message);
+        setNearbyLoading(false);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 30000,
+      }
+    );
+  }
+
   async function signOut() {
     await supabase.auth.signOut();
     router.push("/login");
@@ -250,6 +324,17 @@ if (
 
     return matchesSelectedCategory && matchesSearch;
   });
+
+  if (Object.keys(nearbyDistances).length) {
+    filteredVendors.sort((left, right) => {
+      const leftDistance = nearbyDistances[left.id];
+      const rightDistance = nearbyDistances[right.id];
+      if (leftDistance === undefined && rightDistance === undefined) return 0;
+      if (leftDistance === undefined) return 1;
+      if (rightDistance === undefined) return -1;
+      return leftDistance - rightDistance;
+    });
+  }
 
   const filteredMenuItems = menuItems.filter((item) => {
     const query = normalize(searchQuery);
@@ -339,6 +424,31 @@ if (
               </button>
             </div>
           </div>
+        </section>
+
+        <section aria-label="Nearby vendors" className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
+          <div>
+            <h2 className="font-semibold text-gray-900">Find vendors around you</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Use your device location to see active vendors with verified business addresses, closest first.
+            </p>
+            {nearbyMessage && (
+              <p role="status" className="mt-2 text-xs leading-5 text-gray-600">{nearbyMessage}</p>
+            )}
+            {Object.keys(nearbyDistances).length > 0 && (
+              <p className="mt-1 text-xs text-gray-500">
+                Approximate straight-line distances only. Google Maps calculates road distance and delivery fees at checkout.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void findNearbyVendors()}
+            disabled={nearbyLoading}
+            className="mt-3 inline-flex shrink-0 items-center justify-center rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60 sm:mt-0"
+          >
+            {nearbyLoading ? "Finding nearby vendors…" : Object.keys(nearbyDistances).length ? "Refresh nearby vendors" : "Use my location"}
+          </button>
         </section>
 
         <section aria-label="Featured promotion">
@@ -546,6 +656,7 @@ if (
                     deliveryTime={vendor.delivery_time}
                     cuisine={vendor.cuisine}
                     promo={vendor.promo}
+                    distanceKm={nearbyDistances[vendor.id]}
                   />
                 ))}
               </div>
