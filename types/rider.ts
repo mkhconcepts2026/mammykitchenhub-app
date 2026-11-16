@@ -6,6 +6,7 @@ export type RiderAccountStatus =
 
 export type RiderOperationalStatus =
   | "available"
+  | "offer_pending"
   | "assigned"
   | "delivering"
   | "offline";
@@ -33,11 +34,23 @@ export interface RiderRecord {
    */
   status: RiderAccountStatus;
 
+  /** Permanent MKH home-zone assignment. Temporary cross-zone dispatch does not change this. */
+  home_zone_id?: string | null;
+  home_zone_name?: string | null;
+  availability_status?: "available" | "unavailable" | "unassigned" | string;
+  gps_status?: "live" | "stale";
+
   /**
-   * Derived from the rider's account status
-   * and current order state.
+   * Derived from the rider's account status,
+   * current order, pending offer and GPS state.
    */
   operational_status: RiderOperationalStatus;
+  active_dispatch_offer?: {
+    id: string;
+    order_id: string;
+    offer_status: string;
+    expires_at: string;
+  } | null;
 
   available_balance: number | null;
   pending_balance: number | null;
