@@ -179,7 +179,7 @@ DECLARE
 BEGIN
   v_target := 'private.mkh_offer_nearest_vendor_rider(uuid)'::regprocedure;
   v_original := pg_get_functiondef(v_target);
-  IF position('rider_dispatch_offer' IN v_original) = 0 THEN
+  IF position('''rider_dispatch_offer''' IN v_original) = 0 THEN
     v_definition := replace(
       v_original,
       E'  RETURN v_offer_id;\nEND;\n$function without deactivating existing over-capacity records.
@@ -2141,7 +2141,7 @@ COMMIT;
 
   v_target := 'public.mkh_trm_dispatch_cross_zone_rider(uuid,uuid,uuid,text)'::regprocedure;
   v_original := pg_get_functiondef(v_target);
-  IF position('rider_dispatch_offer' IN v_original) = 0 THEN
+  IF position('''rider_dispatch_offer''' IN v_original) = 0 THEN
     v_definition := replace(
       v_original,
       E'  RETURN jsonb_build_object(\n    ''success'',true,''offer_id'',v_offer_id',
