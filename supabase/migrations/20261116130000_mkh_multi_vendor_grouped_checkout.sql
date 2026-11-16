@@ -307,6 +307,15 @@ BEGIN
       RAISE EXCEPTION 'A vendor delivery quote is missing, expired or does not match this basket.';
     END IF;
 
+    PERFORM 1
+      FROM public.vendors v
+     WHERE v.id = v_vendor_id
+       AND lower(coalesce(v.status, '')) = 'active'
+     FOR SHARE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'A selected vendor is no longer active. The grouped checkout has been cancelled.';
+    END IF;
+
     IF v_quote.platform_fee IS DISTINCT FROM
        (CASE WHEN v_index = 1 THEN 300::numeric ELSE 0::numeric END) THEN
       RAISE EXCEPTION 'The grouped service fee must be charged once at NGN 300 for the entire basket.';
