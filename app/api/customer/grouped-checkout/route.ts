@@ -135,6 +135,26 @@ export async function POST(request: Request) {
       address: address.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-NG"),
     });
 
+    // Independently rebuild each vendor's canonical cart hash from the
+    // authenticated server-side menu -> vendor relationships. Never trust a
+    // quote hash supplied by the browser without matching its exact basket.
+    const menuById = new Map(menuRows.map((item: any) => [String(item.id).toLowerCase(), String(item.vendor_id).toLowerCase()]));
+    const expectedByVendor = new Map<string, Array<{ menu_item_id: string; quantity: number }>>();
+    for (const item of safeCart) {
+      const vendorId = menuById.get(item.menu_item_id);
+      if (!vendorId) return fail("A basket item no longer has a valid vendor.", 409);
+      const vendorItems = expectedByVendor.get(vendorId) ?? [];
+      vendorItems.push(item);
+      expectedByVendor.set(vendorId, vendorItems);
+    }
+    for (const [vendorId, vendorItems] of expectedByVendor) {
+      const expectedHash = sha256([...vendorItems].sort((left, right) => left.menu_item_id.localeCompare(right.menu_item_id)));
+      const matchingQuote = safeQuotes.find((quote) => quote.vendor_id === vendorId);
+      if (!matchingQuote || matchingQuote.cart_hash !== expectedHash) {
+        return fail("A vendor's basket changed after its delivery route was calculated. Recalculate all vendor deliveries.", 409);
+      }
+    }
+
     // Keep the existing vendor/order screens in sync with customer contact data.
     const { data: savedProfile, error: phoneError } = await adminClient
       .from("profiles")
