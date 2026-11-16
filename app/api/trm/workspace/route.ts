@@ -433,7 +433,6 @@ export async function GET(request: Request) {
       });
       if (section === "riders") return json({ ...identity, riders: riderData, refreshedAt: new Date().toISOString() });
       const locationData = (locationRows ?? []).map((location: any) => {
-        const home:any = homeZoneByRider[location.rider_id] ?? null;
         const currentOrder = orderByRider.get(location.rider_id) ?? null;
         const rider = riders.find((row: any) => row.id === location.rider_id);
         const accountStatus = rider?.status ?? location.profiles?.status ?? null;
