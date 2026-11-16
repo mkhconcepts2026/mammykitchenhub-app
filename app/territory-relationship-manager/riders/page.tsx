@@ -170,7 +170,11 @@ export default function RidersPage() {
                 </div>
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">Ready for Pickup</span>
               </div>
-              {order.designated_rider_available?(
+              {order.active_offer?(
+                <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
+                  Pickup offer already sent to <strong>{order.active_offer.rider_name}</strong> ({order.active_offer.dispatch_mode==="trm_cross_zone"?"cross-zone rider":"vendor coverage rider"}). Waiting for their response until {new Date(order.active_offer.expires_at).toLocaleTimeString("en-NG",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}.
+                </div>
+              ):order.designated_rider_available?(
                 <p className="mt-3 text-sm text-amber-800">A designated vendor rider is available. Allow the automatic vendor-coverage offer to be accepted or declined first.</p>
               ):(
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
