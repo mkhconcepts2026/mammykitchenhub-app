@@ -65,7 +65,7 @@ BEGIN
     INTO v_vendor_status
   FROM public.vendors
   WHERE id = NEW.vendor_id
-  FOR SHARE;
+  FOR UPDATE;
 
   IF NOT FOUND OR v_vendor_status <> 'active' THEN
     RAISE EXCEPTION 'Vendor coverage may only be assigned to an active vendor.';
@@ -215,25 +215,6 @@ BEGIN
     WHERE id = NEW.zone_id
     FOR UPDATE;
 
-    IF EXISTS (
-      SELECT 1
-      FROM public.vendor_riders vr
-      WHERE vr.vendor_id = NEW.vendor_id
-        AND vr.status = 'active'
-        AND vr.unassigned_at IS NULL
-        AND vr.coverage_verified IS TRUE
-        AND NOT EXISTS (
-          SELECT 1
-          FROM public.rider_home_zone_assignments h
-          WHERE h.rider_id = vr.rider_id
-            AND h.home_zone_id = NEW.zone_id
-            AND h.status = 'active'
-            AND h.unassigned_at IS NULL
-        )
-    ) THEN
-      RAISE EXCEPTION 'Review and reconcile the vendor''s confirmed rider home-zone coverage before moving this vendor to another zone.';
-    END IF;
-
     SELECT count(*)::integer
       INTO v_count
     FROM public.zone_vendors zv
@@ -357,7 +338,13 @@ BEGIN
       LEFT JOIN public.rider_home_zone_assignments h
         ON h.rider_id = p.id AND h.status = 'active' AND h.unassigned_at IS NULL
       LEFT JOIN public.zones z ON z.id = h.home_zone_id
-      LEFT JOIN public.rider_locations rl ON rl.rider_id = p.id
+      LEFT JOIN LATERAL (
+        SELECT l.updated_at
+        FROM public.rider_locations l
+        WHERE l.rider_id = p.id
+        ORDER BY l.updated_at DESC
+        LIMIT 1
+      ) rl ON true
       WHERE lower(coalesce(p.role, '')) = 'rider'
         AND lower(coalesce(p.status, '')) = 'active'
     ), '[]'::jsonb),
@@ -616,10 +603,6 @@ BEGIN
     AND h.unassigned_at IS NULL
   FOR SHARE;
 
-  IF NOT FOUND OR v_rider_home_zone_id IS DISTINCT FROM v_vendor_zone_id THEN
-    RAISE EXCEPTION 'The rider must have a permanent home-zone assignment matching the vendor''s zone before joining its coverage group.';
-  END IF;
-
   SELECT vr.id, vr.coverage_verified
     INTO v_link_id, v_link_verified
   FROM public.vendor_riders vr
@@ -657,6 +640,10 @@ BEGIN
     VALUES (p_vendor_id, p_rider_id, 'removed', v_actor, btrim(p_reason), now());
 
     RETURN jsonb_build_object('success', true, 'action', 'removed', 'vendor_id', p_vendor_id, 'rider_id', p_rider_id);
+  END IF;
+
+  IF NOT FOUND OR v_rider_home_zone_id IS DISTINCT FROM v_vendor_zone_id THEN
+    RAISE EXCEPTION 'The rider must have a permanent home-zone assignment matching the vendor''s zone before joining its coverage group.';
   END IF;
 
   IF p_action = 'verify' AND (v_link_id IS NULL OR v_link_verified IS TRUE) THEN
@@ -942,7 +929,13 @@ BEGIN
     ON z.id = h.home_zone_id AND z.is_active IS TRUE
   JOIN public.territories t
     ON t.id = z.territory_id AND t.is_active IS TRUE
-  LEFT JOIN public.rider_locations rl ON rl.rider_id = p.id
+  LEFT JOIN LATERAL (
+    SELECT l.updated_at
+    FROM public.rider_locations l
+    WHERE l.rider_id = p.id
+    ORDER BY l.updated_at DESC
+    LIMIT 1
+  ) rl ON true
   WHERE lower(coalesce(p.role, '')) = 'rider'
     AND lower(coalesce(p.status, '')) = 'active'
     AND t.id = v_territory_id;
@@ -1131,5 +1124,7 @@ GRANT EXECUTE ON FUNCTION public.mkh_rider_respond_to_my_dispatch_offer(uuid, te
 GRANT EXECUTE ON FUNCTION public.mkh_rider_set_my_dispatch_availability(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mkh_trm_get_dispatch_snapshot() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mkh_trm_create_cross_zone_dispatch_offer(uuid, uuid, text) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
