@@ -594,6 +594,10 @@ export async function POST(request: Request) {
     for (const item of items) {
       const menu = menuById.get(item.menu_item_id);
       if (!menu || menu.available !== true) return fail("A selected menu item is no longer available.", 409);
+      const price = Number(menu.price);
+      if (!Number.isFinite(price) || price < 0) {
+        return fail("A menu price could not be verified. Refresh your basket and try again.", 409);
+      }
       const vendorId = String(menu.vendor_id ?? "").toLowerCase();
       if (!UUID_PATTERN.test(vendorId)) return fail("A menu item has an invalid vendor assignment.", 409);
       const group = groups.get(vendorId) ?? [];
