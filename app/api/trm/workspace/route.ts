@@ -118,13 +118,31 @@ async function resolveTerritoryScope(employeeId: string) {
 
   let vendorRiderRows: any[] = [];
   if (vendorIds.length) {
-    const { data, error } = await adminClient.from("vendor_riders").select("vendor_id, rider_id").in("vendor_id", vendorIds);
+    const { data, error } = await adminClient
+      .from("vendor_riders")
+      .select("vendor_id, rider_id")
+      .in("vendor_id", vendorIds)
+      .eq("status", "active")
+      .is("unassigned_at", null);
     if (error) throw new Error("Unable to resolve riders assigned to your territory vendors.");
     vendorRiderRows = data ?? [];
   }
 
+  const homeZoneAssignmentsResult = zoneIds.length
+    ? await adminClient
+        .from("rider_home_zone_assignments")
+        .select("rider_id, home_zone_id, availability_status")
+        .in("home_zone_id", zoneIds)
+        .eq("status", "active")
+        .is("unassigned_at", null)
+    : { data: [], error: null } as any;
+  if (homeZoneAssignmentsResult.error) throw new Error("Unable to resolve riders assigned to your territory zones.");
+  const homeZoneAssignments = homeZoneAssignmentsResult.data ?? [];
+  const homeZoneRiderIds = homeZoneAssignments.map((row: any) => row.rider_id).filter(Boolean) as string[];
+
   const riderIds = [...new Set([
     ...vendorRiderRows.map((row: any) => row.rider_id),
+    ...homeZoneRiderIds,
     ...(scopeOrders ?? []).map((row: any) => row.rider_id),
   ].filter(Boolean))] as string[];
 
@@ -172,6 +190,8 @@ async function resolveTerritoryScope(employeeId: string) {
     vendors: vendors ?? [],
     scopeOrders: scopeOrders ?? [],
     riderIds: [...new Set((riders ?? []).map((rider: any) => rider.id))] as string[],
+    homeZoneAssignments,
+    homeZoneRiderIds,
     exclusiveRiderIds,
     riders: riders ?? [],
   };
