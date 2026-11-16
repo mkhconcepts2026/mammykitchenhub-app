@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import OperationalAssignments from "@/components/admin/OperationalAssignments";
+import RiderAssignmentPanel from "@/components/admin/RiderAssignmentPanel";
 
 const supabase = createClient();
 
@@ -2605,6 +2606,8 @@ if (ordersData) {
     >
       Manage delivery partners
     </p>
+
+    <RiderAssignmentPanel />
 
     <div
       className="
