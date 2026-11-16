@@ -15,15 +15,16 @@ export async function GET() {
   const access = await requireMkhAdmin();
   if (!access.ok) return json({ success: false, message: access.message }, access.status);
 
-  const [ridersResult,zonesResult,assignmentsResult,vendorsResult,coverageResult] = await Promise.all([
+  const [ridersResult,zonesResult,assignmentsResult,vendorsResult,coverageResult,vendorZonesResult] = await Promise.all([
     adminClient.from("profiles").select("id,full_name,email,phone,status,role").eq("role","rider").order("full_name"),
     adminClient.from("zones").select("id,name,territory_id,is_active,territories(id,name,is_active)").eq("is_active",true).order("name"),
     adminClient.from("rider_home_zone_assignments").select("id,rider_id,home_zone_id,availability_status,assigned_at,assignment_reason").eq("status","active").is("unassigned_at",null),
     adminClient.from("vendors").select("id,name,status").eq("status","active").order("name"),
     adminClient.from("vendor_riders").select("id,vendor_id,rider_id,status,assigned_at,unassigned_at").eq("status","active").is("unassigned_at",null),
+    adminClient.from("zone_vendors").select("vendor_id,zone_id").eq("status","active").is("unassigned_at",null),
   ]);
 
-  const error = ridersResult.error || zonesResult.error || assignmentsResult.error || vendorsResult.error || coverageResult.error;
+  const error = ridersResult.error || zonesResult.error || assignmentsResult.error || vendorsResult.error || coverageResult.error || vendorZonesResult.error;
   if (error) {
     console.error("Admin rider dispatch workspace failed:", error);
     return json({ success:false, message:"Unable to load rider zone and coverage records." },500);
@@ -76,7 +77,11 @@ export async function GET() {
     success:true,
     riders:riderRows,
     zones:zonesResult.data??[],
-    vendors:vendorsResult.data??[],
+    vendors:(vendorsResult.data??[]).map((vendor:any)=>({
+      ...vendor,
+      zone_id:(vendorZonesResult.data??[]).find((row:any)=>row.vendor_id===vendor.id)?.zone_id??null,
+    })),
+    vendorZones:vendorZonesResult.data??[],
     assignments:assignmentsResult.data??[],
     coverage,
     refreshedAt:new Date().toISOString(),
