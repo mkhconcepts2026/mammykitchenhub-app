@@ -50,11 +50,15 @@ export default function RiderAssignmentPanel(){
 
   const selectedHomeRider=riders.find(r=>r.id===homeRiderId);
   const selectedVendor=vendors.find(v=>v.id===coverageVendorId);
-  const selectedVendorZone=selectedVendor?zones.find(z=>{
-    return coverage.some(c=>c.vendor_id===selectedVendor.id&&c.rider_id&&
-      riders.find(r=>r.id===c.rider_id)?.home_zone_id===z.id);
-  }):undefined;
+  const selectedVendorZoneId=(selectedVendor as any)?.zone_id??null;
+  const selectedVendorZone=zones.find(z=>z.id===selectedVendorZoneId);
   const selectedCoverageCount=coverage.filter(c=>c.vendor_id===coverageVendorId).length;
+  const eligibleCoverageRiders=riders.filter(r=>
+    r.status==="active" &&
+    selectedVendorZoneId &&
+    r.home_zone_id===selectedVendorZoneId &&
+    !coverage.some(c=>c.vendor_id===coverageVendorId&&c.rider_id===r.id)
+  );
 
   async function submit(action:string,body:Record<string,unknown>){
     setSaving(true);setError("");setMessage("");
@@ -138,11 +142,11 @@ export default function RiderAssignmentPanel(){
                 {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </label>
-            {coverageVendorId&&<p className="text-xs font-semibold text-slate-600">Designated riders: {selectedCoverageCount}/4 {selectedVendorZone?"· vendor coverage zone resolved from existing coverage":"· zone match is validated by the database"}</p>}
+            {coverageVendorId&&<p className="text-xs font-semibold text-slate-600">Designated riders: {selectedCoverageCount}/4 {selectedVendorZone?`· ${selectedVendorZone.name}`:"· vendor has no active zone assignment"}</p>}
             <label className="block text-sm font-semibold text-slate-700">Rider to add
               <select value={coverageRiderId} onChange={e=>setCoverageRiderId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm">
                 <option value="">Select rider</option>
-                {riders.filter(r=>r.status==="active"&&r.home_zone_id&&r.home_zone_id===zones.find(z=>z.id===r.home_zone_id)?.id).map(r=><option key={r.id} value={r.id}>{r.full_name||r.email} · {zones.find(z=>z.id===r.home_zone_id)?.name}</option>)}
+                {eligibleCoverageRiders.map(r=><option key={r.id} value={r.id}>{r.full_name||r.email} · {zones.find(z=>z.id===r.home_zone_id)?.name}</option>)}
               </select>
             </label>
             <label className="block text-sm font-semibold text-slate-700">Reason for coverage
