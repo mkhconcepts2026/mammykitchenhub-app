@@ -56,6 +56,7 @@ export async function GET(){
   const {data:orders,error:ordersError}=orderIds.length
     ? await adminClient.from("orders").select(`
         id,order_number,status,total,food_amount,delivery_fee,platform_fee,
+        vendor_amount,rider_amount,mkh_amount,
         delivery_address,customer_notes,customer_phone,payment_method,payment_status,
         picked_up_at,created_at,delivery_quote_id,
         vendors:vendors!orders_vendor_id_fkey(name,location),
