@@ -260,7 +260,9 @@ export async function GET(request: Request) {
       });
     }
 
-    const { territory, vendorIds, vendors, riderIds, exclusiveRiderIds, riders, scopeOrders } = scope;
+    const { territory, vendorIds, vendors, riderIds, homeZoneAssignments, homeZoneRiderIds, exclusiveRiderIds, riders, scopeOrders } = scope;
+    const homeAssignmentByRider = new Map((homeZoneAssignments ?? []).map((row: any) => [row.rider_id, row]));
+    const zoneById = new Map((scope.zones ?? []).map((row: any) => [row.id, row]));
     const activeVendors = vendors.filter((vendor: any) => String(vendor.status ?? "").toLowerCase() === "active");
     const identity = { success: true, assigned: true, manager, territory: { id: territory.id, name: territory.name } };
     if (section === "identity") return json(identity);
@@ -332,7 +334,7 @@ export async function GET(request: Request) {
       const activeOrderRiderIds = orderRows
         .filter((row: any) => ["assigned", "picked_up"].includes(String(row.status ?? "").toLowerCase()))
         .map((row: any) => row.rider_id).filter(Boolean) as string[];
-      const trackableRiderIds = [...new Set([...exclusiveRiderIds, ...activeOrderRiderIds])];
+      const trackableRiderIds = [...new Set([...homeZoneRiderIds, ...exclusiveRiderIds, ...activeOrderRiderIds])];
       const { data: gpsRows, error: gpsError } = trackableRiderIds.length
         ? await adminClient.from("rider_locations").select("rider_id, updated_at, profiles:rider_id (status)").in("rider_id", trackableRiderIds)
         : { data: [], error: null } as any;
@@ -380,7 +382,7 @@ export async function GET(request: Request) {
       // are actively handling an order from this territory. Exclusive riders
       // may appear on the territory map based on their vendor assignment.
       const activeTerritoryOrderRiderIds = currentOrders.map((row: any) => row.rider_id).filter(Boolean) as string[];
-      const trackableRiderIds = [...new Set([...exclusiveRiderIds, ...activeTerritoryOrderRiderIds])];
+      const trackableRiderIds = [...new Set([...homeZoneRiderIds, ...exclusiveRiderIds, ...activeTerritoryOrderRiderIds])];
       const { data: locationRows, error: locationError } = trackableRiderIds.length
         ? await adminClient.from("rider_locations").select("id, rider_id, latitude, longitude, speed, heading, accuracy, updated_at, profiles:rider_id (full_name, status)").in("rider_id", trackableRiderIds).order("updated_at", { ascending: false }).limit(1000)
         : { data: [], error: null } as any;
@@ -392,10 +394,26 @@ export async function GET(request: Request) {
         const wallet: any = walletByRider.get(rider.id);
         const currentOrder = orderByRider.get(rider.id) ?? null;
         const status = String(rider.status ?? "").toLowerCase();
-        const operationalStatus = status !== "active" ? "offline" : currentOrder?.status === "assigned" ? "assigned" : currentOrder?.status === "picked_up" ? "delivering" : "available";
+        const home: any = homeAssignmentByRider.get(rider.id) ?? null;
+        const homeZone: any = home ? zoneById.get(home.home_zone_id) : null;
         const location = (locationRows ?? []).find((row: any) => row.rider_id === rider.id);
+        const gpsFresh = isGpsFresh(location?.updated_at);
+        const operationalStatus = status !== "active"
+          ? "offline"
+          : currentOrder?.status === "assigned"
+            ? "assigned"
+            : currentOrder?.status === "picked_up"
+              ? "delivering"
+              : home?.availability_status !== "available"
+                ? "unavailable"
+                : !gpsFresh
+                  ? "gps_stale"
+                  : "available";
         return {
           ...rider,
+          home_zone_id: home?.home_zone_id ?? null,
+          home_zone_name: homeZone?.name ?? null,
+          availability_status: home?.availability_status ?? "not_assigned",
           operational_status: operationalStatus,
           available_balance: wallet ? Number(wallet.available_balance ?? 0) : null,
           pending_balance: wallet ? Number(wallet.pending_balance ?? 0) : null,
@@ -411,9 +429,25 @@ export async function GET(request: Request) {
         const currentOrder = orderByRider.get(location.rider_id) ?? null;
         const rider = riders.find((row: any) => row.id === location.rider_id);
         const accountStatus = rider?.status ?? location.profiles?.status ?? null;
-        const operationalStatus = String(accountStatus ?? "").toLowerCase() !== "active" ? "offline" : currentOrder?.status === "assigned" ? "assigned" : currentOrder?.status === "picked_up" ? "delivering" : "available";
+        const home: any = homeAssignmentByRider.get(location.rider_id) ?? null;
+        const homeZone: any = home ? zoneById.get(home.home_zone_id) : null;
+        const gpsFresh = isGpsFresh(location.updated_at);
+        const operationalStatus = String(accountStatus ?? "").toLowerCase() !== "active"
+          ? "offline"
+          : currentOrder?.status === "assigned"
+            ? "assigned"
+            : currentOrder?.status === "picked_up"
+              ? "delivering"
+              : home?.availability_status !== "available"
+                ? "unavailable"
+                : !gpsFresh
+                  ? "gps_stale"
+                  : "available";
         return {
           ...location,
+          home_zone_id: home?.home_zone_id ?? null,
+          home_zone_name: homeZone?.name ?? null,
+          availability_status: home?.availability_status ?? "not_assigned",
           latitude: Number(location.latitude),
           longitude: Number(location.longitude),
           speed: Number(location.speed ?? 0),
