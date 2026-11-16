@@ -202,6 +202,7 @@ async function loadDashboard() {
     const dispatchData=await dispatchResponse.json().catch(()=>null);
     if(!dispatchResponse.ok||dispatchData?.success!==true){
       console.error("RIDER DISPATCH OFFERS ERROR:",dispatchData?.message);
+      setAvailableOrders([]);
       setDispatchMessage(dispatchData?.message||"Unable to load pickup offers.");
     }else{
       setHomeZoneName(dispatchData.homeZone?.name??null);
