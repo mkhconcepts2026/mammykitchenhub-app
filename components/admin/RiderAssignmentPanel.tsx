@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Rider = {
   id:string; full_name:string|null; email:string|null; phone:string|null;
@@ -41,12 +41,6 @@ export default function RiderAssignmentPanel(){
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{void load();},[load]);
-
-  const vendorCoverageCounts=useMemo(()=>{
-    const counts=new Map<string,number>();
-    for(const row of coverage)counts.set(row.vendor_id,(counts.get(row.vendor_id)||0)+1);
-    return counts;
-  },[coverage]);
 
   const selectedHomeRider=riders.find(r=>r.id===homeRiderId);
   const selectedVendor=vendors.find(v=>v.id===coverageVendorId);
