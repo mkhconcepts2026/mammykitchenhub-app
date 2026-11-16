@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Clock3, Star, ArrowUpRight } from "lucide-react";
+import { Clock3, Star, ArrowUpRight, MapPin } from "lucide-react";
 import { useState } from "react";
 
 interface VendorCardProps {
@@ -16,6 +16,7 @@ interface VendorCardProps {
   deliveryTime?: string | null;
   cuisine?: string | null;
   promo?: string | null;
+  distanceKm?: number;
 }
 
 export function VendorCard({
@@ -27,6 +28,7 @@ export function VendorCard({
   deliveryTime,
   cuisine,
   promo,
+  distanceKm,
 }: VendorCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -107,6 +109,12 @@ export function VendorCard({
               <span className="inline-flex items-center gap-1 text-gray-500">
                 <Clock3 className="h-4 w-4" />
                 {deliveryTime}
+              </span>
+            )}
+            {distanceKm !== undefined && Number.isFinite(distanceKm) && (
+              <span className="inline-flex items-center gap-1 font-medium text-orange-700">
+                <MapPin className="h-4 w-4" />
+                ~{distanceKm.toFixed(1)} km away
               </span>
             )}
           </div>
