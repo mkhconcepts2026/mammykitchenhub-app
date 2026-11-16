@@ -68,10 +68,16 @@ export async function POST(request: NextRequest) {
     return json({ success: false, message: "A valid location request is required." }, 400);
   }
 
-  const latitude = Number(body.latitude);
-  const longitude = Number(body.longitude);
+  if (!body || typeof body !== "object") {
+    return json({ success: false, message: "A valid location request is required." }, 400);
+  }
+
+  const latitude = body.latitude;
+  const longitude = body.longitude;
 
   if (
+    typeof latitude !== "number" ||
+    typeof longitude !== "number" ||
     !Number.isFinite(latitude) ||
     !Number.isFinite(longitude) ||
     latitude < -90 ||
