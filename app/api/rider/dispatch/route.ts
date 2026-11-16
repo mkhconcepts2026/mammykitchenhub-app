@@ -55,6 +55,25 @@ export async function GET() {
       homeZone = data;
     }
 
+    const nowIso = new Date().toISOString();
+    const { data: staleOffers, error: staleOffersError } = await adminClient
+      .from("rider_dispatch_offers")
+      .select("id")
+      .eq("rider_id", riderId)
+      .eq("offer_status", "offered")
+      .lte("expires_at", nowIso);
+    if (staleOffersError) throw staleOffersError;
+    for (const stale of staleOffers ?? []) {
+      const expired = await adminClient.rpc("mkh_rider_respond_to_dispatch_offer", {
+        p_rider_id: riderId,
+        p_offer_id: stale.id,
+        p_action: "decline",
+      });
+      if (expired.error) {
+        console.error("Expired rider pickup offer cleanup failed:", expired.error.message);
+      }
+    }
+
     const { data: offers, error: offersError } = await adminClient
       .from("rider_dispatch_offers")
       .select("id, order_id, vendor_id, home_zone_id, vendor_zone_id, dispatch_mode, distance_meters, offer_status, offered_at, expires_at, authorization_reason")
@@ -168,11 +187,29 @@ export async function POST(request: Request) {
       if (status !== "available" && status !== "unavailable") {
         return json({ success: false, message: "Select Available or Unavailable." }, 400);
       }
+      if (status === "available") {
+        const { data: staleOffers, error: staleError } = await adminClient
+          .from("rider_dispatch_offers")
+          .select("id")
+          .eq("rider_id", riderId)
+          .eq("offer_status", "offered")
+          .lte("expires_at", new Date().toISOString());
+        if (staleError) throw staleError;
+        for (const stale of staleOffers ?? []) {
+          const expired = await adminClient.rpc("mkh_rider_respond_to_dispatch_offer", {
+            p_rider_id: riderId,
+            p_offer_id: stale.id,
+            p_action: "decline",
+          });
+          if (expired.error) console.error("Expired offer cleanup before Available failed:", expired.error.message);
+        }
+      }
       const { data, error } = await adminClient.rpc("mkh_rider_set_dispatch_availability", {
         p_rider_id: riderId,
         p_availability_status: status,
       });
       if (error) return json({ success: false, message: error.message }, 409);
+      if (data?.success === false) return json({ success: false, message: data.message || "Availability could not be updated." }, 409);
       let createdOffers = 0;
       if (status === "available") {
         const refresh = await adminClient.rpc("mkh_refresh_rider_dispatch_queue", { p_rider_id: riderId });
@@ -197,6 +234,7 @@ export async function POST(request: Request) {
         p_action: response,
       });
       if (error) return json({ success: false, message: error.message }, 409);
+      if (data?.success === false) return json({ success: false, message: data.message || "This pickup offer is no longer available." }, 409);
       return json({ success: true, result: data });
     }
 
