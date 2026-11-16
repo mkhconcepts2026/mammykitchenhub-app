@@ -548,6 +548,7 @@ DECLARE
   v_vendor_zone_id uuid;
   v_vendor_zone_count integer;
   v_rider_home_zone_id uuid;
+  v_home_zone_found boolean := false;
   v_link_id uuid;
   v_link_verified boolean;
 BEGIN
@@ -603,6 +604,8 @@ BEGIN
     AND h.unassigned_at IS NULL
   FOR SHARE;
 
+  v_home_zone_found := FOUND;
+
   SELECT vr.id, vr.coverage_verified
     INTO v_link_id, v_link_verified
   FROM public.vendor_riders vr
@@ -642,7 +645,7 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'action', 'removed', 'vendor_id', p_vendor_id, 'rider_id', p_rider_id);
   END IF;
 
-  IF NOT FOUND OR v_rider_home_zone_id IS DISTINCT FROM v_vendor_zone_id THEN
+  IF NOT v_home_zone_found OR v_rider_home_zone_id IS DISTINCT FROM v_vendor_zone_id THEN
     RAISE EXCEPTION 'The rider must have a permanent home-zone assignment matching the vendor''s zone before joining its coverage group.';
   END IF;
 
