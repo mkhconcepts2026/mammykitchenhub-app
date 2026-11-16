@@ -884,7 +884,7 @@ export async function POST(request: Request) {
       total,
       vendorCount: vendorIds.length,
       destinationAddressHash,
-      cartHash: hash(JSON.stringify([...items].sort((a, b) => a.menu_item_id.localeCompare(b.menu_item_id))),
+      cartHash: hash(JSON.stringify([...items].sort((a, b) => a.menu_item_id.localeCompare(b.menu_item_id)))),
     }, {
       headers: { "Cache-Control": "no-store, private" },
     });
