@@ -51,12 +51,10 @@ export async function GET() {
     const vendorIds=[...vendorZoneIds.entries()].filter(([,ids])=>ids.length===1).map(([id])=>id);
     if(!vendorIds.length) return json({success:true,territory:{id:territory.id,name:territory.name},orders:[],riders:[]});
 
-    const [ordersResult,offersResult,coverageResult,homeResult,profilesResult,locationsResult,vendorLocationsResult,activeOrdersResult] = await Promise.all([
+    const [ordersResult,coverageResult,homeResult,profilesResult,locationsResult,vendorLocationsResult,activeOrdersResult] = await Promise.all([
       adminClient.from("orders").select("id,order_number,vendor_id,status,payment_status,payment_method,total,created_at,delivery_address,rider_id")
         .in("vendor_id",vendorIds).eq("status","ready_for_pickup").is("rider_id",null)
         .order("created_at",{ascending:true}).limit(250),
-      adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode")
-        .in("offer_status",["offered","accepted"]).gt("expires_at",new Date().toISOString()),
       adminClient.from("vendor_riders").select("vendor_id,rider_id").in("vendor_id",vendorIds).eq("status","active").is("unassigned_at",null),
       adminClient.from("rider_home_zone_assignments").select("rider_id,home_zone_id,availability_status")
         .in("home_zone_id",zoneIds).eq("status","active").is("unassigned_at",null),
@@ -69,14 +67,34 @@ export async function GET() {
       adminClient.from("orders").select("rider_id,status").in("vendor_id",vendorIds)
         .in("status",["assigned","accepted","picked_up"]).not("rider_id","is",null),
     ]);
-    const failure=[ordersResult.error,offersResult.error,coverageResult.error,homeResult.error,profilesResult.error,locationsResult.error,vendorLocationsResult.error,activeOrdersResult.error].find(Boolean);
+    const failure=[ordersResult.error,coverageResult.error,homeResult.error,profilesResult.error,locationsResult.error,vendorLocationsResult.error,activeOrdersResult.error].find(Boolean);
     if(failure) throw failure;
 
     const readyOrderIds=(ordersResult.data??[]).map((o:any)=>o.id);
-    const offerHistoryResult=readyOrderIds.length
-      ? await adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode").in("order_id",readyOrderIds)
+    const initialOfferHistory=readyOrderIds.length
+      ? await adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode")
+          .in("order_id",readyOrderIds)
       : {data:[],error:null} as any;
-    if(offerHistoryResult.error) throw offerHistoryResult.error;
+    if(initialOfferHistory.error) throw initialOfferHistory.error;
+
+    // Expired offers are closed by the existing rider response RPC, which
+    // writes the dispatch audit and advances the next designated rider.
+    const expiredOffers=(initialOfferHistory.data??[]).filter((o:any)=>o.offer_status==="offered"&&Date.parse(o.expires_at)<=Date.now());
+    for(const offer of expiredOffers){
+      const result=await adminClient.rpc("mkh_rider_respond_to_dispatch_offer",{
+        p_rider_id:offer.rider_id,p_offer_id:offer.id,p_action:"decline",
+      });
+      if(result.error) console.error("TRM expired pickup offer cleanup failed:",result.error.message);
+    }
+
+    const [offerHistoryResult,offersResult]=await Promise.all([
+      readyOrderIds.length
+        ? adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode").in("order_id",readyOrderIds)
+        : Promise.resolve({data:[],error:null} as any),
+      adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode")
+        .in("offer_status",["offered","accepted"]),
+    ]);
+    if(offerHistoryResult.error||offersResult.error) throw offerHistoryResult.error||offersResult.error;
 
     const offers=offersResult.data??[];
     const offerHistory=offerHistoryResult.data??[];
@@ -136,7 +154,8 @@ export async function GET() {
       }).sort((a:any,b:any)=>(a.distance_meters??Number.MAX_SAFE_INTEGER)-(b.distance_meters??Number.MAX_SAFE_INTEGER));
 
       const paymentAllowed=order.payment_status==="paid"||["cash_on_delivery","cod"].includes(String(order.payment_method??"").toLowerCase());
-      const verifiedVendorOrigin=!!vendorCoord&&Number.isFinite(Number(vendorCoord.latitude))&&Number.isFinite(Number(vendorCoord.longitude));
+      const vendorLat=Number(vendorCoord?.latitude),vendorLng=Number(vendorCoord?.longitude);
+      const verifiedVendorOrigin=Number.isFinite(vendorLat)&&vendorLat>=-90&&vendorLat<=90&&Number.isFinite(vendorLng)&&vendorLng>=-180&&vendorLng<=180;
       return {
         id:order.id,order_number:order.order_number,vendor_id:order.vendor_id,
         vendor_name:(vendorIds.length?undefined:undefined),
