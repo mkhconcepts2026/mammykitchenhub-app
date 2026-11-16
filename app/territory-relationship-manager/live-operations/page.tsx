@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import TerritoryActivityFeed from "@/components/territory-manager/TerritoryActivityFeed";
+import CrossZoneDispatchPanel from "@/components/territory-manager/CrossZoneDispatchPanel";
 
 type OrderRow = any;
 type LiveResponse = {
@@ -108,6 +109,8 @@ export default function LiveOperationsPage() {
           </table>
         </div>
       </section>
+
+      <CrossZoneDispatchPanel />
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 px-6 py-5"><h2 className="text-xl font-bold text-slate-900">Live Delivery Monitor</h2><p className="mt-1 text-sm text-slate-500">Orders currently on the road within {territoryName}.</p></div>
