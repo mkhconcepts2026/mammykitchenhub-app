@@ -52,7 +52,7 @@ export async function GET() {
     if(!vendorIds.length) return json({success:true,territory:{id:territory.id,name:territory.name},orders:[],riders:[]});
 
     const [ordersResult,offersResult,coverageResult,homeResult,profilesResult,locationsResult,vendorLocationsResult,activeOrdersResult] = await Promise.all([
-      adminClient.from("orders").select("id,order_number,vendor_id,status,payment_status,payment_method,total,created_at,delivery_address")
+      adminClient.from("orders").select("id,order_number,vendor_id,status,payment_status,payment_method,total,created_at,delivery_address,rider_id")
         .in("vendor_id",vendorIds).eq("status","ready_for_pickup").is("rider_id",null)
         .order("created_at",{ascending:true}).limit(250),
       adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode")
@@ -72,10 +72,19 @@ export async function GET() {
     const failure=[ordersResult.error,offersResult.error,coverageResult.error,homeResult.error,profilesResult.error,locationsResult.error,vendorLocationsResult.error,activeOrdersResult.error].find(Boolean);
     if(failure) throw failure;
 
+    const readyOrderIds=(ordersResult.data??[]).map((o:any)=>o.id);
+    const offerHistoryResult=readyOrderIds.length
+      ? await adminClient.from("rider_dispatch_offers").select("id,order_id,rider_id,offer_status,expires_at,dispatch_mode").in("order_id",readyOrderIds)
+      : {data:[],error:null} as any;
+    if(offerHistoryResult.error) throw offerHistoryResult.error;
+
     const offers=offersResult.data??[];
+    const offerHistory=offerHistoryResult.data??[];
     const activeOfferByOrder=new Map<string,any>();
     const activeOfferRiders=new Set<string>();
     for(const offer of offers){activeOfferByOrder.set(offer.order_id,offer);activeOfferRiders.add(offer.rider_id);}
+    const offerHistoryByOrder=new Map<string,any[]>();
+    for(const offer of offerHistory) offerHistoryByOrder.set(offer.order_id,[...(offerHistoryByOrder.get(offer.order_id)??[]),offer]);
     const ridersById=new Map((profilesResult.data??[]).map((p:any)=>[p.id,p]));
     const homeByRider=new Map((homeResult.data??[]).map((h:any)=>[h.rider_id,h]));
     const locationByRider=new Map((locationsResult.data??[]).map((l:any)=>[l.rider_id,l]));
@@ -99,7 +108,7 @@ export async function GET() {
           availability_status:home?.availability_status??"unavailable",
           gps_live:!!loc,
           gps_age_seconds:loc?Math.max(0,Math.floor((Date.now()-Date.parse(loc.updated_at))/1000)):null,
-          already_offered:offers.some((o:any)=>o.order_id===order.id&&o.rider_id===riderId),
+          already_offered:(offerHistoryByOrder.get(order.id)??[]).some((o:any)=>o.rider_id===riderId),
           occupied:activeOrderRiders.has(riderId)||activeOfferRiders.has(riderId),
         };
       });
@@ -113,8 +122,12 @@ export async function GET() {
       }).map((home:any)=>{
         const profile=ridersById.get(home.rider_id) as any;
         const loc=locationByRider.get(home.rider_id) as any;
-        const distance=vendorCoord&&Number.isFinite(Number(vendorCoord.latitude))&&Number.isFinite(Number(vendorCoord.longitude))
-          ? distanceMeters(Number(vendorCoord.latitude),Number(vendorCoord.longitude),Number(loc.latitude),Number(loc.longitude))
+        const vendorLat=Number(vendorCoord?.latitude),vendorLng=Number(vendorCoord?.longitude);
+        const riderLat=Number(loc.latitude),riderLng=Number(loc.longitude);
+        const validCoordinates=Number.isFinite(vendorLat)&&vendorLat>=-90&&vendorLat<=90&&Number.isFinite(vendorLng)&&vendorLng>=-180&&vendorLng<=180
+          &&Number.isFinite(riderLat)&&riderLat>=-90&&riderLat<=90&&Number.isFinite(riderLng)&&riderLng>=-180&&riderLng<=180;
+        const distance=validCoordinates
+          ? distanceMeters(vendorLat,vendorLng,riderLat,riderLng)
           : null;
         const riderZone=(zones??[]).find((z:any)=>z.id===home.home_zone_id);
         return {rider_id:home.rider_id,full_name:profile.full_name??"Rider",email:profile.email,
