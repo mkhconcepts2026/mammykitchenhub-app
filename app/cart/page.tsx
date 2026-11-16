@@ -31,6 +31,7 @@ export default function CartPage() {
   const platformFee = 300;
   const total = subtotal + deliveryFee + platformFee;
   const vendorIds = Array.from(new Set(items.map((item) => item.vendor_id))).sort();
+  const vendorIdsKey = vendorIds.join(",");
   const vendorGroups = vendorIds.map((vendorId) => ({
     vendorId,
     vendorName: vendorNames[vendorId] || "Vendor",
@@ -41,7 +42,8 @@ export default function CartPage() {
   }));
 
   useEffect(() => {
-    if (!vendorIds.length) {
+    const ids = vendorIdsKey ? vendorIdsKey.split(",") : [];
+    if (!ids.length) {
       setVendorNames({});
       return;
     }
@@ -50,14 +52,14 @@ export default function CartPage() {
     void supabase
       .from("vendors")
       .select("id, name")
-      .in("id", vendorIds)
+      .in("id", ids)
       .then(({ data, error }) => {
         if (!active || error) return;
         const next = Object.fromEntries((data ?? []).map((vendor) => [vendor.id, vendor.name]));
         setVendorNames(next);
       });
     return () => { active = false; };
-  }, [vendorIds.join(",")]);
+  }, [vendorIdsKey]);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
