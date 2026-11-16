@@ -65,6 +65,16 @@ export async function GET(){
       vendorIds.length?adminClient.from("orders").select("id,order_number,vendor_id,status,payment_status,payment_method,total,created_at,delivery_address").in("vendor_id",vendorIds).eq("status","ready_for_pickup").is("rider_id",null).order("created_at",{ascending:true}).limit(200):Promise.resolve({data:[],error:null} as any),
     ]);
     if(vendorResult.error||ordersResult.error)throw new Error("Unable to load territory vendors or ready pickup orders.");
+
+    const readyOrderIds=(ordersResult.data??[]).map((order:any)=>order.id);
+    const activeOffersResult=readyOrderIds.length
+      ? await adminClient.from("rider_dispatch_offers")
+          .select("id,order_id,rider_id,offer_status,dispatch_mode,expires_at,profiles:rider_id(full_name,email)")
+          .in("order_id",readyOrderIds)
+          .in("offer_status",["offered","accepted"])
+      : {data:[],error:null} as any;
+    if(activeOffersResult.error)throw new Error("Unable to load active rider pickup offers.");
+    const activeOfferByOrder=new Map((activeOffersResult.data??[]).map((offer:any)=>[offer.order_id,offer]));
     const vendors=new Map((vendorResult.data??[]).map((v:any)=>[v.id,v]));
     const readyOrders=(ordersResult.data??[]).filter((order:any)=>{
       const vendor=vendors.get(order.vendor_id) as any;
@@ -137,13 +147,23 @@ export async function GET(){
       const origin=originByVendor.get(order.vendor_id);
       const originValid=origin&&Number.isFinite(Number(origin.latitude))&&Number.isFinite(Number(origin.longitude));
       const eligibleRiders=riders.filter((r:any)=>r.eligible&&r.home_zone_id!==vendorZoneId&&originValid&&Number.isFinite(Number(r.latitude))&&Number.isFinite(Number(r.longitude)))
-        .map((r:any)=>({...r,distance_meters:distanceMeters(Number(r.latitude),Number(r.longitude),Number(origin.latitude),Number(origin.longitude))}))
+        .map((r:any)=>({
+          id:r.id,
+          full_name:r.full_name,
+          home_zone_id:r.home_zone_id,
+          home_zone_name:r.home_zone_name,
+          availability_status:r.availability_status,
+          gps_status:r.gps_status,
+          gps_age_seconds:r.gps_age_seconds,
+          distance_meters:distanceMeters(Number(r.latitude),Number(r.longitude),Number(origin.latitude),Number(origin.longitude)),
+        }))
         .sort((a:any,b:any)=>a.distance_meters-b.distance_meters);
       const vendorCoverage=coverageByVendor.get(order.vendor_id)??[];
       const designatedRiderAvailable=vendorCoverage.some((riderId:string)=>{
         const r=riders.find((candidate:any)=>candidate.id===riderId);
         return Boolean(r?.eligible&&r.home_zone_id===vendorZoneId&&originValid);
       });
+      const activeOffer:any=activeOfferByOrder.get(order.id)??null;
       return {
         ...order,
         vendor_name:vendor?.name??"Vendor",
@@ -151,6 +171,14 @@ export async function GET(){
         vendor_zone_name:zones.find((z:any)=>z.id===vendorZoneId)?.name??"Zone",
         verified_vendor_origin_available:Boolean(originValid),
         designated_rider_available:designatedRiderAvailable,
+        active_offer:activeOffer?{
+          id:activeOffer.id,
+          rider_id:activeOffer.rider_id,
+          rider_name:activeOffer.profiles?.full_name??"Rider",
+          offer_status:activeOffer.offer_status,
+          dispatch_mode:activeOffer.dispatch_mode,
+          expires_at:activeOffer.expires_at,
+        }:null,
         cross_zone_riders:eligibleRiders,
       };
     });
