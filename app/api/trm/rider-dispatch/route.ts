@@ -72,6 +72,7 @@ export async function GET(){
           .select("id,order_id,rider_id,offer_status,dispatch_mode,expires_at,profiles:rider_id(full_name,email)")
           .in("order_id",readyOrderIds)
           .in("offer_status",["offered","accepted"])
+          .gt("expires_at",new Date().toISOString())
       : {data:[],error:null} as any;
     if(activeOffersResult.error)throw new Error("Unable to load active rider pickup offers.");
     const activeOfferByOrder=new Map((activeOffersResult.data??[]).map((offer:any)=>[offer.order_id,offer]));
