@@ -13,6 +13,18 @@ ALTER TABLE public.vendor_riders
 COMMENT ON COLUMN public.vendor_riders.coverage_verified IS
   'True only after Admin/Operations explicitly confirms this relationship as part of the four-rider vendor coverage group. Legacy rows default false.';
 
+-- Preserve existing audit actions and allow explicit legacy verification/removal events.
+ALTER TABLE public.vendor_rider_coverage_audit
+  DROP CONSTRAINT IF EXISTS vendor_rider_coverage_audit_action_check;
+ALTER TABLE public.vendor_rider_coverage_audit
+  ADD CONSTRAINT vendor_rider_coverage_audit_action_check
+  CHECK (action = ANY (ARRAY[
+    'assigned'::text,
+    'unassigned'::text,
+    'legacy_link_verified'::text,
+    'removed'::text
+  ]));
+
 CREATE UNIQUE INDEX IF NOT EXISTS vendor_riders_one_verified_vendor_per_rider_uidx
   ON public.vendor_riders (rider_id)
   WHERE status = 'active'
