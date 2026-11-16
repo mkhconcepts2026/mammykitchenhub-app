@@ -49,6 +49,10 @@ type Order = {
   // Payment fields used by the COD completion flow
   payment_method?: string | null;
   payment_status?: string | null;
+  dispatch_offer_id?: string;
+  dispatch_mode?: string;
+  dispatch_distance_meters?: number | null;
+  dispatch_expires_at?: string;
 
   vendors?: {
     name: string;
@@ -133,7 +137,99 @@ export default function RiderDashboardPage() {
 
   const [otpInputs, setOtpInputs] =
     useState<Record<string, string>>({});
+  const [dispatchAvailability, setDispatchAvailability] = useState<"available" | "unavailable" | null>(null);
+  const [homeZoneName, setHomeZoneName] = useState<string | null>(null);
+  const [dispatchMessage, setDispatchMessage] = useState("");
+  const [dispatchBusy, setDispatchBusy] = useState(false);
 
+
+async function loadDispatchInbox() {
+  try {
+    const response = await fetch("/api/rider/dispatch", { cache: "no-store" });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.message || "Unable to load pickup offers.");
+    }
+    setDispatchAvailability(result.availabilityStatus === "available" || result.availabilityStatus === "unavailable"
+      ? result.availabilityStatus
+      : null);
+    setHomeZoneName(result.homeZone?.name ?? null);
+    const mapped: Order[] = (Array.isArray(result.offers) ? result.offers : []).map((offer: any) => {
+      const order = offer.order ?? {};
+      return {
+        ...order,
+        rider_id: null,
+        vendor_id: order.vendor_id,
+        vendors: {
+          name: order.vendor?.name ?? "Vendor",
+          location: order.vendor?.location ?? "",
+        },
+        profiles: {
+          full_name: order.customer?.full_name ?? "Customer",
+          email: "",
+          phone: order.customer?.phone ?? null,
+        },
+        order_items: Array.isArray(order.order_items) ? order.order_items : [],
+        dispatch_offer_id: offer.id,
+        dispatch_mode: offer.dispatch_mode,
+        dispatch_distance_meters: offer.distance_meters,
+        dispatch_expires_at: offer.expires_at,
+      } as Order;
+    });
+    setAvailableOrders(mapped);
+  } catch (error) {
+    console.error("RIDER DISPATCH INBOX ERROR:", error);
+    setDispatchMessage(error instanceof Error ? error.message : "Unable to load pickup offers.");
+  }
+}
+
+async function updateDispatchAvailability(status: "available" | "unavailable") {
+  setDispatchBusy(true);
+  setDispatchMessage("");
+  try {
+    const response = await fetch("/api/rider/dispatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "availability", status }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.message || "Availability could not be updated.");
+    }
+    setDispatchAvailability(status);
+    setDispatchMessage(status === "available"
+      ? `You are Available. ${Number(result.createdOffers ?? 0)} pickup offer(s) created.`
+      : "You are now Unavailable. New pickup offers will not be sent to you.");
+    await loadDispatchInbox();
+  } catch (error) {
+    setDispatchMessage(error instanceof Error ? error.message : "Availability could not be updated.");
+  } finally {
+    setDispatchBusy(false);
+  }
+}
+
+async function respondToDispatchOffer(offerId: string, responseType: "accept" | "decline") {
+  setDispatchBusy(true);
+  setDispatchMessage("");
+  try {
+    const response = await fetch("/api/rider/dispatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "respond", offerId, response: responseType }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.success !== true) {
+      throw new Error(result?.message || "The pickup offer could not be processed.");
+    }
+    setDispatchMessage(responseType === "accept" ? "Pickup accepted. It is now in My Deliveries." : "Pickup declined. The next eligible designated rider will be offered this order.");
+    await Promise.all([loadDashboard(), loadDispatchInbox()]);
+  } catch (error) {
+    setDispatchMessage(error instanceof Error ? error.message : "The pickup offer could not be processed.");
+    await loadDispatchInbox();
+  } finally {
+    setDispatchBusy(false);
+  }
+}
 
 async function loadDashboard() {
   try {
@@ -187,23 +283,8 @@ async function loadDashboard() {
       )
     `;
 
-    /* AVAILABLE PICKUPS */
+    await loadDispatchInbox();
 
-    const {
-      data: queue,
-      error: queueError,
-    } = await supabase
-      .from("orders")
-      .select(orderFields)
-      .eq("status", "ready_for_pickup")
-      .is("rider_id", null)
-      .order("created_at", {
-        ascending: false,
-      });
-
-    if (queueError) {
-      console.error("AVAILABLE ORDERS ERROR:", queueError);
-    }
 
     /* RIDER ACTIVE JOBS */
 
@@ -222,18 +303,6 @@ async function loadDashboard() {
     if (activeError) {
       console.error("ACTIVE ORDERS ERROR:", activeError);
     }
-
-    setAvailableOrders(
-  (queue || []).map((order) => ({
-    ...order,
-    vendors: Array.isArray(order.vendors)
-      ? order.vendors[0] ?? undefined
-      : order.vendors,
-    profiles: Array.isArray(order.profiles)
-      ? order.profiles[0] ?? null
-      : order.profiles,
-  }))
-);
 
 setMyOrders(
   (active || []).map((order) => ({
