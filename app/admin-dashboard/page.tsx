@@ -1348,6 +1348,7 @@ if (ordersData) {
                 ["vendors", "Vendors", Store],
                 ["vendorLocations", "Vendor Business Locations", Store],
                 ["riders", "Riders", Bike],
+                ["riderOperations", "Rider Zone & Coverage", Bike],
                 ["orders", "Orders", ShoppingBag],
                 ["delivery-allocations", "Delivery Allocations", Wallet],
                 ["vendor-commission", "Vendor Commission", Store],
@@ -1356,7 +1357,7 @@ if (ordersData) {
               ].map(([key, label, Icon]: any) => (
                 <button
                   key={key}
-                  onClick={() => key === "vendorLocations" ? router.push("/admin-dashboard/vendor-locations") : key === "staffRoleChanges" ? router.push("/admin-dashboard/role-changes") : setActiveTab(key)}
+                  onClick={() => key === "vendorLocations" ? router.push("/admin-dashboard/vendor-locations") : key === "staffRoleChanges" ? router.push("/admin-dashboard/role-changes") : key === "riderOperations" ? router.push("/admin-dashboard/rider-operations") : setActiveTab(key)}
                   className={`group flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition-all ${
                     activeTab === key
                       ? "bg-orange-500 text-white shadow-lg shadow-orange-500/20"
