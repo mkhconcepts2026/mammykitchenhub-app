@@ -16,6 +16,10 @@ const operationalStatusConfig = {
     label: "Available",
     className: "bg-emerald-100 text-emerald-700",
   },
+  offer_pending: {
+    label: "Pickup Offered",
+    className: "bg-violet-100 text-violet-700",
+  },
   assigned: {
     label: "Assigned",
     className: "bg-amber-100 text-amber-700",
@@ -124,6 +128,10 @@ export default function RiderTable({
               Available
             </option>
 
+            <option value="offer_pending">
+              Pickup Offer Pending
+            </option>
+
             <option value="assigned">
               Assigned
             </option>
@@ -153,6 +161,10 @@ export default function RiderTable({
 
               <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
                 Rider
+              </th>
+
+              <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
+                Home Zone
               </th>
 
               <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -190,7 +202,7 @@ export default function RiderTable({
               <tr>
 
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-6 py-10 text-center text-slate-500"
                 >
                   Loading riders...
@@ -203,7 +215,7 @@ export default function RiderTable({
               <tr>
 
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-6 py-10 text-center text-slate-500"
                 >
                   No riders found.
@@ -244,6 +256,15 @@ export default function RiderTable({
 
                       </div>
 
+                    </td>
+
+                    {/* Permanent Home Zone */}
+
+                    <td className="px-6 py-5">
+                      <p className="font-semibold text-slate-900">{rider.home_zone_name||"Not assigned"}</p>
+                      <p className={`mt-1 text-xs font-semibold ${rider.availability_status==="available"?"text-emerald-700":rider.availability_status==="unavailable"?"text-amber-700":"text-slate-400"}`}>
+                        {rider.availability_status==="available"?"Available for dispatch":rider.availability_status==="unavailable"?"Unavailable":"Home zone needed"}
+                      </p>
                     </td>
 
                     {/* Phone */}
@@ -320,13 +341,10 @@ export default function RiderTable({
                     {/* GPS */}
 
                     <td className="px-6 py-5 text-sm text-slate-500">
-
-                      {rider.updated_at
-                        ? new Date(
-                            rider.updated_at
-                          ).toLocaleString()
-                        : "-"}
-
+                      <div>{rider.updated_at ? new Date(rider.updated_at).toLocaleString() : "-"}</div>
+                      <span className={`mt-1 inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${rider.gps_status==="live"?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-500"}`}>
+                        {rider.gps_status==="live"?"GPS Live":"GPS Stale"}
+                      </span>
                     </td>
 
                     {/* Action */}
