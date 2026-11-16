@@ -833,7 +833,7 @@ DECLARE
   v_otp text;
   v_next_offer_id uuid;
 BEGIN
-  IF p_rider_id IS NULL OR p_offer_id IS NULL OR p_action NOT IN ('accept','decline') THEN
+  IF p_rider_id IS NULL OR p_offer_id IS NULL OR p_action IS NULL OR p_action NOT IN ('accept','decline') THEN
     RAISE EXCEPTION 'A rider, offer and valid response are required.';
   END IF;
 
@@ -1022,6 +1022,14 @@ BEGIN
       RAISE EXCEPTION 'You have a pickup offer or active assignment. Respond to it before changing availability.';
     END IF;
   ELSE
+    UPDATE public.rider_home_zone_assignments
+    SET availability_status='unavailable',
+        availability_updated_at=now(),
+        updated_at=now()
+    WHERE rider_id=p_rider_id
+      AND status='active'
+      AND unassigned_at IS NULL;
+
     FOR v_order IN
       UPDATE public.rider_dispatch_offers
       SET offer_status='cancelled',responded_at=now(),updated_at=now()
