@@ -416,6 +416,18 @@ setMyOrders(
           loadDashboard();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "order_events",
+          filter: "event_type=eq.rider_dispatch_offer",
+        },
+        () => {
+          loadDashboard();
+        }
+      )
       .subscribe();
 
     return () => {
