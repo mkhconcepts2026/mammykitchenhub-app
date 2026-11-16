@@ -215,6 +215,25 @@ BEGIN
     WHERE id = NEW.zone_id
     FOR UPDATE;
 
+    IF EXISTS (
+      SELECT 1
+      FROM public.vendor_riders vr
+      WHERE vr.vendor_id = NEW.vendor_id
+        AND vr.status = 'active'
+        AND vr.unassigned_at IS NULL
+        AND vr.coverage_verified IS TRUE
+        AND NOT EXISTS (
+          SELECT 1
+          FROM public.rider_home_zone_assignments h
+          WHERE h.rider_id = vr.rider_id
+            AND h.home_zone_id = NEW.zone_id
+            AND h.status = 'active'
+            AND h.unassigned_at IS NULL
+        )
+    ) THEN
+      RAISE EXCEPTION 'Review and reconcile the vendor''s confirmed rider home-zone coverage before moving this vendor to another zone.';
+    END IF;
+
     SELECT count(*)::integer
       INTO v_count
     FROM public.zone_vendors zv
@@ -551,6 +570,7 @@ BEGIN
   END IF;
 
   IF p_vendor_id IS NULL OR p_rider_id IS NULL
+     OR p_action IS NULL
      OR p_action NOT IN ('add', 'verify', 'remove')
      OR length(btrim(coalesce(p_reason, ''))) < 10
      OR length(p_reason) > 500 THEN
@@ -732,7 +752,9 @@ BEGIN
   SELECT rl.updated_at
     INTO v_gps_updated_at
   FROM public.rider_locations rl
-  WHERE rl.rider_id = v_actor;
+  WHERE rl.rider_id = v_actor
+  ORDER BY rl.updated_at DESC
+  LIMIT 1;
 
   SELECT coalesce(jsonb_agg(jsonb_build_object(
     'id', x.id,
@@ -753,6 +775,11 @@ BEGIN
       'delivery_address', o.delivery_address,
       'customer_notes', o.customer_notes,
       'payment_status', o.payment_status,
+      'profiles', (
+        SELECT jsonb_build_object('full_name', cp.full_name, 'email', cp.email, 'phone', cp.phone)
+        FROM public.profiles cp
+        WHERE cp.id = o.user_id
+      ),
       'vendors', jsonb_build_object('name', v.name, 'location', v.location)
     )
   ) ORDER BY x.offered_at), '[]'::jsonb)
@@ -953,6 +980,11 @@ BEGIN
     'order_number', o.order_number,
     'status', o.status,
     'created_at', o.created_at,
+    'payment_status', o.payment_status,
+    'payment_eligible', (
+      coalesce(o.payment_status, '') = 'paid'
+      OR lower(coalesce(o.payment_method, '')) IN ('cash_on_delivery', 'cod')
+    ),
     'vendor_id', v.id,
     'vendor_name', v.name,
     'zone_id', z.id,
@@ -981,7 +1013,11 @@ BEGIN
       LIMIT 1
     ),
     'cross_zone_fallback_ready', (
-      NOT EXISTS (
+      (
+        coalesce(o.payment_status, '') = 'paid'
+        OR lower(coalesce(o.payment_method, '')) IN ('cash_on_delivery', 'cod')
+      )
+      AND NOT EXISTS (
         SELECT 1 FROM public.rider_dispatch_offers x
         WHERE x.order_id = o.id AND x.offer_status IN ('offered', 'accepted')
       )
