@@ -374,17 +374,18 @@ export async function GET(request: Request) {
     }
 
     if (section === "riders" || section === "map") {
-      const [{ data: walletRows, error: walletError }, { data: currentOrderRows, error: currentOrderError }] = await Promise.all([
+      const [{ data: walletRows, error: walletError }, { data: currentOrderRows, error: currentOrderError }, { data: offerRows, error: offerError }] = await Promise.all([
         exclusiveRiderIds.length ? adminClient.from("rider_wallets").select("*").in("rider_id", exclusiveRiderIds) : Promise.resolve({ data: [], error: null } as any),
-        vendorIds.length ? adminClient.from("orders").select("id, order_number, status, vendor_id, rider_id, total, created_at").in("vendor_id", vendorIds).in("status", ["assigned", "picked_up"]).not("rider_id", "is", null).limit(1000) : Promise.resolve({ data: [], error: null } as any),
+        vendorIds.length ? adminClient.from("orders").select("id, order_number, status, vendor_id, rider_id, total, created_at").in("vendor_id", vendorIds).in("status", ["assigned", "accepted", "picked_up"]).not("rider_id", "is", null).limit(1000) : Promise.resolve({ data: [], error: null } as any),
+        riderIds.length ? adminClient.from("rider_dispatch_offers").select("id,rider_id,order_id,offer_status,expires_at").in("rider_id", riderIds).in("offer_status",["offered","accepted"]) : Promise.resolve({ data: [], error: null } as any),
       ]);
-      if (walletError || currentOrderError) throw new Error("Unable to load territory rider information.");
+      if (walletError || currentOrderError || offerError) throw new Error("Unable to load territory rider information.");
       const currentOrders = currentOrderRows ?? [];
       // Shared riders are only location-tracked in this TRM view while they
       // are actively handling an order from this territory. Exclusive riders
       // may appear on the territory map based on their vendor assignment.
       const activeTerritoryOrderRiderIds = currentOrders.map((row: any) => row.rider_id).filter(Boolean) as string[];
-      const trackableRiderIds = [...new Set([...exclusiveRiderIds, ...activeTerritoryOrderRiderIds])];
+      const trackableRiderIds = [...new Set([...exclusiveRiderIds, ...homeZoneRiderIds, ...activeTerritoryOrderRiderIds])];
       const { data: locationRows, error: locationError } = trackableRiderIds.length
         ? await adminClient.from("rider_locations").select("id, rider_id, latitude, longitude, speed, heading, accuracy, updated_at, profiles:rider_id (full_name, status)").in("rider_id", trackableRiderIds).order("updated_at", { ascending: false }).limit(1000)
         : { data: [], error: null } as any;
@@ -392,13 +393,28 @@ export async function GET(request: Request) {
       const walletByRider = new Map((walletRows ?? []).map((row: any) => [row.rider_id, row]));
       const orderByRider = new Map<string, any>();
       for (const order of currentOrders) if (order.rider_id && !orderByRider.has(order.rider_id)) orderByRider.set(order.rider_id, order);
+      const offerByRider = new Map<string, any>();
+      for (const offer of offerRows ?? []) if (!offerByRider.has(offer.rider_id)) offerByRider.set(offer.rider_id, offer);
       const riderData = riders.map((rider: any) => {
         const home:any = homeZoneByRider[rider.id] ?? null;
         const wallet: any = walletByRider.get(rider.id);
         const currentOrder = orderByRider.get(rider.id) ?? null;
         const status = String(rider.status ?? "").toLowerCase();
-        const operationalStatus = status !== "active" ? "offline" : currentOrder?.status === "assigned" ? "assigned" : currentOrder?.status === "picked_up" ? "delivering" : "available";
         const location = (locationRows ?? []).find((row: any) => row.rider_id === rider.id);
+        const offer=offerByRider.get(rider.id)??null;
+        const availability=home?.availability_status??"unassigned";
+        const gpsFresh=isGpsFresh(location?.updated_at);
+        const operationalStatus = status !== "active"
+          ? "offline"
+          : currentOrder?.status === "picked_up"
+            ? "delivering"
+            : ["assigned","accepted"].includes(String(currentOrder?.status??""))
+              ? "assigned"
+              : offer?.offer_status === "offered"
+                ? "offer_pending"
+                : availability==="available"&&gpsFresh
+                  ? "available"
+                  : "offline";
         return {
           ...rider,
           home_zone_id:home?.home_zone_id??null,
@@ -412,6 +428,7 @@ export async function GET(request: Request) {
           updated_at: location?.updated_at ?? null,
           gps_status: isGpsFresh(location?.updated_at) ? "live" : "stale",
           current_order: currentOrder,
+          active_dispatch_offer:offer,
         };
       });
       if (section === "riders") return json({ ...identity, riders: riderData, refreshedAt: new Date().toISOString() });
@@ -420,7 +437,19 @@ export async function GET(request: Request) {
         const currentOrder = orderByRider.get(location.rider_id) ?? null;
         const rider = riders.find((row: any) => row.id === location.rider_id);
         const accountStatus = rider?.status ?? location.profiles?.status ?? null;
-        const operationalStatus = String(accountStatus ?? "").toLowerCase() !== "active" ? "offline" : currentOrder?.status === "assigned" ? "assigned" : currentOrder?.status === "picked_up" ? "delivering" : "available";
+        const home:any = homeZoneByRider[location.rider_id] ?? null;
+        const offer = offerByRider.get(location.rider_id) ?? null;
+        const operationalStatus = String(accountStatus ?? "").toLowerCase() !== "active"
+          ? "offline"
+          : currentOrder?.status === "picked_up"
+            ? "delivering"
+            : ["assigned","accepted"].includes(String(currentOrder?.status??""))
+              ? "assigned"
+              : offer?.offer_status === "offered"
+                ? "offer_pending"
+                : home?.availability_status==="available"&&isGpsFresh(location.updated_at)
+                  ? "available"
+                  : "offline";
         return {
           ...location,
           home_zone_id:home?.home_zone_id??null,
@@ -432,6 +461,7 @@ export async function GET(request: Request) {
           heading: Number(location.heading ?? 0),
           accuracy: Number(location.accuracy ?? 0),
           current_order: currentOrder,
+          active_dispatch_offer:offer,
           operational_status: operationalStatus,
           gps_status: isGpsFresh(location.updated_at) ? "live" : "stale",
           gps_age_seconds: location.updated_at ? Math.max(0, Math.floor((Date.now() - new Date(location.updated_at).getTime()) / 1000)) : null,
