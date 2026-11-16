@@ -38,6 +38,31 @@ export default function TrmCrossZoneDispatchPanel() {
     void loadSnapshot();
   }, [loadSnapshot]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel("trm-rider-dispatch-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => { void loadSnapshot(); }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "order_events",
+          filter: "event_type=eq.rider_dispatch_offer",
+        },
+        () => { void loadSnapshot(); }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadSnapshot, supabase]);
+
   const riders = snapshot?.riders ?? [];
   const orders = snapshot?.ready_orders ?? [];
   const activeOffers = snapshot?.active_offers ?? [];
