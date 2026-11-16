@@ -135,7 +135,7 @@ BEGIN
     RAISE EXCEPTION 'Vendor coverage may only be assigned to an active vendor.';
   END IF;
 
-  SELECT count(*),min(zv.zone_id)
+  SELECT count(*),(array_agg(zv.zone_id))[1]
     INTO v_vendor_zone_count,v_vendor_zone_id
   FROM public.zone_vendors zv
   JOIN public.zones z ON z.id=zv.zone_id AND z.is_active=true
@@ -305,7 +305,7 @@ BEGIN
     RAISE EXCEPTION 'A pickup offer is still active. Wait for the rider to respond or for it to expire.';
   END IF;
 
-  SELECT count(*),min(zv.zone_id)
+  SELECT count(*),(array_agg(zv.zone_id))[1]
     INTO v_vendor_zone_count,v_vendor_zone_id
   FROM public.zone_vendors zv
   JOIN public.zones z ON z.id=zv.zone_id AND z.is_active=true
