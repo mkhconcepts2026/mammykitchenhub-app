@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import EnterpriseOrderSidebar from "@/components/territory-manager/EnterpriseOrderSidebar";
 import EnterpriseIntelligencePanel from "@/components/territory-manager/EnterpriseIntelligencePanel";
+import TrmCrossZoneDispatchPanel from "@/components/territory-manager/TrmCrossZoneDispatchPanel";
 export default function TerritoryRelationshipManagerOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
@@ -294,6 +295,8 @@ export default function TerritoryRelationshipManagerOrdersPage() {
   ))}
 
 </section>
+
+<TrmCrossZoneDispatchPanel />
 
 {/* Orders Queue */}
 
