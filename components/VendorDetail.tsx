@@ -28,7 +28,7 @@ export function VendorDetail({
 
   function getItemQuantity(id: string) {
     return (
-      items.find((item) => item.id === id)?.quantity ?? 0
+      items.find((item) => item.id === id && item.vendor_id === String(vendor?.id))?.quantity ?? 0
     );
   }
 
@@ -62,22 +62,8 @@ export function VendorDetail({
 
     const added = addItem(cartItem);
 
-    if (added) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      "Your cart contains items from another vendor. Would you like to clear your current cart and add this item instead?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    const replaced = addItem(cartItem, true);
-
-    if (!replaced) {
-      setNotice("We couldn't update your cart. Please try again.");
+    if (!added) {
+      setNotice("We couldn't add this item. Please try again.");
     }
   }
 

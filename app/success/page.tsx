@@ -15,6 +15,8 @@ type Order = {
 function SuccessContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order");
+  const vendorCountParam = Number(searchParams.get("vendors") || "1");
+  const groupedVendorCount = Number.isSafeInteger(vendorCountParam) && vendorCountParam > 1 ? vendorCountParam : 1;
 
   const [order, setOrder] = useState<Order | null>(null);
   const [otp, setOtp] = useState<string | null>(null);
@@ -96,7 +98,9 @@ function SuccessContent() {
         </h1>
 
         <p className="mb-8 text-gray-600">
-          Your order has been placed successfully.
+          {groupedVendorCount > 1
+            ? `Your basket has been checked out across ${groupedVendorCount} vendors. Each vendor has a separate order and delivery.`
+            : "Your order has been placed successfully."}
         </p>
 
         {orderNotFound && (
@@ -126,7 +130,7 @@ function SuccessContent() {
             </div>
 
             <div className="rounded-2xl bg-gray-50 p-5">
-              <p className="mb-2 font-semibold">Order Total</p>
+              <p className="mb-2 font-semibold">{groupedVendorCount > 1 ? "First vendor order total" : "Order Total"}</p>
               <p className="text-2xl font-bold text-orange-500">
                 {"\u20A6"}
                 {Number(order.total ?? 0).toLocaleString("en-NG", {
