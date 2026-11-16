@@ -624,7 +624,7 @@ BEGIN
 
   SELECT upper(coalesce(role,'')) INTO v_actor_role
   FROM public.profiles WHERE id=p_actor_id;
-  IF v_actor_role NOT IN ('ADMIN','COO') THEN
+  IF v_actor_role IS NULL OR v_actor_role NOT IN ('ADMIN','COO') THEN
     RAISE EXCEPTION 'Only Admin or COO can assign a rider home zone.';
   END IF;
 
@@ -719,16 +719,17 @@ DECLARE
   v_vendor_zone_id uuid;
   v_rider_zone_id uuid;
   v_coverage_id uuid;
+  v_pending_offer record;
 BEGIN
   IF p_actor_id IS NULL OR p_vendor_id IS NULL OR p_rider_id IS NULL
-     OR p_action NOT IN ('add','remove')
+     OR p_action IS NULL OR p_action NOT IN ('add','remove')
      OR length(btrim(coalesce(p_reason,'')))<10 OR length(p_reason)>500 THEN
     RAISE EXCEPTION 'Vendor, rider, action and a reason of 10 to 500 characters are required.';
   END IF;
 
   SELECT upper(coalesce(role,'')) INTO v_actor_role
   FROM public.profiles WHERE id=p_actor_id;
-  IF v_actor_role NOT IN ('ADMIN','COO') THEN
+  IF v_actor_role IS NULL OR v_actor_role NOT IN ('ADMIN','COO') THEN
     RAISE EXCEPTION 'Only Admin or COO can manage vendor rider coverage.';
   END IF;
 
@@ -788,6 +789,26 @@ BEGIN
 
   INSERT INTO public.vendor_rider_coverage_audit(vendor_id,rider_id,action,actor_id,reason)
   VALUES(p_vendor_id,p_rider_id,'unassigned',p_actor_id,btrim(p_reason));
+
+  FOR v_pending_offer IN
+    UPDATE public.rider_dispatch_offers
+    SET offer_status='cancelled',responded_at=now(),updated_at=now()
+    WHERE vendor_id=p_vendor_id
+      AND rider_id=p_rider_id
+      AND offer_status='offered'
+    RETURNING id,order_id,rider_id,home_zone_id,vendor_zone_id
+  LOOP
+    INSERT INTO public.rider_dispatch_audit (
+      order_id,offer_id,rider_id,home_zone_id,vendor_zone_id,
+      action,actor_id,actor_role,reason
+    )
+    VALUES (
+      v_pending_offer.order_id,v_pending_offer.id,p_rider_id,
+      v_pending_offer.home_zone_id,v_pending_offer.vendor_zone_id,
+      'cancelled',p_actor_id,'admin','Vendor coverage removed by Admin: ' || btrim(p_reason)
+    );
+    PERFORM private.mkh_offer_nearest_vendor_rider(v_pending_offer.order_id);
+  END LOOP;
 
   RETURN jsonb_build_object('success',true,'removed',true,'coverage_id',v_coverage_id);
 END;
@@ -964,6 +985,7 @@ SET search_path = pg_catalog, public, private
 AS $function$
 DECLARE
   v_home_zone_id uuid;
+  v_order record;
 BEGIN
   IF p_rider_id IS NULL OR p_availability_status IS NULL OR p_availability_status NOT IN ('available','unavailable') THEN
     RAISE EXCEPTION 'A rider and valid availability state are required.';
