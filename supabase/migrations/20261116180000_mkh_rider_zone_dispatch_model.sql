@@ -45,6 +45,19 @@ CREATE TABLE IF NOT EXISTS public.rider_home_zone_assignment_audit (
 CREATE INDEX IF NOT EXISTS rider_home_zone_audit_rider_created_idx
   ON public.rider_home_zone_assignment_audit(rider_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.vendor_rider_coverage_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id uuid NOT NULL REFERENCES public.vendors(id) ON DELETE RESTRICT,
+  rider_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+  action text NOT NULL CHECK (action IN ('assigned','unassigned')),
+  actor_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  reason text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS vendor_rider_coverage_audit_vendor_created_idx
+  ON public.vendor_rider_coverage_audit(vendor_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS public.rider_dispatch_offers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id uuid NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
@@ -112,16 +125,19 @@ ALTER TABLE public.rider_home_zone_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rider_home_zone_assignment_audit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rider_dispatch_offers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rider_dispatch_audit ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.vendor_rider_coverage_audit ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE public.rider_home_zone_assignments FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.rider_home_zone_assignment_audit FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.rider_dispatch_offers FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.rider_dispatch_audit FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.vendor_rider_coverage_audit FROM PUBLIC, anon, authenticated;
 
 GRANT SELECT, INSERT, UPDATE ON TABLE public.rider_home_zone_assignments TO service_role;
 GRANT SELECT, INSERT ON TABLE public.rider_home_zone_assignment_audit TO service_role;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.rider_dispatch_offers TO service_role;
 GRANT SELECT, INSERT ON TABLE public.rider_dispatch_audit TO service_role;
+GRANT SELECT, INSERT ON TABLE public.vendor_rider_coverage_audit TO service_role;
 
 -- Preserve the existing vendor_riders relation as the four-rider vendor
 -- coverage group. It is intentionally not repurposed as a home-zone assignment.
@@ -399,7 +415,9 @@ DECLARE
   v_vendor_zone_id uuid;
   v_vendor_lat double precision;
   v_vendor_lng double precision;
-  v_candidate record;
+  v_candidate_rider_id uuid;
+  v_candidate_home_zone_id uuid;
+  v_candidate_distance_meters integer;
   v_offer_id uuid;
 BEGIN
   SELECT * INTO v_order
@@ -467,7 +485,7 @@ BEGIN
       + cos(radians(v_vendor_lat))*cos(radians(rl.latitude))
         * power(sin(radians(rl.longitude-v_vendor_lng)/2),2)
     ))))::integer AS distance_meters
-  INTO v_candidate
+  INTO v_candidate_rider_id,v_candidate_home_zone_id,v_candidate_distance_meters
   FROM public.vendor_riders vr
   JOIN public.profiles p ON p.id=vr.rider_id
   JOIN public.rider_home_zone_assignments h
@@ -501,7 +519,7 @@ BEGIN
   ORDER BY distance_meters ASC, rl.updated_at DESC, p.id
   LIMIT 1;
 
-  IF v_candidate.rider_id IS NULL THEN
+  IF v_candidate_rider_id IS NULL THEN
     RETURN NULL;
   END IF;
 
@@ -511,9 +529,9 @@ BEGIN
     offered_at,expires_at
   )
   VALUES (
-    p_order_id,v_order.vendor_id,v_candidate.rider_id,
-    v_candidate.home_zone_id,v_vendor_zone_id,
-    'vendor_coverage',v_candidate.distance_meters,'offered',
+    p_order_id,v_order.vendor_id,v_candidate_rider_id,
+    v_candidate_home_zone_id,v_vendor_zone_id,
+    'vendor_coverage',v_candidate_distance_meters,'offered',
     'Automatically offered to the nearest eligible rider in the vendor''s designated four-rider coverage group.',
     now(),now()+interval '30 seconds'
   )
@@ -524,11 +542,11 @@ BEGIN
     action,actor_role,reason,distance_meters
   )
   VALUES (
-    p_order_id,v_offer_id,v_candidate.rider_id,
-    v_candidate.home_zone_id,v_vendor_zone_id,
+    p_order_id,v_offer_id,v_candidate_rider_id,
+    v_candidate_home_zone_id,v_vendor_zone_id,
     'automatic_offer','system',
     'Nearest eligible vendor-coverage rider selected using fresh GPS and verified vendor coordinates.',
-    v_candidate.distance_meters
+    v_candidate_distance_meters
   );
 
   RETURN v_offer_id;
@@ -652,7 +670,7 @@ BEGIN
     RAISE EXCEPTION 'This rider is part of vendor coverage in another zone. Reconcile vendor coverage before changing the permanent home zone.';
   END IF;
 
-  IF FOUND THEN
+  IF v_existing.id IS NOT NULL THEN
     UPDATE public.rider_home_zone_assignments
     SET status='inactive',unassigned_at=now(),updated_at=now()
     WHERE id=v_existing.id;
@@ -750,14 +768,8 @@ BEGIN
     VALUES(p_vendor_id,p_rider_id,'active',now(),NULL)
     RETURNING id INTO v_coverage_id;
 
-    INSERT INTO public.rider_dispatch_audit (
-      order_id,offer_id,rider_id,home_zone_id,vendor_zone_id,
-      action,actor_id,actor_role,reason,details
-    )
-    SELECT gen_random_uuid(),NULL,p_rider_id,v_rider_zone_id,v_vendor_zone_id,
-      'automatic_offer',p_actor_id,'admin',btrim(p_reason),
-      jsonb_build_object('event','vendor_coverage_added','vendor_id',p_vendor_id,'coverage_id',v_coverage_id)
-    WHERE false;
+    INSERT INTO public.vendor_rider_coverage_audit(vendor_id,rider_id,action,actor_id,reason)
+    VALUES(p_vendor_id,p_rider_id,'assigned',p_actor_id,btrim(p_reason));
 
     RETURN jsonb_build_object('success',true,'coverage_id',v_coverage_id,'vendor_id',p_vendor_id,'rider_id',p_rider_id);
   END IF;
@@ -773,6 +785,9 @@ BEGIN
   IF v_coverage_id IS NULL THEN
     RAISE EXCEPTION 'No active vendor coverage assignment was found for this rider.';
   END IF;
+
+  INSERT INTO public.vendor_rider_coverage_audit(vendor_id,rider_id,action,actor_id,reason)
+  VALUES(p_vendor_id,p_rider_id,'unassigned',p_actor_id,btrim(p_reason));
 
   RETURN jsonb_build_object('success',true,'removed',true,'coverage_id',v_coverage_id);
 END;
@@ -822,11 +837,37 @@ BEGIN
     UPDATE public.rider_dispatch_offers
     SET offer_status='expired',responded_at=now(),updated_at=now()
     WHERE id=v_offer.id;
-    PERFORM private.mkh_offer_nearest_vendor_rider(v_offer.order_id);
-    RAISE EXCEPTION 'This pickup offer expired. Check for the next offer.';
+    INSERT INTO public.rider_dispatch_audit (
+      order_id,offer_id,rider_id,home_zone_id,vendor_zone_id,
+      action,actor_id,actor_role,reason
+    )
+    VALUES(v_offer.order_id,v_offer.id,p_rider_id,v_offer.home_zone_id,v_offer.vendor_zone_id,
+      'expired',p_rider_id,'system','Pickup offer expired before rider response.');
+    v_next_offer_id := private.mkh_offer_nearest_vendor_rider(v_offer.order_id);
+    RETURN jsonb_build_object('success',false,'message','This pickup offer expired. Check for the next offer.','next_offer_created',v_next_offer_id IS NOT NULL);
   END IF;
 
-  IF NOT private.mkh_rider_is_dispatch_eligible(p_rider_id) THEN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.profiles p
+    JOIN public.rider_home_zone_assignments h
+      ON h.rider_id=p.id AND h.status='active' AND h.unassigned_at IS NULL
+    JOIN public.rider_locations rl ON rl.rider_id=p.id
+    WHERE p.id=p_rider_id
+      AND lower(coalesce(p.role,''))='rider'
+      AND lower(coalesce(p.status,''))='active'
+      AND h.availability_status='available'
+      AND rl.updated_at>=now()-interval '60 seconds'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.orders o
+        WHERE o.rider_id=p.id AND o.status IN ('assigned','accepted','picked_up')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM public.rider_dispatch_offers x
+        WHERE x.rider_id=p.id AND x.offer_status IN ('offered','accepted')
+          AND x.id<>p_offer_id
+      )
+  ) THEN
     RAISE EXCEPTION 'You must be available, have fresh GPS within 60 seconds and have no other active delivery to accept a pickup.';
   END IF;
 
@@ -924,7 +965,7 @@ AS $function$
 DECLARE
   v_home_zone_id uuid;
 BEGIN
-  IF p_rider_id IS NULL OR p_availability_status NOT IN ('available','unavailable') THEN
+  IF p_rider_id IS NULL OR p_availability_status IS NULL OR p_availability_status NOT IN ('available','unavailable') THEN
     RAISE EXCEPTION 'A rider and valid availability state are required.';
   END IF;
 
@@ -959,20 +1000,21 @@ BEGIN
       RAISE EXCEPTION 'You have a pickup offer or active assignment. Respond to it before changing availability.';
     END IF;
   ELSE
-    UPDATE public.rider_dispatch_offers
-    SET offer_status='cancelled',responded_at=now(),updated_at=now()
-    WHERE rider_id=p_rider_id AND offer_status='offered';
+    FOR v_order IN
+      UPDATE public.rider_dispatch_offers
+      SET offer_status='cancelled',responded_at=now(),updated_at=now()
+      WHERE rider_id=p_rider_id AND offer_status='offered'
+      RETURNING order_id,id,home_zone_id,vendor_zone_id
+    LOOP
+      INSERT INTO public.rider_dispatch_audit (
+        order_id,offer_id,rider_id,home_zone_id,vendor_zone_id,
+        action,actor_id,actor_role,reason
+      )
+      VALUES(v_order.order_id,v_order.id,p_rider_id,v_order.home_zone_id,v_order.vendor_zone_id,
+        'cancelled',p_rider_id,'rider','Rider switched to unavailable.');
 
-    INSERT INTO public.rider_dispatch_audit (
-      order_id,offer_id,rider_id,home_zone_id,vendor_zone_id,
-      action,actor_id,actor_role,reason
-    )
-    SELECT order_id,id,p_rider_id,home_zone_id,vendor_zone_id,
-      'cancelled',p_rider_id,'rider','Rider switched to unavailable.'
-    FROM public.rider_dispatch_offers
-    WHERE rider_id=p_rider_id
-      AND offer_status='cancelled'
-      AND responded_at>=now()-interval '2 seconds';
+      PERFORM private.mkh_offer_nearest_vendor_rider(v_order.order_id);
+    END LOOP;
   END IF;
 
   UPDATE public.rider_home_zone_assignments
@@ -1007,11 +1049,25 @@ DECLARE
   v_rider_zone_id uuid;
   v_offer_id uuid;
   v_distance integer;
+  v_vendor_lat double precision;
+  v_vendor_lng double precision;
   v_trm_employee_id uuid;
+  v_trm_assignment_count integer;
 BEGIN
   IF p_actor_id IS NULL OR p_order_id IS NULL OR p_rider_id IS NULL
      OR length(btrim(coalesce(p_reason,'')))<10 OR length(p_reason)>500 THEN
     RAISE EXCEPTION 'Order, rider and a dispatch reason of 10 to 500 characters are required.';
+  END IF;
+
+  SELECT count(*)::integer
+  INTO v_trm_assignment_count
+  FROM public.mkh_trm_territory_assignments a
+  JOIN public.employees e ON e.id=a.employee_id AND e.profile_id=p_actor_id
+  WHERE a.status='active'
+    AND lower(coalesce(e.status,''))='active';
+
+  IF v_trm_assignment_count<>1 THEN
+    RAISE EXCEPTION 'Exactly one active TRM territory assignment is required for cross-zone dispatch.';
   END IF;
 
   SELECT e.id,a.territory_id
@@ -1020,12 +1076,7 @@ BEGIN
   JOIN public.employees e ON e.id=a.employee_id AND e.profile_id=p_actor_id
   WHERE a.status='active'
     AND lower(coalesce(e.status,''))='active'
-  ORDER BY a.assigned_at DESC
   LIMIT 1;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'An active TRM territory assignment is required for cross-zone dispatch.';
-  END IF;
 
   SELECT * INTO v_order
   FROM public.orders WHERE id=p_order_id
@@ -1099,25 +1150,36 @@ BEGIN
     RAISE EXCEPTION 'A designated vendor rider is available. Allow the automatic vendor-coverage offer to be accepted or declined first.';
   END IF;
 
+  SELECT latitude,longitude
+  INTO v_vendor_lat,v_vendor_lng
+  FROM public.vendor_business_locations
+  WHERE vendor_id=v_order.vendor_id
+    AND address_verification_status='verified'
+    AND locality_match_status='matched'
+    AND locality_id IS NOT NULL
+    AND google_place_id IS NOT NULL
+    AND latitude BETWEEN -90 AND 90
+    AND longitude BETWEEN -180 AND 180
+  ORDER BY verified_at DESC NULLS LAST
+  LIMIT 1;
+
+  IF v_vendor_lat IS NULL OR v_vendor_lng IS NULL THEN
+    RAISE EXCEPTION 'The vendor has no Admin-verified Google delivery origin for dispatch distance.';
+  END IF;
+
   SELECT round(6371008.8 * 2 * asin(sqrt(least(1,
-      power(sin(radians(rl.latitude-vbl.latitude)/2),2)
-      + cos(radians(vbl.latitude))*cos(radians(rl.latitude))
-        * power(sin(radians(rl.longitude-vbl.longitude)/2),2)
+      power(sin(radians(rl.latitude-v_vendor_lat)/2),2)
+      + cos(radians(v_vendor_lat))*cos(radians(rl.latitude))
+        * power(sin(radians(rl.longitude-v_vendor_lng)/2),2)
   ))))::integer
     INTO v_distance
   FROM public.rider_locations rl
-  CROSS JOIN LATERAL (
-    SELECT latitude,longitude
-    FROM public.vendor_business_locations
-    WHERE vendor_id=v_order.vendor_id
-      AND address_verification_status='verified'
-      AND locality_match_status='matched'
-      AND google_place_id IS NOT NULL
-    ORDER BY verified_at DESC NULLS LAST
-    LIMIT 1
-  ) vbl
   WHERE rl.rider_id=p_rider_id
     AND rl.updated_at>=now()-interval '60 seconds';
+
+  IF v_distance IS NULL THEN
+    RAISE EXCEPTION 'The selected rider has no fresh GPS location.';
+  END IF;
 
   INSERT INTO public.rider_dispatch_offers (
     order_id,vendor_id,rider_id,home_zone_id,vendor_zone_id,
