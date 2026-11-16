@@ -106,13 +106,10 @@ export default function RiderAssignmentPolicyPanel() {
   function availableRidersFor(vendor: any) {
     return riders.filter((rider: any) => {
       if (!rider.home_zone_id || rider.home_zone_id !== vendor.zone_id) return false;
-      const otherActiveLink = allActiveLinks.some(
-        (link: any) => link.rider_id === rider.id && link.vendor_id !== vendor.id
+      const existingActiveLink = allActiveLinks.some(
+        (link: any) => link.rider_id === rider.id
       );
-      const currentVerified = (vendor.coverage_riders ?? []).some(
-        (link: any) => link.rider_id === rider.id && link.verified
-      );
-      return !otherActiveLink && !currentVerified;
+      return !existingActiveLink;
     });
   }
 
@@ -161,7 +158,7 @@ export default function RiderAssignmentPolicyPanel() {
 
           {(snapshot.territories ?? []).map((territory: any) => (
             <p key={territory.id} className="text-sm text-slate-600">
-              **{territory.name}** · {territory.active_zone_count} / 6 active zones
+              <><strong>{territory.name}</strong> · {territory.active_zone_count} / 6 active zones</>
             </p>
           ))}
 
