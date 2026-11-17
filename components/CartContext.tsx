@@ -26,6 +26,7 @@ type CartContextType = {
   ) => boolean;
   decreaseItemQuantity: (id: string) => void;
   removeItem: (id: string) => void;
+  removeVendorItems: (vendorId: string) => void;
   clearCart: () => void;
   subtotal: number;
   totalItems: number;
@@ -44,7 +45,7 @@ export function CartProvider({
 
   function addItem(
     item: CartItem,
-    replaceExistingVendorCart = false
+    _replaceExistingVendorCart = false
   ): boolean {
     const quantity = Math.floor(Number(item.quantity));
     const price = Number(item.price);
@@ -59,27 +60,6 @@ export function CartProvider({
       quantity < 1
     ) {
       return false;
-    }
-
-    const differentVendor = items.some(
-      (existingItem) =>
-        existingItem.vendor_id !== item.vendor_id
-    );
-
-    if (differentVendor) {
-      if (!replaceExistingVendorCart) {
-        return false;
-      }
-
-      setItems([
-        {
-          ...item,
-          price,
-          quantity,
-        },
-      ]);
-
-      return true;
     }
 
     setItems((currentItems) => {
@@ -135,6 +115,10 @@ export function CartProvider({
     );
   }
 
+  function removeVendorItems(vendorId: string) {
+    setItems((currentItems) => currentItems.filter((item) => item.vendor_id !== vendorId));
+  }
+
   function clearCart() {
     setItems([]);
   }
@@ -156,6 +140,7 @@ export function CartProvider({
         addItem,
         decreaseItemQuantity,
         removeItem,
+        removeVendorItems,
         clearCart,
         subtotal,
         totalItems,
