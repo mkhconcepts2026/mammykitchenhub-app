@@ -112,14 +112,23 @@ export default function CustomerDashboard() {
 
                       </button>
 
-          <button
-            type="button"
-            onClick={() => router.push("/cart")}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
-          >
-            <ShoppingBag className="h-4 w-4" />
-            <span>My Cart</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => router.push("/orders")}
+              className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50"
+            >
+              <span>View Orders</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/cart")}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              <span>My Cart</span>
+            </button>
+          </div>
         </div>
       </header>
 
