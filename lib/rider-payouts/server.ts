@@ -55,10 +55,23 @@ export async function paystackRequest<T = any>(path: string, init?: RequestInit)
 }
 
 function encryptionKey() {
-  const encoded = process.env.MKH_RIDER_PAYOUT_ENCRYPTION_KEY;
-  if (!encoded) throw new Error("MKH_RIDER_PAYOUT_ENCRYPTION_KEY is not configured.");
+  // Prefer a dedicated rider key. The current MKH-Production environment
+  // already has the protected MKH_VENDOR_PAYOUT_ENCRYPTION_KEY configured;
+  // use it as a compatibility fallback so rider bank changes are not blocked
+  // while a dedicated rider key is provisioned. Do not rotate either key
+  // without re-encrypting every affected bank-account ciphertext.
+  const encoded =
+    process.env.MKH_RIDER_PAYOUT_ENCRYPTION_KEY ||
+    process.env.MKH_VENDOR_PAYOUT_ENCRYPTION_KEY;
+  if (!encoded) {
+    throw new Error(
+      "Configure MKH_RIDER_PAYOUT_ENCRYPTION_KEY or MKH_VENDOR_PAYOUT_ENCRYPTION_KEY."
+    );
+  }
   const key = Buffer.from(encoded, "base64");
-  if (key.length !== 32) throw new Error("MKH_RIDER_PAYOUT_ENCRYPTION_KEY must be Base64-encoded 32-byte key material.");
+  if (key.length !== 32) {
+    throw new Error("The MKH payout encryption key must be Base64-encoded 32-byte key material.");
+  }
   return key;
 }
 

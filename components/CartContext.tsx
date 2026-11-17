@@ -4,6 +4,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -23,7 +24,9 @@ type CartContextType = {
   addItem: (item: CartItem) => boolean;
   decreaseItemQuantity: (id: string) => void;
   removeItem: (id: string) => void;
+  removeVendorItems: (vendorId: string) => void;
   clearCart: () => void;
+  hydrated: boolean;
   subtotal: number;
   totalItems: number;
 };
@@ -38,6 +41,49 @@ export function CartProvider({
   children: ReactNode;
 }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Keep the multi-vendor basket across dashboard/cart/checkout navigation
+  // and browser refreshes. Only menu-item basket data is stored locally.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("mkh_customer_cart_v1");
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((item): item is CartItem =>
+            item &&
+            typeof item === "object" &&
+            typeof item.id === "string" &&
+            typeof item.vendor_id === "string" &&
+            typeof item.name === "string" &&
+            Number.isFinite(Number(item.price)) &&
+            Number(item.price) >= 0 &&
+            Number.isSafeInteger(Number(item.quantity)) &&
+            Number(item.quantity) > 0
+          ).map((item) => ({
+            ...item,
+            price: Number(item.price),
+            quantity: Number(item.quantity),
+          }));
+          setItems(valid);
+        }
+      }
+    } catch (error) {
+      console.warn("MKH cart restore failed; starting an empty cart.", error);
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem("mkh_customer_cart_v1", JSON.stringify(items));
+    } catch (error) {
+      console.warn("MKH cart persistence is unavailable in this browser.", error);
+    }
+  }, [items, hydrated]);
 
   function addItem(item: CartItem): boolean {
     const quantity = Math.floor(Number(item.quantity));
@@ -98,6 +144,12 @@ export function CartProvider({
     );
   }
 
+  function removeVendorItems(vendorId: string) {
+    setItems((currentItems) =>
+      currentItems.filter((item) => item.vendor_id !== vendorId)
+    );
+  }
+
   function clearCart() {
     setItems([]);
   }
@@ -119,7 +171,9 @@ export function CartProvider({
         addItem,
         decreaseItemQuantity,
         removeItem,
+        removeVendorItems,
         clearCart,
+        hydrated,
         subtotal,
         totalItems,
       }}
