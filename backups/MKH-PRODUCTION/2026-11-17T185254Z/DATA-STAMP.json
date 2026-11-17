@@ -1,0 +1,104 @@
+{
+  "checkpoint_id": "MKH-PROD-RIDER-TEST-RESET-2026-11-17T185254Z",
+  "captured_at_utc": "2026-11-17T18:52:54.943482Z",
+  "environment": "MKH-Production",
+  "supabase_project_ref": "ujjxnexhuuekrbrnnwcg",
+  "postgres_version": "17.6",
+  "application": {
+    "repository": "mkhconcepts2026/mammykitchenhub-app",
+    "branch": "main",
+    "commit": "bb9b8f94195418afa43b378a36a1ddad2b655630",
+    "official_production_url": "https://app.mammykitchenhub.com",
+    "production_deployment_id": "dpl_DgTmEnzkK2htro7L3NDwoPmoJDjK",
+    "deployment_state": "READY"
+  },
+  "migration_versions": [
+    "20261112211434",
+    "20261112230311",
+    "20261112230355",
+    "20261114221350",
+    "20261115184042",
+    "20261115210231",
+    "20261115223329",
+    "20261116130347",
+    "20261116130432",
+    "20261116175958",
+    "20261116181745",
+    "20261116182818",
+    "20261116235451"
+  ],
+  "aggregate_counts": {
+    "profiles": 36,
+    "active_riders": 2,
+    "active_vendors": 15,
+    "active_zones": 1,
+    "orders_total": 123,
+    "orders_active": 6,
+    "orders_delivered": 109,
+    "orders_cancelled": 8,
+    "order_events_for_test_cleanup": 8,
+    "customer_wallet_test_refund_transactions": 2,
+    "customer_wallet_test_refund_total_ngn": 37000,
+    "rider_earnings_rows": 20,
+    "financial_ledger_rows": 139,
+    "vendor_transactions_rows": 0,
+    "john_stones_active_home_zone_assignments": 1,
+    "john_stones_verified_active_vendor_coverages": 1,
+    "john_stones_active_orders": 0,
+    "john_stones_active_dispatch_offers": 0
+  },
+  "rider_test_reset": {
+    "closed_test_order_numbers": [
+      "MKH-000103",
+      "MKH-000104",
+      "MKH-000106",
+      "MKH-000107",
+      "MKH-000108",
+      "MKH-000115",
+      "MKH-000119",
+      "MKH-000121"
+    ],
+    "closure_status": "cancelled",
+    "wallet_paid_test_orders_marked_refunded": [
+      "MKH-000119",
+      "MKH-000121"
+    ],
+    "unpaid_cod_test_orders_left_unpaid": [
+      "MKH-000103",
+      "MKH-000104",
+      "MKH-000106",
+      "MKH-000107",
+      "MKH-000108",
+      "MKH-000115"
+    ],
+    "wallet_refund_total_ngn": 37000,
+    "new_payouts_created": 0,
+    "existing_financial_allocations_modified": false,
+    "john_stones": {
+      "permanent_home_zone": "Maryland Zone",
+      "vendor_coverage": "Gina Drinks",
+      "coverage_verified": true,
+      "initial_availability": "unavailable",
+      "fresh_gps_required_before_available": true
+    }
+  },
+  "schema_fingerprint": {
+    "public_table_count": 88,
+    "public_column_count": 977,
+    "public_columns_md5": "075b6cfcc56499773fbeeec9cf183c2e",
+    "public_function_count": 818,
+    "public_functions_md5": "5fce4b9f73adb5af627a4d6fe3ed8481"
+  },
+  "warnings": {
+    "full_database_backup_created": false,
+    "backup_project_modified": false,
+    "explanation": "MKH-PRODUCTION BACKUP refresh and full encrypted restore are deferred until formal go-live preparation, per MKH owner instruction. This GitHub branch is a source checkpoint and non-sensitive data stamp only."
+  },
+  "privacy": {
+    "customer_personal_data_included": false,
+    "bank_account_data_included": false,
+    "wallet_balances_included": false,
+    "api_secrets_included": false,
+    "encryption_keys_included": false
+  }
+}
