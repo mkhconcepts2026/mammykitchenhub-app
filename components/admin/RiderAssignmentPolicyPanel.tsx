@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 type Snapshot = {
   territories?: any[];
@@ -19,6 +20,8 @@ export default function RiderAssignmentPolicyPanel() {
   const [homeZoneReasons, setHomeZoneReasons] = useState<Record<string, string>>({});
   const [coverageChoices, setCoverageChoices] = useState<Record<string, string>>({});
   const [coverageReasons, setCoverageReasons] = useState<Record<string, string>>({});
+  const [selectedRiderId, setSelectedRiderId] = useState("");
+  const [selectedVendorId, setSelectedVendorId] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   const loadSnapshot = useCallback(async () => {
@@ -113,6 +116,10 @@ export default function RiderAssignmentPolicyPanel() {
     });
   }
 
+  const selectedRider = riders.find((rider: any) => rider.id === selectedRiderId) ?? riders[0] ?? null;
+  const selectedVendor = vendors.find((vendor: any) => vendor.id === selectedVendorId) ?? vendors[0] ?? null;
+  const selectedVendorCandidates = selectedVendor ? availableRidersFor(selectedVendor) : [];
+
   return (
     <section className="mb-8 space-y-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -171,152 +178,209 @@ export default function RiderAssignmentPolicyPanel() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
               <h4 className="text-lg font-bold text-slate-900">1. Permanent rider home-zone assignments</h4>
               <p className="text-sm text-slate-500">One active home zone per rider. A home-zone change is an Admin/Operations action and requires a reason.</p>
             </div>
-            {riders.map((rider: any) => (
-              <div key={rider.id} className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[1.1fr_1fr_1.4fr_auto] md:items-end">
-                <div>
-                  <p className="font-semibold text-slate-900">{rider.full_name || "Rider account"}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {rider.home_zone_name ? `Current home zone: ${rider.home_zone_name}` : "No permanent home zone"}
-                  </p>
-                </div>
-                <label className="text-xs font-semibold text-slate-600">
-                  Home zone
-                  <select
-                    value={homeZoneChoices[rider.id] ?? rider.home_zone_id ?? ""}
-                    onChange={(event) => setHomeZoneChoices((current) => ({ ...current, [rider.id]: event.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+
+            <div className="max-w-2xl">
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Find a rider
+                <SearchableSelect
+                  value={selectedRider?.id ?? ""}
+                  options={riders.map((rider: any) => ({
+                    value: rider.id,
+                    label: rider.full_name || "Rider account",
+                    description: [rider.email, rider.home_zone_name ? `Home zone: ${rider.home_zone_name}` : "No permanent home zone"].filter(Boolean).join(" · "),
+                  }))}
+                  onChange={setSelectedRiderId}
+                  placeholder="Search rider name, email or home zone…"
+                  ariaLabel="Search and select a rider for home-zone assignment"
+                  className="mt-1"
+                />
+              </label>
+              {selectedRider ? (
+                <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[1fr_1fr_1.4fr_auto] md:items-end">
+                  <div>
+                    <p className="font-semibold text-slate-900">{selectedRider.full_name || "Rider account"}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {selectedRider.home_zone_name ? `Current home zone: ${selectedRider.home_zone_name}` : "No permanent home zone"}
+                    </p>
+                  </div>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Home zone
+                    <SearchableSelect
+                      value={homeZoneChoices[selectedRider.id] ?? selectedRider.home_zone_id ?? ""}
+                      options={zones.map((zone: any) => ({
+                        value: zone.id,
+                        label: zone.name,
+                        description: zone.territory_name || zone.code || "Active MKH zone",
+                      }))}
+                      onChange={(value) => setHomeZoneChoices((current) => ({ ...current, [selectedRider.id]: value }))}
+                      placeholder="Search active zones…"
+                      ariaLabel={`Search active home zones for ${selectedRider.full_name || "rider"}`}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    Reason for assignment / change
+                    <input
+                      value={homeZoneReasons[selectedRider.id] ?? ""}
+                      onChange={(event) => setHomeZoneReasons((current) => ({ ...current, [selectedRider.id]: event.target.value }))}
+                      placeholder="At least 10 characters"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void assignHomeZone(selectedRider)}
+                    disabled={savingKey === `home-${selectedRider.id}`}
+                    className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
                   >
-                    <option value="">Select active zone</option>
-                    {zones.map((zone: any) => <option key={zone.id} value={zone.id}>{zone.name} · {zone.territory_name}</option>)}
-                  </select>
-                </label>
-                <label className="text-xs font-semibold text-slate-600">
-                  Reason for assignment / change
-                  <input
-                    value={homeZoneReasons[rider.id] ?? ""}
-                    onChange={(event) => setHomeZoneReasons((current) => ({ ...current, [rider.id]: event.target.value }))}
-                    placeholder="At least 10 characters"
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void assignHomeZone(rider)}
-                  disabled={savingKey === `home-${rider.id}`}
-                  className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-                >
-                  {savingKey === `home-${rider.id}` ? "Saving…" : "Save zone"}
-                </button>
-              </div>
-            ))}
+                    {savingKey === `home-${selectedRider.id}` ? "Saving…" : "Save zone"}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
+                  No active rider accounts are available for selection.
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
               <h4 className="text-lg font-bold text-slate-900">2. Vendor four-rider coverage groups</h4>
               <p className="text-sm text-slate-500">Only verified riders count toward the four-person group. Riders must have their permanent home zone in the same zone as the vendor.</p>
             </div>
-            <div className="grid gap-4 xl:grid-cols-2">
-              {vendors.map((vendor: any) => {
-                const verified = (vendor.coverage_riders ?? []).filter((link: any) => link.verified);
-                const legacy = (vendor.coverage_riders ?? []).filter((link: any) => !link.verified);
-                const candidates = availableRidersFor(vendor);
-                return (
-                  <article key={vendor.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h5 className="font-bold text-slate-900">{vendor.name}</h5>
-                        <p className="mt-1 text-xs text-slate-500">{vendor.zone_name} · {vendor.territory_name}</p>
-                      </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${verified.length === 4 ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
-                        {verified.length}/4 covered
-                      </span>
-                    </div>
-                    <div className="mt-4 grid grid-cols-4 gap-2">
-                      {[0, 1, 2, 3].map((slot) => (
-                        <div key={slot} className={`rounded-lg border p-2 text-center text-xs ${slot < verified.length ? "border-green-200 bg-green-50 text-green-800" : "border-dashed border-slate-300 bg-slate-50 text-slate-400"}`}>
-                          {slot < verified.length ? `Rider ${slot + 1}` : `Slot ${slot + 1}`}
-                        </div>
-                      ))}
-                    </div>
-                    {verified.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {verified.map((link: any) => (
-                          <div key={link.link_id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                            <span>{link.rider_name}</span>
-                            <button
-                              type="button"
-                              onClick={() => void updateCoverage(vendor, link.rider_id, "remove")}
-                              disabled={Boolean(savingKey)}
-                              className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {legacy.length > 0 && (
-                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-bold text-amber-900">Legacy link — not counted or dispatched</p>
-                        {legacy.map((link: any) => (
-                          <div key={link.link_id} className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-amber-900">
-                            <span>{link.rider_name}</span>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => void updateCoverage(vendor, link.rider_id, "verify")} disabled={Boolean(savingKey)} className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Verify link</button>
-                              <button type="button" onClick={() => void updateCoverage(vendor, link.rider_id, "remove")} disabled={Boolean(savingKey)} className="text-xs font-semibold underline disabled:opacity-50">Remove legacy link</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {verified.length < 4 && (
-                      <div className="mt-4 space-y-2">
-                        <label className="block text-xs font-semibold text-slate-600">
-                          Add a rider from {vendor.zone_name}
-                          <select
-                            value={coverageChoices[vendor.id] ?? ""}
-                            onChange={(event) => setCoverageChoices((current) => ({ ...current, [vendor.id]: event.target.value }))}
-                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-                          >
-                            <option value="">Select an eligible rider</option>
-                            {candidates.map((rider: any) => <option key={rider.id} value={rider.id}>{rider.full_name || rider.id}</option>)}
-                          </select>
-                        </label>
-                        <label className="block text-xs font-semibold text-slate-600">
-                          Reason / verification note
-                          <input
-                            value={coverageReasons[vendor.id] ?? ""}
-                            onChange={(event) => setCoverageReasons((current) => ({ ...current, [vendor.id]: event.target.value }))}
-                            placeholder="At least 10 characters"
-                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const riderId = coverageChoices[vendor.id];
-                            if (!riderId) return alert("Select a rider first.");
-                            void updateCoverage(vendor, riderId, "add");
-                          }}
-                          disabled={!candidates.length || Boolean(savingKey)}
-                          className="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Add to vendor coverage
-                        </button>
-                        {!candidates.length && <p className="text-xs text-slate-500">No unassigned active rider with a matching home zone is currently available for this vendor.</p>}
-                      </div>
-                    )}
-                    {verified.length === 4 && <p className="mt-3 text-sm font-semibold text-green-700">Full four-rider coverage recorded.</p>}
-                  </article>
-                );
-              })}
+
+            <div className="max-w-2xl">
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                Find a vendor
+                <SearchableSelect
+                  value={selectedVendor?.id ?? ""}
+                  options={vendors.map((vendor: any) => ({
+                    value: vendor.id,
+                    label: vendor.name || "Vendor",
+                    description: [vendor.zone_name, vendor.territory_name].filter(Boolean).join(" · "),
+                  }))}
+                  onChange={setSelectedVendorId}
+                  placeholder="Search vendor name, zone or territory…"
+                  ariaLabel="Search and select a vendor for rider coverage"
+                  className="mt-1"
+                />
+              </label>
             </div>
+
+            {selectedVendor ? (
+              <article className="max-w-3xl rounded-2xl border border-slate-200 p-4">
+                {(() => {
+                  const verified = (selectedVendor.coverage_riders ?? []).filter((link: any) => link.verified);
+                  const legacy = (selectedVendor.coverage_riders ?? []).filter((link: any) => !link.verified);
+                  return (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h5 className="font-bold text-slate-900">{selectedVendor.name}</h5>
+                          <p className="mt-1 text-xs text-slate-500">{selectedVendor.zone_name} · {selectedVendor.territory_name}</p>
+                        </div>
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${verified.length === 4 ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+                          {verified.length}/4 covered
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-4 gap-2">
+                        {[0, 1, 2, 3].map((slot) => (
+                          <div key={slot} className={`rounded-lg border p-2 text-center text-xs ${slot < verified.length ? "border-green-200 bg-green-50 text-green-800" : "border-dashed border-slate-300 bg-slate-50 text-slate-400"}`}>
+                            {slot < verified.length ? `Rider ${slot + 1}` : `Slot ${slot + 1}`}
+                          </div>
+                        ))}
+                      </div>
+
+                      {verified.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {verified.map((link: any) => (
+                            <div key={link.link_id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                              <span>{link.rider_name}</span>
+                              <button
+                                type="button"
+                                onClick={() => void updateCoverage(selectedVendor, link.rider_id, "remove")}
+                                disabled={Boolean(savingKey)}
+                                className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {legacy.length > 0 && (
+                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-xs font-bold text-amber-900">Legacy link — not counted or dispatched</p>
+                          {legacy.map((link: any) => (
+                            <div key={link.link_id} className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-amber-900">
+                              <span>{link.rider_name}</span>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => void updateCoverage(selectedVendor, link.rider_id, "verify")} disabled={Boolean(savingKey)} className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Verify link</button>
+                                <button type="button" onClick={() => void updateCoverage(selectedVendor, link.rider_id, "remove")} disabled={Boolean(savingKey)} className="text-xs font-semibold underline disabled:opacity-50">Remove legacy link</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {verified.length < 4 && (
+                        <div className="mt-4 space-y-2">
+                          <label className="block text-xs font-semibold text-slate-600">
+                            Add a rider from {selectedVendor.zone_name}
+                            <SearchableSelect
+                              value={coverageChoices[selectedVendor.id] ?? ""}
+                              options={selectedVendorCandidates.map((rider: any) => ({
+                                value: rider.id,
+                                label: rider.full_name || "Rider account",
+                                description: rider.email || rider.phone || "Eligible for this vendor's zone",
+                              }))}
+                              onChange={(value) => setCoverageChoices((current) => ({ ...current, [selectedVendor.id]: value }))}
+                              placeholder="Search eligible riders…"
+                              ariaLabel={`Search eligible riders for ${selectedVendor.name}`}
+                              className="mt-1"
+                            />
+                          </label>
+                          <label className="block text-xs font-semibold text-slate-600">
+                            Reason / verification note
+                            <input
+                              value={coverageReasons[selectedVendor.id] ?? ""}
+                              onChange={(event) => setCoverageReasons((current) => ({ ...current, [selectedVendor.id]: event.target.value }))}
+                              placeholder="At least 10 characters"
+                              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const riderId = coverageChoices[selectedVendor.id];
+                              if (!riderId) return alert("Select a rider first.");
+                              void updateCoverage(selectedVendor, riderId, "add");
+                            }}
+                            disabled={!selectedVendorCandidates.length || Boolean(savingKey)}
+                            className="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Add to vendor coverage
+                          </button>
+                          {!selectedVendorCandidates.length && <p className="text-xs text-slate-500">No unassigned active rider with a matching home zone is currently available for this vendor.</p>}
+                        </div>
+                      )}
+                      {verified.length === 4 && <p className="mt-3 text-sm font-semibold text-green-700">Full four-rider coverage recorded.</p>}
+                    </>
+                  );
+                })()}
+              </article>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-sm text-slate-500">
+                No active vendors are available for selection.
+              </div>
+            )}
           </div>
         </>
       ) : null}

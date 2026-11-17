@@ -1,6 +1,8 @@
 "use client";
 import DeliveryAllocationSettings from "@/components/admin/DeliveryAllocationSettings";
-import RiderAssignmentPolicyPanel from "@/components/admin/RiderAssignmentPolicyPanel";
+import RiderAssignmentPolicyPanel from "@/components/admin/RiderAssignmentPolicyPanel";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+
 import VendorCommissionSettings from "@/components/admin/VendorCommissionSettings";
 
 import { useEffect, useState } from "react";
@@ -559,6 +561,10 @@ const [loadingRiderDetails, setLoadingRiderDetails] =
 
 const [selectedRiderId, setSelectedRiderId] =
   useState("");
+const [riderSearch, setRiderSearch] = useState("");
+const [orderSearch, setOrderSearch] = useState("");
+const [orderVendorFilter, setOrderVendorFilter] = useState("");
+const [orderStatusFilter, setOrderStatusFilter] = useState("all");
 
 const [stats, setStats] = useState({
   applications: 0,
@@ -1233,6 +1239,43 @@ if (ordersData) {
 }
  
 };
+
+  const normalizedRiderSearch = riderSearch.trim().toLocaleLowerCase();
+  const filteredRiders = riders.filter((rider: any) =>
+    [rider.full_name, rider.email, rider.phone]
+      .some((value) => String(value ?? "").toLocaleLowerCase().includes(normalizedRiderSearch))
+  );
+
+  const normalizedOrderSearch = orderSearch.trim().replace(/^#/, "").toLocaleLowerCase();
+  const filteredOrders = orders.filter((order: any) => {
+    const matchesSearch = !normalizedOrderSearch || [
+      order.id,
+      String(order.id ?? "").slice(0, 8),
+      order.profiles?.full_name,
+      order.profiles?.email,
+      order.vendors?.name,
+    ].some((value) => String(value ?? "").toLocaleLowerCase().includes(normalizedOrderSearch));
+    const matchesVendor = !orderVendorFilter || order.vendor_id === orderVendorFilter;
+    const matchesStatus = orderStatusFilter === "all" || order.status === orderStatusFilter;
+    return matchesSearch && matchesVendor && matchesStatus;
+  });
+
+  const orderVendorOptions = [
+    { value: "", label: "All vendors" },
+    ...Array.from(
+      new Map(
+        orders
+          .filter((order: any) => order.vendor_id && order.vendors?.name)
+          .map((order: any) => [
+            order.vendor_id,
+            { value: order.vendor_id, label: order.vendors.name },
+          ] as const)
+      ).values()
+    ).sort((a: any, b: any) => a.label.localeCompare(b.label)),
+  ];
+  const orderStatusOptions = Array.from(
+    new Set(orders.map((order: any) => String(order.status ?? "")).filter(Boolean))
+  ).sort();
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
@@ -2476,6 +2519,23 @@ if (ordersData) {
 
     <RiderAssignmentPolicyPanel />
 
+    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <label className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="shrink-0 text-sm font-semibold text-slate-700">Find rider</span>
+        <input
+          type="search"
+          value={riderSearch}
+          onChange={(event) => setRiderSearch(event.target.value)}
+          placeholder="Search name, email or phone…"
+          aria-label="Search riders by name, email or phone"
+          className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+        />
+      </label>
+      <p className="text-xs font-semibold text-slate-500">
+        {filteredRiders.length} of {riders.length} riders
+      </p>
+    </div>
+
     <div
       className="
         bg-white
@@ -2521,8 +2581,15 @@ if (ordersData) {
         </thead>
 
         <tbody>
+          {filteredRiders.length === 0 && (
+            <tr>
+              <td colSpan={5} className="p-8 text-center text-sm text-slate-500">
+                No riders match this search.
+              </td>
+            </tr>
+          )}
 
-          {riders.map((rider) => (
+          {filteredRiders.map((rider) => (
 
             <tr
               key={rider.id}
@@ -2630,6 +2697,47 @@ if (ordersData) {
       Monitor marketplace orders
     </p>
 
+    <div className="mb-5 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_minmax(220px,280px)_180px]">
+      <label className="block min-w-0">
+        <span className="mb-1 block text-xs font-semibold text-slate-600">Search orders</span>
+        <input
+          type="search"
+          value={orderSearch}
+          onChange={(event) => setOrderSearch(event.target.value)}
+          placeholder="Order ID, customer, email or vendor…"
+          aria-label="Search orders by order ID, customer, email or vendor"
+          className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+        />
+      </label>
+      <label className="block min-w-0">
+        <span className="mb-1 block text-xs font-semibold text-slate-600">Filter by vendor</span>
+        <SearchableSelect
+          value={orderVendorFilter}
+          options={orderVendorOptions}
+          onChange={setOrderVendorFilter}
+          placeholder="Search vendors…"
+          ariaLabel="Search and filter orders by vendor"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold text-slate-600">Order status</span>
+        <select
+          value={orderStatusFilter}
+          onChange={(event) => setOrderStatusFilter(event.target.value)}
+          aria-label="Filter orders by status"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-orange-400"
+        >
+          <option value="all">All statuses</option>
+          {orderStatusOptions.map((status) => (
+            <option key={status} value={status}>{status.replaceAll("_", " ")}</option>
+          ))}
+        </select>
+      </label>
+      <p className="text-xs font-semibold text-slate-500 md:col-span-3">
+        Showing {filteredOrders.length} of {orders.length} orders.
+      </p>
+    </div>
+
     <div
       className="
         bg-white
@@ -2679,8 +2787,15 @@ if (ordersData) {
         </thead>
 
         <tbody>
+          {filteredOrders.length === 0 && (
+            <tr>
+              <td colSpan={6} className="p-8 text-center text-sm text-slate-500">
+                No orders match these search and filter settings.
+              </td>
+            </tr>
+          )}
 
-          {orders.map((order) => (
+          {filteredOrders.map((order) => (
 
             <tr
               key={order.id}
@@ -5133,40 +5248,18 @@ if (ordersData) {
         Assign Rider
       </h2>
 
-      <select
+      <SearchableSelect
         value={selectedRiderId}
-        onChange={(e) =>
-          setSelectedRiderId(
-            e.target.value
-          )
-        }
-        className="
-          w-full
-          border
-          p-3
-          rounded-xl
-          mb-6
-        "
-      >
-
-        <option value="">
-          Select Rider
-        </option>
-
-        {riders.map(
-          (rider: any) => (
-
-            <option
-              key={rider.id}
-              value={rider.id}
-            >
-              {rider.full_name}
-            </option>
-
-          )
-        )}
-
-      </select>
+        options={riders.map((rider: any) => ({
+          value: rider.id,
+          label: rider.full_name || "Rider account",
+          description: rider.email || rider.phone || "Active rider",
+        }))}
+        onChange={setSelectedRiderId}
+        placeholder="Search rider name, email or phone…"
+        ariaLabel="Search and select an order-assignment rider"
+        className="mb-6"
+      />
 
       <div className="flex gap-3">
 
