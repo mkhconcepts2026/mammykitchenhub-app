@@ -1,5 +1,6 @@
 "use client";
 import DeliveryAllocationSettings from "@/components/admin/DeliveryAllocationSettings";
+import RiderAssignmentPolicyPanel from "@/components/admin/RiderAssignmentPolicyPanel";
 
 import VendorCommissionSettings from "@/components/admin/VendorCommissionSettings";
 
@@ -2605,6 +2606,8 @@ if (ordersData) {
     >
       Manage delivery partners
     </p>
+
+    <RiderAssignmentPolicyPanel />
 
     <div
       className="
