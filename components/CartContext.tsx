@@ -20,10 +20,7 @@ export type CartItem = {
 
 type CartContextType = {
   items: CartItem[];
-  addItem: (
-    item: CartItem,
-    replaceExistingVendorCart?: boolean
-  ) => boolean;
+  addItem: (item: CartItem) => boolean;
   decreaseItemQuantity: (id: string) => void;
   removeItem: (id: string) => void;
   clearCart: () => void;
@@ -42,10 +39,7 @@ export function CartProvider({
 }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  function addItem(
-    item: CartItem,
-    replaceExistingVendorCart = false
-  ): boolean {
+  function addItem(item: CartItem): boolean {
     const quantity = Math.floor(Number(item.quantity));
     const price = Number(item.price);
 
@@ -61,27 +55,6 @@ export function CartProvider({
       return false;
     }
 
-    const differentVendor = items.some(
-      (existingItem) =>
-        existingItem.vendor_id !== item.vendor_id
-    );
-
-    if (differentVendor) {
-      if (!replaceExistingVendorCart) {
-        return false;
-      }
-
-      setItems([
-        {
-          ...item,
-          price,
-          quantity,
-        },
-      ]);
-
-      return true;
-    }
-
     setItems((currentItems) => {
       const existingItem = currentItems.find(
         (currentItem) =>
@@ -93,22 +66,12 @@ export function CartProvider({
         return currentItems.map((currentItem) =>
           currentItem.id === item.id &&
           currentItem.vendor_id === item.vendor_id
-            ? {
-                ...currentItem,
-                quantity: currentItem.quantity + quantity,
-              }
+            ? { ...currentItem, quantity: currentItem.quantity + quantity }
             : currentItem
         );
       }
 
-      return [
-        ...currentItems,
-        {
-          ...item,
-          price,
-          quantity,
-        },
-      ];
+      return [...currentItems, { ...item, price, quantity }];
     });
 
     return true;
