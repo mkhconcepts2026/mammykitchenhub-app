@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ChevronDown, Search } from "lucide-react";
 
 export type SearchableSelectOption = {
@@ -29,6 +29,7 @@ export default function SearchableSelect({
   disabled = false,
   className = "",
 }: SearchableSelectProps) {
+  const listboxId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,11 +79,10 @@ export default function SearchableSelect({
     setQuery("");
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (!open) setOpen(true);
-      else inputRef.current?.blur();
       return;
     }
 
@@ -107,7 +107,7 @@ export default function SearchableSelect({
           aria-label={ariaLabel}
           aria-autocomplete="list"
           aria-expanded={open}
-          aria-controls="mkh-searchable-select-options"
+          aria-controls={listboxId}
           autoComplete="off"
           disabled={disabled}
           value={open ? query : selectedOption?.label ?? ""}
@@ -131,7 +131,7 @@ export default function SearchableSelect({
 
       {open && !disabled && (
         <div
-          id="mkh-searchable-select-options"
+          id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
           className="absolute z-[80] mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
