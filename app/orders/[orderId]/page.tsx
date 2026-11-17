@@ -128,13 +128,14 @@ export default function CustomerOrderDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const inFlight = useRef(false);
+  const trackingRef = useRef<TrackingData | null>(null);
   const lastRouteAt = useRef(0);
   const lastRouteOrigin = useRef<Point | null>(null);
 
   const loadTracking = useCallback(async (forceRoute = false) => {
     if (!orderId || inFlight.current) return;
     inFlight.current = true;
-    setRefreshing(!loading);
+    setRefreshing(true);
 
     try {
       const response = await fetch(
@@ -152,7 +153,7 @@ export default function CustomerOrderDetailPage() {
       }
 
       let next = result as TrackingData;
-      const previous = tracking;
+      const previous = trackingRef.current;
 
       if (forceRoute) {
         lastRouteAt.current = Date.now();
@@ -213,6 +214,7 @@ export default function CustomerOrderDetailPage() {
         }
       }
 
+      trackingRef.current = next;
       setTracking(next);
       setError("");
     } catch (loadError) {
@@ -226,7 +228,7 @@ export default function CustomerOrderDetailPage() {
       setRefreshing(false);
       inFlight.current = false;
     }
-  }, [orderId, loading, tracking]);
+  }, [orderId]);
 
   useEffect(() => {
     void loadTracking(true);
