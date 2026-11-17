@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import RiderWalletSummary from "@/components/rider/RiderWalletSummary";
+import RiderPayoutCentre from "@/components/rider/RiderPayoutCentre";
 
 import {
   Bike,
@@ -1588,7 +1590,9 @@ async function verifyOtp(orderId: string) {
             </section>
           </div>
         )}
-        </main>
+                  <RiderWalletSummary />
+          <RiderPayoutCentre />
+</main>
       </div>
     </div>
   );
