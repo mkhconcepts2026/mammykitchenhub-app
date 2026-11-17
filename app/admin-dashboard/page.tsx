@@ -1269,7 +1269,7 @@ if (ordersData) {
           .map((order: any) => [
             order.vendor_id,
             { value: order.vendor_id, label: order.vendors.name },
-          ])
+          ] as const)
       ).values()
     ).sort((a: any, b: any) => a.label.localeCompare(b.label)),
   ];
@@ -2581,6 +2581,13 @@ if (ordersData) {
         </thead>
 
         <tbody>
+          {filteredRiders.length === 0 && (
+            <tr>
+              <td colSpan={5} className="p-8 text-center text-sm text-slate-500">
+                No riders match this search.
+              </td>
+            </tr>
+          )}
 
           {filteredRiders.map((rider) => (
 
@@ -2780,6 +2787,13 @@ if (ordersData) {
         </thead>
 
         <tbody>
+          {filteredOrders.length === 0 && (
+            <tr>
+              <td colSpan={6} className="p-8 text-center text-sm text-slate-500">
+                No orders match these search and filter settings.
+              </td>
+            </tr>
+          )}
 
           {filteredOrders.map((order) => (
 
