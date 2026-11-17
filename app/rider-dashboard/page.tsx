@@ -243,18 +243,6 @@ async function loadDashboard() {
       console.error("ACTIVE ORDERS ERROR:", activeError);
     }
 
-    setAvailableOrders(
-  (queue || []).map((order) => ({
-    ...order,
-    vendors: Array.isArray(order.vendors)
-      ? order.vendors[0] ?? undefined
-      : order.vendors,
-    profiles: Array.isArray(order.profiles)
-      ? order.profiles[0] ?? null
-      : order.profiles,
-  }))
-);
-
 setMyOrders(
   (active || []).map((order) => ({
     ...order,
