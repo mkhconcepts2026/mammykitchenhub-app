@@ -1,0 +1,82 @@
+{
+  "document_id": "MKH-PROD-DATA-STAMP-2026-11-17T104355Z",
+  "captured_at_utc": "2026-11-17T10:43:55.191997Z",
+  "environment": "MKH-Production",
+  "supabase_project_ref": "ujjxnexhuuekrbrnnwcg",
+  "database_version": "PostgreSQL 17.6",
+  "application": {
+    "repository": "mkhconcepts2026/mammykitchenhub-app",
+    "branch": "main",
+    "commit": "d12457a977d8577383087ebe209c83b2444c251d",
+    "production_deployment_id": "dpl_AqfossLhWm2iCfUGmKxixM2NdJZL",
+    "production_url": "https://app.mammykitchenhub.com",
+    "deployment_state": "READY"
+  },
+  "data_counts": {
+    "profiles": 36,
+    "active_riders": 2,
+    "active_customers": 8,
+    "active_vendors": 15,
+    "active_zones": 1,
+    "orders": 122,
+    "orders_by_status": {
+      "pending": 7,
+      "accepted": 3,
+      "delivered": 107,
+      "picked_up": 5
+    },
+    "orders_with_checkout_group": 2,
+    "customer_checkout_groups": 1,
+    "delivery_quotes": 37,
+    "vendor_rider_links": 1,
+    "verified_active_vendor_rider_links": 0,
+    "rider_home_zone_assignments": 1,
+    "rider_dispatch_offers": 0,
+    "rider_dispatch_audit": 0,
+    "rider_bank_accounts": 2,
+    "rider_payout_requests": 2,
+    "payout_requests": 6,
+    "rider_wallets": 2,
+    "rider_earnings": 18,
+    "vendor_wallets": 15,
+    "vendor_transactions": 0,
+    "customer_wallets": 2,
+    "customer_wallet_transactions": 21,
+    "order_events": 309,
+    "financial_ledger": 131
+  },
+  "schema_stamp": {
+    "public_table_count": 88,
+    "public_column_count": 977,
+    "public_schema_column_fingerprint_md5": "075b6cfcc56499773fbeeec9cf183c2e",
+    "public_function_count": 818,
+    "public_function_fingerprint_md5": "5fce4b9f73adb5af627a4dfe3ed8481"
+  },
+  "migration_versions": [
+    "20261112211434",
+    "20261112230311",
+    "20261112230355",
+    "20261114221350",
+    "20261115184042",
+    "20261115210231",
+    "20261115223329",
+    "20261116130347",
+    "20261116130432",
+    "20261116175958",
+    "20261116181745",
+    "20261116182818",
+    "20261116235451"
+  ],
+  "security_notes": {
+    "rls_disabled_public_tables": [
+      "public.spatial_ref_sys"
+    ],
+    "action": "Open security finding. Do not enable RLS until access requirements and required policies are reviewed. Supabase advisor marked this critical.",
+    "no_sensitive_values_included": true
+  },
+  "interpretation": [
+    "Counts and fingerprints are a point-in-time operational stamp, not a full database export.",
+    "The stamp contains aggregate counts and schema metadata only; it excludes customer PII, account numbers, wallet amounts, recipient codes, API keys and encryption secrets.",
+    "A full encrypted database backup and a tested restore to MKH-PRODUCTION BACKUP remain required before claiming disaster-recovery backup completion."
+  ]
+}
