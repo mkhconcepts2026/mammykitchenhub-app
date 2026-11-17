@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import RiderWalletSummary from "@/components/rider/RiderWalletSummary";
+import RiderPayoutCentre from "@/components/rider/RiderPayoutCentre";
 
 import {
   Bike,
@@ -47,6 +49,10 @@ type Order = {
   dispatch_distance_meters?: number | null;
   dispatch_expires_at?: string;
 
+  // Payment fields used by the COD completion flow
+  payment_method?: string | null;
+  payment_status?: string | null;
+
   vendors?: {
     name: string;
     location: string;
@@ -68,6 +74,9 @@ type Order = {
 
 export default function RiderDashboardPage() {
   const [riderFirstName, setRiderFirstName] = useState("Rider");
+  const [gpsStatus, setGpsStatus] = useState<"checking" | "live" | "permission_denied" | "unavailable" | "error">("checking");
+  const [gpsMessage, setGpsMessage] = useState("Checking device location…");
+  const [gpsUpdatedAt, setGpsUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,6 +174,7 @@ async function loadDashboard() {
       delivery_address,
       customer_notes,
       payment_status,
+      payment_method,
       otp_verified,
       picked_up_at,
       delivered_at,
@@ -269,6 +279,7 @@ setMyOrders(
         delivery_address,
         customer_notes,
         payment_status,
+        payment_method,
         otp_verified,
         picked_up_at,
         delivered_at,
@@ -309,84 +320,82 @@ setMyOrders(
   const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function checkCurrentLocation() {
-    if (isLoggingOut.current || gpsRequestInProgress.current || !navigator.geolocation) {
+    if (isLoggingOut.current || gpsRequestInProgress.current) return;
+    if (!navigator.geolocation) {
+      setGpsStatus("unavailable");
+      setGpsMessage("This browser does not provide device location. Use a supported browser with location services enabled.");
+      return;
+    }
+    if (!navigator.onLine) {
+      setGpsStatus("error");
+      setGpsMessage("Your device is offline. GPS will be sent when the internet connection returns.");
       return;
     }
 
     gpsRequestInProgress.current = true;
-
+    setGpsStatus("checking");
+    setGpsMessage("Getting a fresh location from your device…");
     try {
-      const position = await new Promise<GeolocationPosition>(
-        (resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(
-            resolve,
-            reject,
-            {
-              enableHighAccuracy: true,
-              maximumAge: 10000,
-              timeout: 10000,
-            }
-          );
-        }
-      );
-
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (isLoggingOut.current || authError || !user) {
-        return;
-      }
-
-      const {
-        data: profile,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (isLoggingOut.current || profileError || profile?.role !== "rider") {
-        return;
-      }
-
-      const {
-        latitude,
-        longitude,
-        accuracy,
-        heading,
-        speed,
-      } = position.coords;
-
-      const { error } = await supabase
-        .from("rider_locations")
-        .upsert(
-          {
-            rider_id: user.id,
-            latitude,
-            longitude,
-            accuracy: accuracy ?? 0,
-            heading: heading ?? 0,
-            speed: speed ?? 0,
-            location: `POINT(${longitude} ${latitude})`,
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "rider_id",
-          }
-        );
-
-      if (error) {
-        console.error("LOCATION ERROR:", {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 15000,
         });
+      });
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (isLoggingOut.current) return;
+      if (authError || !user) {
+        setGpsStatus("error");
+        setGpsMessage("Your rider session could not be verified. Sign in again to send GPS updates.");
+        return;
       }
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles").select("role").eq("id", user.id).single();
+      if (isLoggingOut.current) return;
+      if (profileError || profile?.role !== "rider") {
+        setGpsStatus("error");
+        setGpsMessage("This session is not recognised as a rider account. GPS was not saved.");
+        return;
+      }
+      const { latitude, longitude, accuracy, heading, speed } = position.coords;
+      const savedAt = new Date().toISOString();
+      const { error } = await supabase.from("rider_locations").upsert(
+        {
+          rider_id: user.id, latitude, longitude, accuracy: accuracy ?? 0,
+          heading: heading ?? 0, speed: speed ?? 0,
+          location: `POINT(${longitude} ${latitude})`,
+          updated_at: savedAt,
+        },
+        { onConflict: "rider_id" }
+      );
+      if (error) {
+        console.error("LOCATION SAVE ERROR:", {
+          code: error.code, message: error.message, details: error.details, hint: error.hint,
+        });
+        setGpsStatus("error");
+        setGpsMessage("Your device location was received, but MKH could not save it. Check your connection and try again.");
+        return;
+      }
+      setGpsStatus("live");
+      setGpsUpdatedAt(savedAt);
+      setGpsMessage("Your current location was saved to MKH.");
+      setDispatchGpsFresh(true);
     } catch (error) {
+      const gpsError = error as GeolocationPositionError;
+      if (gpsError?.code === 1) {
+        setGpsStatus("permission_denied");
+        setGpsMessage("Location permission is blocked. Allow location access for this site in your browser or phone settings.");
+      } else if (gpsError?.code === 2) {
+        setGpsStatus("unavailable");
+        setGpsMessage("Your device could not determine its location. Turn on phone location services and try again.");
+      } else if (gpsError?.code === 3) {
+        setGpsStatus("error");
+        setGpsMessage("Getting your location timed out. Keep the Rider Dashboard open and try again.");
+      } else {
+        setGpsStatus("error");
+        setGpsMessage(error instanceof Error ? error.message : "GPS update failed. Try again.");
+      }
       console.error("GPS UPDATE ERROR:", error);
     } finally {
       gpsRequestInProgress.current = false;
@@ -394,47 +403,40 @@ setMyOrders(
   }
 
   useEffect(() => {
+    isLoggingOut.current = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDashboard();
-    checkCurrentLocation();
-
-    const interval = setInterval(() => {
-      checkCurrentLocation();
-    }, 15000);
+    void checkCurrentLocation();
+    const interval = setInterval(() => { void checkCurrentLocation(); }, 15000);
     gpsIntervalRef.current = interval;
-
-    const channel = supabase
-      .channel("rider-live")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-        },
-        () => {
-          loadDashboard();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "order_events",
-          filter: "event_type=eq.rider_dispatch_offer",
-        },
-        () => {
-          loadDashboard();
-        }
-      )
-      .subscribe();
-
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && !isLoggingOut.current) void checkCurrentLocation();
+    };
+    const handleOnline = () => { if (!isLoggingOut.current) void checkCurrentLocation(); };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", handleOnline);
+    const channel = supabase.channel("rider-live").on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "orders" },
+      () => { void loadDashboard(); }
+    ).on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "order_events",
+        filter: "event_type=eq.rider_dispatch_offer",
+      },
+      () => {
+        loadDashboard();
+      }
+    ).subscribe();
     return () => {
       isLoggingOut.current = true;
       clearInterval(interval);
       gpsIntervalRef.current = null;
-
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", handleOnline);
       supabase.removeChannel(channel);
     };
   }, []);
@@ -510,14 +512,14 @@ async function updateDispatchAvailability() {
   }
 }
 
-
   /* ----------------------------------
      UPDATE RIDER DELIVERY STATUS
   ----------------------------------- */
 
   async function updateStatus(
     orderId: string,
-    status: string
+    status: string,
+    paymentMethod?: string
   ) {
     try {
       const {
@@ -583,10 +585,35 @@ async function updateDispatchAvailability() {
 
       
       if (status === "delivered") {
-        const { data, error } = await supabase.rpc(
-          "complete_my_delivery",
-          { p_order_id: orderId }
-        );
+        let data: any = null;
+        let error: any = null;
+
+        if (paymentMethod === "cash_on_delivery") {
+          const cashCollected = window.confirm(
+            "Confirm that you have physically collected the full COD payment from the customer. Continue only after the cash has been received."
+          );
+
+          if (!cashCollected) return;
+
+          const result = await supabase.rpc(
+            "mkh_complete_cod_delivery",
+            {
+              p_order_id: orderId,
+              p_cash_collected: true,
+            }
+          );
+
+          data = result.data;
+          error = result.error;
+        } else {
+          const result = await supabase.rpc(
+            "complete_my_delivery",
+            { p_order_id: orderId }
+          );
+
+          data = result.data;
+          error = result.error;
+        }
 
         if (error) {
           console.error("DELIVERY COMPLETION ERROR:", error);
@@ -798,6 +825,16 @@ async function verifyOtp(orderId: string) {
           <div className="pt-5">
             <h2 className="text-xl font-bold tracking-tight">Good evening, {riderFirstName}</h2>
             <p className="mt-2 text-sm text-slate-200">Manage your deliveries, track earnings and complete orders.</p>
+            <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${gpsStatus === "live" ? "bg-emerald-500/15 text-emerald-100" : gpsStatus === "checking" ? "bg-amber-500/15 text-amber-100" : "bg-red-500/15 text-red-100"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold">
+                  {gpsStatus === "live" ? "GPS Live" : gpsStatus === "checking" ? "Checking GPS" : gpsStatus === "permission_denied" ? "Location permission needed" : gpsStatus === "unavailable" ? "GPS unavailable" : "GPS update problem"}
+                </span>
+                <button type="button" onClick={() => void checkCurrentLocation()} disabled={gpsStatus === "checking"} className="rounded-md border border-current/40 px-2 py-1 font-semibold disabled:opacity-50">Retry GPS</button>
+              </div>
+              <p className="mt-1 leading-5">{gpsMessage}</p>
+              {gpsUpdatedAt && <p className="mt-1 opacity-80">Last saved: {new Date(gpsUpdatedAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>}
+            </div>
           </div>
 
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -812,6 +849,10 @@ async function verifyOtp(orderId: string) {
           </div>
         </header>
 
+        <RiderWalletSummary />
+
+        <RiderPayoutCentre />
+
         {/* Delivery workspace */}
         <main className="px-3 pb-6 pt-4 sm:px-4">
           <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -820,21 +861,38 @@ async function verifyOtp(orderId: string) {
               <p className="mt-1 text-xs text-slate-500">
                 Home zone: {dispatchHomeZone || "Not assigned"}
               </p>
-              <span className={`mt-2 inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
-                dispatchAvailability === "available" && dispatchGpsFresh
-                  ? "bg-green-100 text-green-700"
-                  : dispatchAvailability === "available" && !dispatchGpsFresh
-                    ? "bg-amber-100 text-amber-800"
-                    : "bg-slate-100 text-slate-600"
-              }`}>
-                {dispatchAvailability === "unassigned"
-                  ? "Home zone not assigned"
-                  : dispatchAvailability === "available" && dispatchGpsFresh
-                    ? "Online · Available"
-                    : dispatchAvailability === "available"
-                      ? "GPS stale · Not dispatch eligible"
-                      : "Unavailable"}
-              </span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  dispatchAvailability === "available" && dispatchGpsFresh
+                    ? "bg-green-100 text-green-700"
+                    : dispatchAvailability === "available" && !dispatchGpsFresh
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-100 text-slate-600"
+                }`}>
+                  {dispatchAvailability === "unassigned"
+                    ? "Home zone not assigned"
+                    : dispatchAvailability === "available" && dispatchGpsFresh
+                      ? "Online · Available"
+                      : dispatchAvailability === "available"
+                        ? "GPS stale · Not dispatch eligible"
+                        : "Unavailable"}
+                </span>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  gpsStatus === "live" ? "bg-green-100 text-green-700" : gpsStatus === "checking" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                }`}>
+                  {gpsStatus === "live" ? "GPS Live" : gpsStatus === "checking" ? "Checking GPS" : "GPS Offline"}
+                </span>
+              </div>
+              {dispatchError && (
+                <p className="mt-2 text-xs text-amber-700">
+                  Dispatch offers could not be loaded: {dispatchError}
+                </p>
+              )}
+              {!dispatchHomeZone && (
+                <p className="mt-2 text-xs text-amber-700">
+                  Admin/Operations must assign your permanent home zone before you can receive pickup offers.
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -845,17 +903,6 @@ async function verifyOtp(orderId: string) {
               {savingDispatch ? "Updating…" : dispatchAvailability === "available" ? "Go unavailable" : "Go available"}
             </button>
           </div>
-
-          {dispatchError && (
-            <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Dispatch offers could not be loaded: {dispatchError}
-            </p>
-          )}
-          {!dispatchHomeZone && (
-            <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Your account needs a permanent home-zone assignment from MKH Admin/Operations before you can receive pickup offers.
-            </p>
-          )}
 
           <div className="mb-3 flex gap-2">
             <button onClick={() => setCurrentPage("active")} className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${currentPage === "active" ? "bg-orange-500 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
@@ -1564,10 +1611,7 @@ async function verifyOtp(orderId: string) {
                         order.otp_verified && (
                           <button
                             onClick={() =>
-                              updateStatus(
-                                order.id,
-                                "delivered"
-                              )
+                              updateStatus(order.id, "delivered", order.payment_method ?? undefined)
                             }
                             className="
                               bg-green-500
