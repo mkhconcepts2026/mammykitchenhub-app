@@ -71,7 +71,7 @@ const STAGES = [
   { key: "ready_for_pickup", label: "Ready for pickup", icon: PackageCheck },
   { key: "picked_up", label: "Picked up", icon: Truck },
   { key: "delivered", label: "Delivered", icon: CheckCircle2 },
-];
+] as const;
 
 const STATUS_STAGE: Record<string, number> = {
   pending: 0,
