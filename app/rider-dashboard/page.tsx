@@ -45,6 +45,9 @@ type Order = {
   customer_notes?: string | null;
   delivery_otp?: string | null;
   otp_verified?: boolean;
+  dispatch_offer_id?: string;
+  dispatch_distance_meters?: number | null;
+  dispatch_expires_at?: string;
 
   // Payment fields used by the COD completion flow
   payment_method?: string | null;
@@ -124,6 +127,11 @@ export default function RiderDashboardPage() {
 
   const [availableOrders, setAvailableOrders] =
     useState<Order[]>([]);
+  const [dispatchHomeZone, setDispatchHomeZone] = useState<string | null>(null);
+  const [dispatchAvailability, setDispatchAvailability] = useState("unassigned");
+  const [dispatchGpsFresh, setDispatchGpsFresh] = useState(false);
+  const [dispatchError, setDispatchError] = useState("");
+  const [savingDispatch, setSavingDispatch] = useState(false);
 
   const [myOrders, setMyOrders] =
     useState<Order[]>([]);
@@ -187,22 +195,34 @@ async function loadDashboard() {
       )
     `;
 
-    /* AVAILABLE PICKUPS */
+    /* DISPATCH OFFERS
+       Only offers reserved for this authenticated rider are returned.
+       The previous global unassigned-order queue is intentionally removed.
+    */
+    const { data: dispatchState, error: dispatchStateError } = await supabase.rpc(
+      "mkh_rider_get_my_dispatch_state"
+    );
 
-    const {
-      data: queue,
-      error: queueError,
-    } = await supabase
-      .from("orders")
-      .select(orderFields)
-      .eq("status", "ready_for_pickup")
-      .is("rider_id", null)
-      .order("created_at", {
-        ascending: false,
-      });
-
-    if (queueError) {
-      console.error("AVAILABLE ORDERS ERROR:", queueError);
+    if (dispatchStateError) {
+      console.error("RIDER DISPATCH STATE ERROR:", dispatchStateError);
+      setAvailableOrders([]);
+      setDispatchError(dispatchStateError.message || "Dispatch offers are temporarily unavailable.");
+      setDispatchHomeZone(null);
+      setDispatchAvailability("unassigned");
+      setDispatchGpsFresh(false);
+    } else {
+      setDispatchError("");
+      setDispatchHomeZone(dispatchState?.home_zone_name ?? null);
+      setDispatchAvailability(dispatchState?.availability_status ?? "unassigned");
+      setDispatchGpsFresh(Boolean(dispatchState?.gps_fresh));
+      setAvailableOrders(
+        (dispatchState?.offers ?? []).map((offer: any) => ({
+          ...offer.order,
+          dispatch_offer_id: offer.id,
+          dispatch_distance_meters: offer.distance_meters ?? null,
+          dispatch_expires_at: offer.expires_at,
+        }))
+      );
     }
 
     /* RIDER ACTIVE JOBS */
@@ -372,6 +392,7 @@ setMyOrders(
       setGpsStatus("live");
       setGpsUpdatedAt(savedAt);
       setGpsMessage("Your current location was saved to MKH.");
+      setDispatchGpsFresh(true);
     } catch (error) {
       const gpsError = error as GeolocationPositionError;
       if (gpsError?.code === 1) {
@@ -410,6 +431,17 @@ setMyOrders(
       "postgres_changes",
       { event: "*", schema: "public", table: "orders" },
       () => { void loadDashboard(); }
+    ).on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "order_events",
+        filter: "event_type=eq.rider_dispatch_offer",
+      },
+      () => {
+        loadDashboard();
+      }
     ).subscribe();
     return () => {
       isLoggingOut.current = true;
@@ -426,32 +458,71 @@ setMyOrders(
 ----------------------------------- */
 
 
-async function acceptDelivery(orderId: string) {
+async function respondToDispatchOffer(offerId: string, action: "accept" | "decline") {
+  if (!offerId) return;
+
+  setSavingDispatch(true);
   try {
     const { data, error } = await supabase.rpc(
-      "accept_delivery_order",
-      { p_order_id: orderId }
+      "mkh_rider_respond_to_my_dispatch_offer",
+      { p_offer_id: offerId, p_action: action }
     );
 
     if (error) {
-      console.error("ACCEPT DELIVERY ERROR:", error);
-      alert(error.message);
+      console.error("DISPATCH OFFER RESPONSE ERROR:", error);
+      alert(error.message || "Unable to respond to this pickup offer.");
       return;
     }
 
     if (!data?.success) {
-      alert("Unable to accept this delivery.");
+      alert(data?.message || "The pickup offer could not be updated.");
       return;
     }
 
     await loadDashboard();
-    alert("Delivery accepted successfully.");
-  } catch (err) {
-    console.error("ACCEPT DELIVERY ERROR:", err);
-    alert("Unable to accept this delivery.");
+    alert(action === "accept"
+      ? "Pickup accepted. The delivery is now in your active orders."
+      : "Pickup declined. The next eligible designated rider will be considered.");
+  } catch (error) {
+    console.error("DISPATCH OFFER RESPONSE ERROR:", error);
+    alert("Unable to respond to this pickup offer.");
+  } finally {
+    setSavingDispatch(false);
   }
 }
 
+async function updateDispatchAvailability() {
+  if (!dispatchHomeZone) {
+    alert("A permanent home zone must be assigned by MKH Admin/Operations before you can become dispatch-available.");
+    return;
+  }
+
+  const nextStatus = dispatchAvailability === "available" ? "unavailable" : "available";
+  setSavingDispatch(true);
+  try {
+    const { data, error } = await supabase.rpc(
+      "mkh_rider_set_my_dispatch_availability",
+      { p_availability_status: nextStatus }
+    );
+
+    if (error) {
+      alert(error.message || "Unable to update rider availability.");
+      return;
+    }
+
+    if (!data?.success) {
+      alert(data?.message || "Availability could not be updated. Check that GPS is fresh and no active order or offer is assigned.");
+      return;
+    }
+
+    await loadDashboard();
+  } catch (error) {
+    console.error("RIDER AVAILABILITY ERROR:", error);
+    alert("Unable to update rider availability.");
+  } finally {
+    setSavingDispatch(false);
+  }
+}
 
   /* ----------------------------------
      UPDATE RIDER DELIVERY STATUS
@@ -796,9 +867,53 @@ async function verifyOtp(orderId: string) {
 
         {/* Delivery workspace */}
         <main className="px-3 pb-6 pt-4 sm:px-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">Delivery workspace</h2>
-            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${gpsStatus === "live" ? "bg-green-100 text-green-700" : gpsStatus === "checking" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>{gpsStatus === "live" ? "GPS Live" : gpsStatus === "checking" ? "Checking GPS" : "GPS Offline"}</span>
+          <div className="mb-3 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold">Delivery workspace</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Home zone: {dispatchHomeZone || "Not assigned"}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  dispatchAvailability === "available" && dispatchGpsFresh
+                    ? "bg-green-100 text-green-700"
+                    : dispatchAvailability === "available" && !dispatchGpsFresh
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-100 text-slate-600"
+                }`}>
+                  {dispatchAvailability === "unassigned"
+                    ? "Home zone not assigned"
+                    : dispatchAvailability === "available" && dispatchGpsFresh
+                      ? "Online · Available"
+                      : dispatchAvailability === "available"
+                        ? "GPS stale · Not dispatch eligible"
+                        : "Unavailable"}
+                </span>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  gpsStatus === "live" ? "bg-green-100 text-green-700" : gpsStatus === "checking" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                }`}>
+                  {gpsStatus === "live" ? "GPS Live" : gpsStatus === "checking" ? "Checking GPS" : "GPS Offline"}
+                </span>
+              </div>
+              {dispatchError && (
+                <p className="mt-2 text-xs text-amber-700">
+                  Dispatch offers could not be loaded: {dispatchError}
+                </p>
+              )}
+              {!dispatchHomeZone && (
+                <p className="mt-2 text-xs text-amber-700">
+                  Admin/Operations must assign your permanent home zone before you can receive pickup offers.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={updateDispatchAvailability}
+              disabled={!dispatchHomeZone || savingDispatch}
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {savingDispatch ? "Updating…" : dispatchAvailability === "available" ? "Go unavailable" : "Go available"}
+            </button>
           </div>
 
           <div className="mb-3 flex gap-2">
@@ -1141,23 +1256,29 @@ async function verifyOtp(orderId: string) {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() =>
-                            acceptDelivery(
-                              order.id
-                            )
-                          }
-                          className="
-                            bg-orange-500
-                            text-white
-                            px-6
-                            py-3
-                            rounded-xl
-                            font-bold
-                          "
-                        >
-                          Accept Delivery
-                        </button>
+                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                          {typeof order.dispatch_distance_meters === "number" && (
+                            <span className="text-xs text-slate-500">
+                              Approx. {Math.round(order.dispatch_distance_meters)} m from vendor
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => order.dispatch_offer_id && void respondToDispatchOffer(order.dispatch_offer_id, "accept")}
+                            disabled={!order.dispatch_offer_id || savingDispatch}
+                            className="rounded-xl bg-orange-500 px-6 py-3 font-bold text-white hover:bg-orange-600 disabled:opacity-50"
+                          >
+                            Accept pickup
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => order.dispatch_offer_id && void respondToDispatchOffer(order.dispatch_offer_id, "decline")}
+                            disabled={!order.dispatch_offer_id || savingDispatch}
+                            className="rounded-xl border border-slate-300 px-6 py-3 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            Decline
+                          </button>
+                        </div>
                       </div>
                     )
                   )
