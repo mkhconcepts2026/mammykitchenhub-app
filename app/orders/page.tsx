@@ -67,6 +67,7 @@ function formatNaira(value: number | string | null | undefined) {
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTab, setActiveTab] = useState<"active" | "history">("active");
   const [loading, setLoading] = useState(true);
   const [deliveryOtps, setDeliveryOtps] = useState<Record<string, string>>({});
   const [loadError, setLoadError] = useState("");
@@ -77,6 +78,18 @@ export default function OrdersPage() {
     Record<string, { type: "success" | "error"; text: string }>
   >({});
   const [reviewedOrderIds, setReviewedOrderIds] = useState<string[]>([]);
+
+  const deliveredOrders = orders.filter((order) =>
+    ["delivered", "completed"].includes(order.status.trim().toLowerCase())
+  );
+  const cancelledOrders = orders.filter(
+    (order) => order.status.trim().toLowerCase() === "cancelled"
+  );
+  const activeOrders = orders.filter((order) => {
+    const status = order.status.trim().toLowerCase();
+    return !["delivered", "completed", "cancelled"].includes(status);
+  });
+  const visibleOrders = activeTab === "active" ? activeOrders : deliveredOrders;
 
   const loadOrders = useCallback(async () => {
     const supabase = createClient();
@@ -391,8 +404,40 @@ export default function OrdersPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {orders.map((order) => {
+          <>
+            <div className="mb-6 grid grid-cols-2 gap-3 rounded-2xl bg-white p-2 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTab("active")}
+                aria-pressed={activeTab === "active"}
+                className={`rounded-xl px-4 py-3 text-sm font-bold transition ${activeTab === "active" ? "bg-gray-900 text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
+              >
+                Active Orders <span className="ml-1 opacity-75">({activeOrders.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("history")}
+                aria-pressed={activeTab === "history"}
+                className={`rounded-xl px-4 py-3 text-sm font-bold transition ${activeTab === "history" ? "bg-gray-900 text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
+              >
+                History <span className="ml-1 opacity-75">({deliveredOrders.length})</span>
+              </button>
+            </div>
+
+            {visibleOrders.length === 0 ? (
+              <div className="rounded-2xl bg-white p-10 text-center shadow-sm">
+                <h2 className="mb-3 text-xl font-bold">
+                  {activeTab === "active" ? "No Active Orders" : "No Delivered Orders Yet"}
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {activeTab === "active"
+                    ? "New orders and deliveries in progress will appear here."
+                    : "Orders will appear in History after successful delivery."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {visibleOrders.map((order) => {
               const progressStatuses = statuses.filter(
                 (status) => status !== "assigned"
               );
@@ -433,13 +478,21 @@ export default function OrdersPage() {
                       </div>
                     </div>
 
-                    <span
-                      className={`rounded-full px-4 py-2 capitalize ${badgeColor(
-                        order.status
-                      )}`}
-                    >
-                      {order.status.replaceAll("_", " ")}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-4 py-2 capitalize ${badgeColor(
+                          order.status
+                        )}`}
+                      >
+                        {order.status.replaceAll("_", " ")}
+                      </span>
+                      <Link
+                        href={`/orders/${order.id}`}
+                        className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-700"
+                      >
+                        View Order
+                      </Link>
+                    </div>
                   </div>
 
                   <section className="mb-8">
@@ -661,8 +714,35 @@ export default function OrdersPage() {
 
                 </article>
               );
-            })}
-          </div>
+                })}
+              </div>
+            )}
+
+            {cancelledOrders.length > 0 && (
+              <section className="mt-8">
+                <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">
+                  Cancelled Orders ({cancelledOrders.length})
+                </h2>
+                <div className="space-y-3">
+                  {cancelledOrders.map((order) => (
+                    <article key={order.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-100 bg-white p-4 shadow-sm">
+                      <div>
+                        <p className="font-semibold text-gray-900">Cancelled order</p>
+                        <p className="mt-1 break-all text-xs text-gray-500">{order.id}</p>
+                        <p className="mt-1 text-sm text-gray-600">{formatNaira(order.total)}</p>
+                      </div>
+                      <Link
+                        href={`/orders/${order.id}`}
+                        className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        View Order
+                      </Link>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
         )}
       </div>
     </main>
